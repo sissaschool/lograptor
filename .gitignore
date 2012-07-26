@@ -1,0 +1,10 @@
+Makefile
+autom4te.cache
+compiledir
+config.log
+config.status
+configure
+*.swp
+*.pyc
+*.pyo
+
