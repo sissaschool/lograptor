@@ -1,0 +1,43 @@
+<html>
+  <head>
+    <title>$title</title>
+    <style type="text/css">
+      h1 {color: gray; border-bottom: 3px double silver}
+      h2,h3 {color: gray; border-bottom: 1px solid silver}
+    </style>
+  </head>
+  <body>
+    <h1>$localhost</h1>
+    
+    <h3>Process parameters and statistics</h3>
+        <table border=1>
+        <tr><td width="20%" align="rigth">Pattern:</td>
+            <td>"<strong>$pattern</strong>"</td></tr>
+        <tr><td width="20%" align="rigth">Pattern file: </td>
+            <td><strong>$pattern_file</strong></td></tr>
+        <tr><td width="20%" align="rigth">Filters:</td>
+            <td><strong>$filters</strong></td></tr>
+        <tr><td width="20%" align="rigth">Hostname:</td>
+            <td><strong>$hostname</strong></td></tr>
+        <tr><td width="20%" align="rigth">Applications:</td>
+            <td><strong>$applications</strong></td></tr>
+        <tr><td width="20%" align="rigth">First event:</td>
+            <td><strong>$starttime</strong></td></tr>
+        <tr><td width="20%" align="rigth">Last event:</td>
+            <td><strong>$endtime</strong></td></tr>
+        <tr><td width="20%" align="rigth">Files:</td>
+            <td><tt><strong>$logfiles</strong></tt></td></tr>
+        <tr><td width="20%" align="rigth">Total files examined:</td>
+            <td><strong>$totalfiles</strong></td></tr>
+        <tr><td width="20%" align="rigth">Total log lines parsed:</td>
+            <td><strong>$totallines</strong></td></tr>
+        </table>
+        
+    $subreports
+    
+    $unparsed_strings
+    
+    <p align="right">Brought to you by 
+      <a href="http:///lograptor/">Lograptor $version</a></p>
+  </body>
+</html>

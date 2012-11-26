@@ -1,0 +1,3 @@
+include LICENSE
+recursive-include etc/lograptor *.conf *.txt *.html
+recursive-include man *.5.gz *.8.gz

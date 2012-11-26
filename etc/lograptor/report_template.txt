@@ -1,0 +1,21 @@
+*********************************************************
+ $title
+*********************************************************
+
+### Process parameters and statistics ###
+
+Pattern: "$pattern"
+Pattern file: $pattern_file
+Filters: $filters
+Hostnames: $hostname
+Applications: $applications
+
+First event: $starttime
+Last event: $endtime
+Processed files: $logfiles
+Total files examined: $totalfiles
+Total log lines parsed: $totallines
+---------------------------------------------------------
+$subreports
+$unparsed_strings
+----- Brought to you by $version -----
