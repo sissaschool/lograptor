@@ -76,17 +76,11 @@ class LineCache(UserDict):
             k = -1
 
         for thread in self:
-            if self[thread].matching:
-                if self[thread]:
+            if k > 0:
+                if self[thread].matching:
                     for line in self[thread].buffer:
                         print('{0}{1}'.format(prefix, line), end='')
                     print('--')
-                if k > 0:
-                    del self[thread]
-                    k -= 1
-                else:
-                    self[thread].buffer = []
-            elif k > 0:
                 del self[thread]
                 k -= 1
         

@@ -5,6 +5,7 @@ Setup script for Lograptor
 
 import glob
 import os
+import os.path
 import shutil
 import distutils.command.sdist
 import distutils.command.build
@@ -14,15 +15,12 @@ import distutils.command.install
 from distutils.core import setup
 
 
-LONG_DESCRIPTION ="""
-Lograptor is a syslog parser and searching tool which provide a command-line interface for manually or automated log
-processing. Instant pattern matching are joinable with a set of common
-filters and date/time range scope delimitation. Each search should
-produce report that should be easllily send to you by email, or saved
-into a filesystem directory. Lograptor take reporting ideas and part
-of the code from Epylog, one of the most popular log analysis tools,
-remixing all with other code developed by the author for Postfix's log
-searches.
+LONG_DESCRIPTION =\
+"""Lograptor is a syslog parser and searching tool which provides a
+command-line interface for manually or automated logs processing.
+Instant pattern matchings are joinable with a set of common filters
+and date/time range scope delimitation. Each search can also produce
+a report that can be easily e-mailed or saved in a file system directory.
 """
 
 
@@ -33,6 +31,9 @@ class my_sdist(distutils.command.sdist.sdist):
     """
     
     def run(self):
+        if not os.path.isdir('scripts'):
+            os.mkdir('scripts')
+
         print("copy lograptor.py -> scripts/lograptor")
         shutil.copyfile("lograptor.py", "scripts/lograptor")
         print("compress man/lograptor.8 -> man/lograptor.8.gz")
@@ -48,6 +49,9 @@ class my_build_scripts(distutils.command.build_scripts.build_scripts):
 
     def run(self):
         try:
+            if not os.path.isdir('scripts'):
+                os.mkdir('scripts')
+
             print("copy lograptor.py -> scripts/lograptor")
             shutil.copyfile("lograptor.py", "scripts/lograptor")
             print("compress man/lograptor.8 -> man/lograptor.8.gz")
@@ -85,7 +89,7 @@ class my_install(distutils.command.install.install):
 
         
 setup(name='lograptor',
-      version='0.8b2',
+      version='0.8b3',
       author='Davide Brunato',
       author_email='brunato@sissa.it',
       description='Command-line utility for searching into log files.',

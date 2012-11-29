@@ -125,6 +125,9 @@ def parse_args(cli_parser):
     group.add_option("--client", metavar="<HOSTNAME/IP ADDRESS>",
                       action="store", type="string", dest="client", default=None,
                       help="Search only in the log lines related to a client host.")
+    group.add_option("--pid", metavar="<NUM>",
+                      action="store", type="string", dest="pid", default=None,
+                      help="Search only in the log lines related to a process ID.")
     group.add_option("--and", dest="and_filters", action="store_true", default=False,
                      help="Treat filters conditions with logical conjunction (AND) "
                       "[default: logical disjunction (OR)]")
@@ -256,7 +259,7 @@ def main(options,args):
 
 
 if __name__ == '__main__':
-
+    
     if sys.version_info<(2,6,0):
       sys.stderr.write("You need python 2.6 or later to run this program\n")
       sys.exit(1)

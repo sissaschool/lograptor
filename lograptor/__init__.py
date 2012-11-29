@@ -47,7 +47,7 @@ __author__ = "Davide Brunato"
 __copyright__ = "Copyright 2011-2012, SISSA"
 __credits__ = ["Davide Brunato"]
 __license__ = "GPLv2+"
-__version__ = "Lograptor-0.8b2"
+__version__ = "Lograptor-0.8b3"
 __maintainer__ = "Davide Brunato"
 __email__ = "brunato@sissa.it"
 __status__ = "Beta"
@@ -126,7 +126,7 @@ class Lograptor:
     """            
 
     # List of options that define filters
-    filter_options = tuple(['user', 'from', 'rcpt', 'client'])
+    filter_options = tuple(['user', 'from', 'rcpt', 'client', 'pid'])
 
     def __init__(self, cfgfile=None, options=None, args=[]):
         """
@@ -456,7 +456,13 @@ class Lograptor:
             try:
                 self.apps[app] = application.AppLogParser(app, cfgfile, self.config)
             except (ConfigError, FormatError) as err:
-                logger.error('Skip app "{0}" for errors: {1}'.format(app, err))
+                logger.error('Skip app "{0}": {1}'.format(app, err))
+                continue
+            except OptionError as err:
+                if self.config['applications'] is not None:
+                    logger.error('Skip app "{0}": {1}'.format(app, err))
+                else:
+                    logger.warning('Skip app "{0}": {1}'.format(app, err))
                 continue
 
             if not self.apps[app].enabled:
@@ -561,6 +567,7 @@ class Lograptor:
             # Flush the cache to output (only matched threads)
             if self._thread:
                 for app in self.applist:
+                    logger.debug('Flush cache for app: {0}'.format(app))
                     self.apps[app].purge_results(False)
                     if self._output:
                         self.apps[app].cache.flush_cache(prefout, False)
@@ -586,10 +593,16 @@ class Lograptor:
 
         # Set report time stamps
         if self.config['report']:
+            try:
+                starttime = datetime.datetime.fromtimestamp(self._first_event)
+                endtime = datetime.datetime.fromtimestamp(self._last_event)
+            except TypeError:
+                starttime = endtime = "None"
+                
             self.report.set_stats(
                 {
-                    'starttime'  : datetime.datetime.fromtimestamp(self._first_event),
-                    'endtime'    : datetime.datetime.fromtimestamp(self._last_event),
+                    'starttime'  : starttime,
+                    'endtime'    : endtime,
                     'totalfiles' : tot_files,
                     'totallines' : tot_lines,
                     'logfiles'   : ', '.join(logfiles)
@@ -637,6 +650,7 @@ class Lograptor:
         invert = self.config['invert']
         report = self.config['report']
         timerange = self.config['timerange']
+        prefout = ''
         
         for line in logfile:
             

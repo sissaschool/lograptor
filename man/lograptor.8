@@ -10,7 +10,7 @@
 
 .SH DESCRIPTION
 Lograptor is a new search tool for logs written in legacy BSD syslog format
-(RFC 3164) and for the IETF syslog format specified by RFC 5424.
+(RFC 3164) or IETF syslog format specified by RFC 5424.
 It was written with the idea to have a compact and highly configurable CLI tool
 for analysis and reporting of logs. Lograptor is derived from ideas and partly 
 from the code of Epylog, mixed with other code written in the past for parsing 
@@ -87,6 +87,9 @@ Search only in the log lines related to a recipient address.
 .TP
 .B \-\-client=<HOSTNAME/IP ADDRESS>
 Search only in the log lines related to a client host.
+.TP
+.B \-\-pid=<NUM>
+Search only in the log lines related to a process ID.
 .TP
 .B \--and
 Treat filters conditions with logical conjunction (AND) [default: logical disjunction (OR)]

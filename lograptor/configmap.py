@@ -62,7 +62,8 @@ class ConfigMap(UserDict):
         'main' : ['cfgdir', 'logdir', 'tmpdir', 'vardir', 'pidfile',
                   'fromaddr', 'smtpserv'],
         'patterns' : ['rfc3164_pattern', 'rfc5424_pattern', 'dnsname_pattern',
-                      'ipaddr_pattern', 'email_pattern', 'username_pattern' ],
+                      'ipaddr_pattern', 'email_pattern', 'username_pattern',
+                      'pid_pattern'],
         'report' : ['title', 'html_template', 'text_template', 'publishers',
                     'include_unparsed', 'max_unparsed'], 
         'subreports' : [] 
@@ -101,6 +102,7 @@ class ConfigMap(UserDict):
                 r'(?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)?\b',
             'username_pattern' : r'\b([A-Za-z0-9!$%&*+_~-]+(?:\.[A-Za-z0-9!$%&*+_~-]+)*)'
                 r'(@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)?\b',
+            'pid_pattern' : r'[0-9]+',
 
             # options of the section 'report'
             'title' : '$hostname system events: $localtime',
@@ -156,6 +158,7 @@ class ConfigMap(UserDict):
             'from' : r'${email_pattern}',
             'rcpt' : r'${email_pattern}',
             'client' : r'(${dnsname_pattern}|${ipaddr_pattern})',
+            'pid' : r'${pid_pattern}',
             'and_filters' : False,
 
             # Matching control options

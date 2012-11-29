@@ -461,9 +461,8 @@ class AppLogParser:
         except configparser.NoSectionError as err:
             raise lograptor.ConfigError('No section [rules] in config file of app "{0}"'.format(self.name))
         if not rules:
-            raise lograptor.ConfigError('No rules in section [rules] in config file of app "{0}": '
-                                        'app configuration must have at least a rule!'
-                                        .format(self.name))
+            msg = 'No rules for app "{0}": application must have at least a rule!'
+            raise lograptor.ConfigError(msg.format(self.name))
         
         self.add_rules(rules, config)
         
@@ -493,6 +492,12 @@ class AppLogParser:
         # Define a list of rules items for processing
         if self.has_filters:
             self._rules_list = sorted(self.rules.items(), key=lambda x:not x[1].is_filter)
+        elif self._filter_keys:
+            self.enabled = False
+            msg = "No rules for filters"
+            for key in self._filter_keys:
+                msg = '{0} --{1}'.format(msg, key)
+            raise lograptor.OptionError("-a/--apps", msg)
         else:
             self._rules_list = self.rules.items()
             
@@ -617,18 +622,20 @@ class AppLogParser:
         Purge results for unmatched threads
         """
 
+        cache = self.cache
+        
         oldcache = dict()
         if deferr_last:
-            k = int(len(self.cache)/5)*4
-            for thread in self.cache:
+            k = max(10, int(len(cache)/5)*4)
+            for thread in cache:
                 if k > 0:
-                    oldcache[thread] = self.cache[thread].matching
+                    oldcache[thread] = cache[thread].matching
                     k -= 1
                 else:
                     break
         else:
-            for thread in self.cache:
-                oldcache[thread] = self.cache[thread].matching
+            for thread in cache:
+                oldcache[thread] = cache[thread].matching
 
         for key, rule in self._rules_list:
             try:
