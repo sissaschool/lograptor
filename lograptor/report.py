@@ -68,11 +68,10 @@ class ReportItem(UserDict):
     
     # RE fixed object to check and extract report table parameters
     _color_regexp = re.compile(r'^([a-z]+|\#[0-9a-f]{6})', re.IGNORECASE)
-    _function_regexp = re.compile(r'^(?P<function>table|top|total)\(\s*(?P<condition>\*|'
-                                  r'(?P<field>(\w)+)(!=|==)\"[^\"]*\")\s*'
-                                  r'(,\s*(?P<topnum>\d+)\s*)?'
-                                  r'(\,\s*(?P<headers>(\"[^\"]*\"(\s*,\s*)?)+)|)\s*\)')
-    _reprule_regexp = re.compile(r'^\(\s*(?P<fields>((\w|\"[^\"]*\")(\s*,\s*)?)+)'
+    _function_regexp = re.compile(r'^(?P<function>table|top|total)(\((\s*(?P<topnum>\d+)\s*,)?'
+                                  r'\s*(?P<headers>(\"[^\"]*\"(\s*,\s*)?)+)\s*\)|)')
+    _reprule_regexp = re.compile(r'^\(\s*(?P<condition>\*|(?P<field>(\w)+)(!=|==)\"[^\"]*\")\s*,'
+                                 r'\s*(?P<fields>((\w|\"[^\"]*\")(\s*,\s*)?)+)'
                                  r'(\s*:\s*(?P<add2res>\+)?(?P<valfld>\w+)(\[(?P<unit>(|K|M|G|T)(b|bits|B|Bytes))\])?)?\s*\)')
     
     def __init__(self, section, section_items, subreports, rules):
@@ -108,10 +107,8 @@ class ReportItem(UserDict):
                     raise lograptor.OptionError('function')
 
                 self.function = match.group('function')
-                self.cond = match.group('condition')
                 self.topnum = match.group('topnum')
-                self.headers = match.group('headers')                
-                condfield = match.group('field')
+                self.headers = match.group('headers')
                 
                 if self.headers:
                     n_headers = len(re.split('\s*,\s*', self.headers))
@@ -122,12 +119,12 @@ class ReportItem(UserDict):
                 if self.function == "total" and n_headers > 0:
                     msg = 'function "total" doesn\'t have headers!'
                     raise lograptor.OptionError('function', msg)
-                elif self.function == "top" and self.topnum is not None:
+                elif self.function == "top":
                     try:
                         if int(self.topnum) < 0:
                             raise ValueError
-                    except ValueError:
-                        msg = '2nd parameter of function "top" must be a positive integer'
+                    except (ValueError, TypeError):
+                        msg = 'First parameter of function "top" must be a positive integer'
                         raise lograptor.OptionError('function', msg)
             else:
                 # Load and check names of report rule options  
@@ -161,6 +158,9 @@ class ReportItem(UserDict):
                 raise lograptor.OptionError(opt, msg)
 
             valfld = match.group('valfld')
+            cond = match.group('condition')
+            condfield = match.group('field')
+            
             fields = re.split('\s*,\s*', match.group('fields'))
             if len(fields) < n_headers:
                 msg = 'too many headers with respect to the number of fields of the rules'
@@ -168,7 +168,7 @@ class ReportItem(UserDict):
 
             # Report rule check by function
             if self.function == 'total':
-                if self.cond != "*" and not condfield in self.rules[opt].regexp.groupindex:
+                if cond != "*" and not condfield in self.rules[opt].regexp.groupindex:
                     msg = 'condition field "{0}" not in rule {1} gids'.format(condfield, opt)
                     raise lograptor.OptionError('function', msg)
                 if valfld is not None and not valfld in self.rules[opt].regexp.groupindex:
@@ -193,7 +193,7 @@ class ReportItem(UserDict):
                 if valfld is not None:
                     msg = 'syntax error in report rule'
                     raise lograptor.OptionError(opt, msg)
-                if self.cond != "*" and not condfield in self.rules[opt].regexp.groupindex:
+                if cond != "*" and not condfield in self.rules[opt].regexp.groupindex:
                     msg = 'filter field "{0}" not in rule {1} gids'.format(condfield,opt)
                     raise lograptor.OptionError('function', msg)
 
@@ -477,11 +477,12 @@ class Subreport:
                     for opt in repitem:
                         match = repitem.parse_report_rule(opt)
 
+                        cond = match.group('condition')
                         valfld = match.group('valfld')
                         unit = match.group('unit')
                         itemtitle = match.group('fields').strip('"')
-                        
-                        total = repitem.rules[opt].total_events(repitem.cond, valfld)
+
+                        total = repitem.rules[opt].total_events(cond, valfld)
 
                         if unit is not None:
                             total, unit = lograptor.utils.get_value_unit(total, unit, 'T')
@@ -516,9 +517,10 @@ class Subreport:
                     cols = len(re.split('\s*,\s*', repitem.headers))
                     for opt in repitem:
                         match = repitem.parse_report_rule(opt)
+                        cond = match.group('condition')
                         fields = re.split('\s*,\s*', match.group('fields'))
                         tablelist = apps[appname].rules[opt]\
-                                    .list_events(repitem.cond, cols, fields)
+                                    .list_events(cond, cols, fields)
                         repitem.results.extend(tablelist)
 
                 if repitem.results:

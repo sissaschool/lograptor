@@ -41,8 +41,10 @@ class CacheEntry:
     """
     Simple container class for cache entries
     """
-    def __init__(self, matching, line):
-        self.matching = matching
+    def __init__(self, line, pattern_match, filter_match, event_time):
+        self.pattern_match = pattern_match
+        self.filter_match = filter_match
+        self.start_time = self.end_time = event_time
         self.buffer = [line]
         
 
@@ -51,36 +53,77 @@ class LineCache(UserDict):
     A class to manage line caching
     """
     
-    def __init__(self):
+    def __init__(self, rules_list):
         #UserDict.__init__(self)
+        self._rules_list = rules_list
         self.data = OrderedDict()
     
-    def add_line(self, line, thread, matching):        
+    def add_line(self, line, thread, pattern_match, filter_match, event_time):        
         if thread in self.data:
-            if matching:
-                self.data[thread].matching = True
-            self.data[thread].buffer.append(line)
+            cache_entry = self.data[thread]
+            if pattern_match:
+                cache_entry.pattern_match = True
+            if filter_match:
+                cache_entry.filter_match = True
+            cache_entry.buffer.append(line)
+            cache_entry.end_time = event_time
         else:
-            self.data[thread] = CacheEntry(matching, line)
-            
-    def flush_cache(self, prefix, preserve_last=True):
-        """
-        Flush the cache. Print to output if the thread match.
-        Delete the older threads (4/5 older entries) if a preserve option
-        is provided.
-        """
-        
-        if preserve_last:
-            k = max(10, int(len(self.data)/5)*4)
-        else:
-            k = -1
+            self.data[thread] = CacheEntry(line, pattern_match, filter_match, event_time)
 
-        for thread in self:
-            if k > 0:
-                if self[thread].matching:
-                    for line in self[thread].buffer:
+    def purge_results(self, event_time):
+        """
+        Purge results for unmatched threads
+        """
+
+        cache = self.data
+        
+        for key, rule in self._rules_list:
+            try:
+                pos = rule.key_gids.index('thread')
+            except ValueError:
+                continue
+
+            purge_list = []
+            for idx in rule.results:
+                thread = idx[pos]
+                if thread in cache:
+                    if (not (cache[thread].pattern_match and cache[thread].filter_match) and
+                        (abs(event_time - cache[thread].end_time) > 3600)):
+                        
+                        purge_list.append(idx)
+                
+            for idx in purge_list:
+                del rule.results[idx]
+
+    def flush_cache(self, prefix, event_time=None):
+        """
+        Flush the cache to output. Only matched threads are printed.
+        Delete cache entries older (last updated) than 1 hour.
+        """
+
+        cache = self.data
+        for thread in cache.keys(): #sorted(cache, key=lambda x:cache[x].end_time):
+            if cache[thread].pattern_match and cache[thread].filter_match:
+                if cache[thread].buffer:
+                    for line in cache[thread].buffer:
                         print('{0}{1}'.format(prefix, line), end='')
                     print('--')
+                    self[thread].buffer = []
+            if (abs(event_time - cache[thread].end_time) > 3600):
                 del self[thread]
-                k -= 1
         
+    def purge_cache(self, prefix, event_time=None):
+        """
+        Flush the cache to output. Only matched threads are printed.
+        Delete cache entries older (last updated) than 1 hour.
+        """
+
+        cache = self.data
+        for thread in cache.keys(): #sorted(cache, key=lambda x:cache[x].end_time):
+            if (abs(event_time - cache[thread].end_time) > 3600):
+                if cache[thread].pattern_match and cache[thread].filter_match:
+                    if cache[thread].buffer:
+                        for line in cache[thread].buffer:
+                            print('{0}{1}'.format(prefix, line), end='')
+                        print('--')
+                del self[thread]

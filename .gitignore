@@ -5,13 +5,16 @@
 *~
 MANIFEST
 lograptor.conf
+!etc/lograptor/lograptor.conf
 exclude-list.txt
-testbed-sync.sh
+package-build
+usb-sync
 build/
 samples/
 var/
 deb_dist/
 dist/
+packages/
 scripts/
 etc/lograptor/conf.d/testapp.conf
 man/it

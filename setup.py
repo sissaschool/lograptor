@@ -6,7 +6,9 @@ Setup script for Lograptor
 import glob
 import os
 import os.path
+import platform
 import shutil
+
 import distutils.command.sdist
 import distutils.command.build
 import distutils.command.build_scripts
@@ -23,6 +25,11 @@ and date/time range scope delimitation. Each search can also produce
 a report that can be easily e-mailed or saved in a file system directory.
 """
 
+distro_tags = {
+    'centos' : 'el',
+    'redhat' : 'el',
+    'Ubuntu' : 'ubuntu1'
+    }
 
 class my_sdist(distutils.command.sdist.sdist):
     """
@@ -79,6 +86,39 @@ class my_bdist_rpm(distutils.command.bdist_rpm.bdist_rpm):
         spec_file.append('%config(noreplace) /etc/lograptor/conf.d/*.conf')
         return spec_file
 
+    def run(self):
+        distutils.command.bdist_rpm.bdist_rpm.run(self)
+
+        msg = 'moving {0} -> {1}'
+        print('cd dist/')
+        os.chdir('dist')
+        filelist = glob.glob('*-[1-9].noarch.rpm') + glob.glob('*-[1-9][0-9].noarch.rpm') 
+
+        distro = platform.dist()
+        if distro[0] in ['centos', 'redhat']:
+            tag = '.el' + distro[1].split('.')[0]
+        elif distro[0] == 'fedora':
+            tag = '.fc' + distro[1].split('.')[0]
+        elif distro[0] == 'Ubuntu':
+            tag = 'ubuntu1'
+        
+        if distro[0] in ['centos', 'redhat', 'fedora']:
+            for filename in filelist:
+                newname = filename[:-11] + tag + filename[-11:]
+                print(msg.format(filename, newname))
+                os.rename(filename, newname)
+        elif distro[0] in ['Ubuntu', 'debian']:
+            for filename in filelist:
+                print('alien -k {0}'.format(filename))
+                os.system('/usr/bin/alien -k {0}'.format(filename))
+                print('removing {0}'.format(filename))
+                os.unlink(filename)
+                if distro[0] == 'Ubuntu':
+                    filename = filename[:-11].replace('-', '_', 1) + '_all.deb'
+                    newname = filename[:-8] + tag + '_all.deb'
+                    print(msg.format(filename, newname))
+                    os.rename(filename, newname)
+        
 
 class my_install(distutils.command.install.install):
 
@@ -89,7 +129,7 @@ class my_install(distutils.command.install.install):
 
         
 setup(name='lograptor',
-      version='0.8b3',
+      version='0.8b4',
       author='Davide Brunato',
       author_email='brunato@sissa.it',
       description='Command-line utility for searching into log files.',

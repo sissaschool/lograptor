@@ -52,7 +52,7 @@ def cron_lock(pidfile, mode=0o777):
         try:
             # Check the existence of the process
             os.kill(pid, 0)
-        except OSError, errmsg:
+        except OSError as errmsg:
             if errmsg[0] == errno.ESRCH:
                 # The pid doesn't exists: remove the lock file and continue
                 os.unlink(pidfile)

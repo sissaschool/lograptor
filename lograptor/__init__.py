@@ -47,7 +47,7 @@ __author__ = "Davide Brunato"
 __copyright__ = "Copyright 2011-2012, SISSA"
 __credits__ = ["Davide Brunato"]
 __license__ = "GPLv2+"
-__version__ = "Lograptor-0.8b3"
+__version__ = "Lograptor-0.8b4"
 __maintainer__ = "Davide Brunato"
 __email__ = "brunato@sissa.it"
 __status__ = "Beta"
@@ -495,7 +495,7 @@ class Lograptor:
         if len(self.tagmap) == 0:
             raise ConfigError('No tags for enabled apps! Exiting ...')        
 
-        logger.info('Use the applist: {0}'.format(self.apps)) 
+        logger.info('Use the applist: {0}'.format(self.apps.keys())) 
 
         # Partially disable (enable=None) apps that have no rules or filters,
         # in order to skip app processing and reporting. 
@@ -562,16 +562,7 @@ class Lograptor:
                     logger.error(msg)
 
             logfiles.append(logfile.filename())
-            prefout = '{0}: '.format(logfile.filename()) if self._out_filenames else ''
-
-            # Flush the cache to output (only matched threads)
-            if self._thread:
-                for app in self.applist:
-                    logger.debug('Flush cache for app: {0}'.format(app))
-                    self.apps[app].purge_results(False)
-                    if self._output:
-                        self.apps[app].cache.flush_cache(prefout, False)
-
+                    
             logger.info('Processed {0} files.'.format(self._num_files))            
             tot_files += self._num_files
             tot_lines += logfile.lineno()
@@ -731,13 +722,8 @@ class Lograptor:
                     continue
                 app = tagmap[tag]
 
-                # Set the search string
-                datamsg = match.group(datagid)
-            else:
-                # If no-apps are used the search string
-                # is prefixes by tag/app-name part.
-                datamsg = tag + match.group(datagid)
-
+            datamsg = match.group(datagid)
+            
             ###
             # Search for pattern(s)
             pattern_search = True
@@ -776,18 +762,10 @@ class Lograptor:
                     if debug: logger.debug('Filtered line: {0}'.format(line[:-1]))
                     prec_match = None
                     continue
-
-                if appthread is not None:
-                    if result:
-                        app.cache.add_line(line, appthread, pattern_search)
-                    else:
-                        app.cache.add_line(line, appthread, False)
-
-                prec_match = match
                                 
                 ###
                 # Handle timestamps
-                if report:
+                if report or thread:
                     hour = ltime[:2]
                     minute = ltime[3:5]
                     second = ltime[6:]
@@ -804,21 +782,37 @@ class Lograptor:
                         if last_event < event_time:
                             last_event = event_time
 
+                if appthread is not None:
+                    app.cache.add_line(line, appthread, pattern_search, result, event_time)
+
+                prec_match = match
+                        
+
             ###
             # Matched line: print line to output and increment counters 
             if debug: logger.debug('Matched line: {0}'.format(line[:-1]))
             counter += 1
-            if output and not thread:
+            if thread:
+                if (counter % 1000) == 0:
+                    for app in applist:
+                        apps[app].cache.purge_results(event_time)
+                        if output:
+                            apps[app].cache.purge_cache(prefout, event_time)                        
+            elif output:
                 print('{0}{1}'.format(prefout, line), end='')
+                
             if rawfh is not None:
                 rawfh.write('{0}{1}'.format(prefout, line))
 
         # Flush the cache to output (only matched threads)
         if thread:
             for app in applist:
-                apps[app].purge_results()
+                try:
+                    apps[app].cache.purge_results(event_time)
+                except UnboundLocalError:
+                    break
                 if output:
-                    apps[app].cache.flush_cache(prefout)
+                    apps[app].cache.flush_cache(prefout, event_time)
 
         # Save modificable class variables
         self._header = header

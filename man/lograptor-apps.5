@@ -254,43 +254,21 @@ There are 3 different functions definable, each one for a different representati
 
 .RS
 .TP
-.B total(<filter>)
+.B total(), total
 A function that allows you to create lists with total values from the results.
-The parameter <filter> can have the following values:
-
-.RS
-.TP
-.B *
-Computes the total on all results.
 
 .TP
-.B <field>=<pattern>
-Considers only the tuples of results for which the specified field satisfies the
-constraint described by the pattern. 
-The value <field> must be the name of a symbolic group present in all the
-report rules specified below for the section.
-.TP
-.B <field>!=<pattern>
-Consider only the results that do not satisfy the constraint specified by the pattern.
-The value <field> must be the name of a symbolic group present in all the
-report rules specified below for the section.
-.RE
-
-
-.TP
-.B top(<filter>, <num>, <header>) 
-A function that allows you to create a ranking of maximum values. The <filter> 
-parameter has the same syntax and effect as that of the function "total".
+.B top(<num>, <header>) 
+A function that allows you to create a ranking of maximum values. 
 The <num> parameter is a positive integer that indicating how many maximum values 
 to be taken into account. 
 The third parameter is a description for the field, which will appear
 in the report on the right column of the table.
 
 .TP
-.B table(<filter>,<header 1>, .. <header K>)
-A function that allows you to create a table from a result set. The parameter <filter>
-has the same syntax and effect as in the other two functions.
-The remaining parameters are the descriptions that have to be included in the 
+.B table(<header 1>, .. <header K>)
+A function that allows you to create a table from a result set.
+The parameters are the descriptions that have to be included in the 
 headers of the table. 
 The number of descriptions determines the number of columns of the table. 
 Report tables, also when generated from logs of different applications,
@@ -319,7 +297,27 @@ specified in the "function" option.
 
 In case of function \fBtotal\fR the syntax of a report rule is:
 
-   <report_rule> = ("<description>"[:<counter_field>])
+   <report_rule> = (<filter>, "<description>"[:<counter_field>])
+
+The parameter <filter> can have the following values:
+
+.RS
+.TP
+.B *
+Computes the total on all results.
+
+.TP
+.B <field>=<pattern>
+Considers only the tuples of results for which the specified field satisfies the
+constraint described by the pattern. 
+The value <field> must be the name of a symbolic group present in all the
+report rules specified below for the section.
+.TP
+.B <field>!=<pattern>
+Consider only the results that do not satisfy the constraint specified by the pattern.
+The value <field> must be the name of a symbolic group present in all the
+report rules specified below for the section.
+.RE
 
 The description is associated to the corresponding value in the list, and it will
 joined to it in the report.
@@ -344,18 +342,18 @@ For example, having the pattern rule:
 
 and defining a report rule:
 
-   Mail_Received = ("Total Messages Processed")
+   Mail_Received = (*, "Total Messages Processed")
 
 you will produce a report that contains the count of total messages received.
 Instead using the following option:
 
-   Mail_Received = ("Total Transferred Size":+size)
+   Mail_Received = (*, "Total Transferred Size":+size)
 
 a count of the total number of bytes received will be made.
 Finally, joined with field for the count you may specify a memory measurement 
 unit to properly understand the value:
 
-   Mail_Received = ("Total Transferred Size":+size[B])
+   Mail_Received = (*, "Total Transferred Size":+size[B])
 
 At now the measurement units admitted are only the ones used for the memory:
 
@@ -379,8 +377,10 @@ in the report.
 
 In case of function \fBtop\fR the syntax of a report rule is:
 
-   <report_rule> = (<field>[:<counter_field>])
+   <report_rule> = (<filter>, <field>[:<counter_field>])
 
+The <filter> parameter has the same syntax and effect as that of the report rules
+of function "total".
 The <field> parameter can be "hostname" or one of the symbolic groups belonging 
 to the pattern rule associated, with the exclusion of value "thread" that is reserved.
 For example, having this pattern rule:
@@ -389,23 +389,23 @@ For example, having this pattern rule:
 
 you can define a report rule to create the list of servers that have sent more mail:
 
-   Mail_Received = (hostname)
+   Mail_Received = (*, hostname)
 
 Instead, with the following report rule:
 
-   Mail_Received = (from)
+   Mail_Received = (*, from)
 
 you create the ranking of email accounts that have sent more messages.
 As in the case of "total", you can specify a <counter_field> for counting
 alternative values. 
 For example with this report rule:
 
-   Mail_Received = (from:size[B])
+   Mail_Received = (*, from:size[B])
 
 you obtain the ranking of the largest e-mails sent during the period:
 Instead, inserting the prefix "+":
 
-   Mail_Received = (from:+size[B])
+   Mail_Received = (*, from:+size[B])
 
 the program computes the list of senders that have high traffic during 
 the period.
@@ -417,8 +417,10 @@ the period.
 .RS
 In case of function \fBtable\fR the syntax of a report rule is:
 
-   <report_rule> = (<field>, ... <field>)
+   <report_rule> = (<filter>, <field>, ... <field>)
 
+The <filter> parameter has the same syntax and effect as that of the report rules
+of functions "total" and "top".
 The <field> parameters can be strings enclosed in double quotes, 
 or "hostname" (without quotes) or the name of a symbolic group 
 belonging to the associated pattern rule, always with the exception 
@@ -445,7 +447,7 @@ only when these have sense.
 .RE
 
 .TP
-.B "Compaction of the tables"
+.B "COMPACTING TABLES"
 It's possible to merge tables produced from logs of different 
 applications when the tables belong to the same subreport. 
 The program decides autonomously to merge two tables 

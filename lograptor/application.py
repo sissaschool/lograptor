@@ -70,14 +70,16 @@ class AppRule:
             - regexp : re.compile object for rule pattern
             - results : dictionary of rule results
             - is_filter : True if the rule is connected to a filter option
-            - is_useful : True if the rule is a filter or used by a report rule
+            - is_useful : True if the rule is a filter or thread useful or used by a report rule
             - key_gids : map from gid to result key tuple index
             - _ip_lookup = Address translation
             - _uid_lookup = UID translation
         """
         self.regexp = re.compile(pattern)
         self.results = dict()
-        self.is_filter = self.is_useful = is_filter
+        self.is_filter = is_filter
+        self.is_useful = is_filter or \
+                         (thread_opt and 'thread' in self.regexp.groupindex)
         
         self.key_gids = [ 'hostname' ]
         for gid in self.regexp.groupindex:
@@ -203,7 +205,7 @@ class AppRule:
         match = re.search("(\w+)(!=|==)\"([^\"]*)\"", cond)
         condpos = self.key_gids.index(match.group(1))
         invert = (match.group(2) == '!=')
-        recond = re.compile(match.group(2))
+        recond = re.compile(match.group(3))
 
         tot = 0
         for key in results:
@@ -351,6 +353,7 @@ class AppLogParser:
     _no_filter_keys = None  # Filter options not passed
     _report = None          # Report flag
     _thread = None          # Thread flag
+    _unparsed = None        # Unparsed flag
 
     @staticmethod
     def set_options(config, filters):
@@ -364,6 +367,7 @@ class AppLogParser:
         AppLogParser._and_filters = config['and_filters']
         AppLogParser._report = config['report']
         AppLogParser._thread = config['thread']
+        AppLogParser._unparsed = config['unparsed']
         AppRule.set_ip_lookup(config['ip_lookup'])
         AppRule.set_uid_lookup(config['uid_lookup'])
 
@@ -386,10 +390,7 @@ class AppLogParser:
         self.repitems = []
 
         # Setting other instance internal variables for process phase
-        self._unparsed = 0
         self._last_rule = self._last_idx = None
-        if self._thread:
-            self.cache = lograptor.linecache.LineCache()
             
         # Parse app configuration file. 
         appconfig = configparser.RawConfigParser(dict_type=OrderedDict)
@@ -503,6 +504,10 @@ class AppLogParser:
             
         logger.info('Rule set for app "{0}": {1}'
                     .format(self.name, [rule[0] for rule in self._rules_list]))
+
+        # Set threads cache using finally rules list
+        if self._thread:
+            self.cache = lograptor.linecache.LineCache(self._rules_list)
         
     def add_rules(self, rules, config):
         """
@@ -537,7 +542,7 @@ class AppLogParser:
 
             if is_filter:
                 self.has_filters = True
-                
+            
             # Adding to app rules
             self.rules[key] = AppRule(pattern, is_filter, config['thread'])
             logger.debug('Added regexp rule "{0}" (is_filter={1}): {2}'
@@ -586,7 +591,7 @@ class AppLogParser:
         
         if not self._rules_list:
             return (True, None)
-        
+
         for key,rule in self._rules_list:
             match = rule.regexp.search(datamsg)
             if match is not None:
@@ -604,10 +609,12 @@ class AppLogParser:
                     return ((rule.is_filter or not self.has_filters), None)                 
 
         # No rule match: the application log message is unparsable
-        # (you might add a rule to the app configuration file ...)  
-        self._unparsed += 1
+        # by enabled rules.
         self._last_rule = self._last_idx = None
-        return (None, None)
+        if self._unparsed:
+            return (None, None)
+        else:
+            return (not self.has_filters, None)
 
     def increase_last(self, k):
         """
@@ -617,38 +624,3 @@ class AppLogParser:
         if idx is not None:
             self._last_rule.results[idx] += int(k)
         
-    def purge_results(self, deferr_last=True):
-        """
-        Purge results for unmatched threads
-        """
-
-        cache = self.cache
-        
-        oldcache = dict()
-        if deferr_last:
-            k = max(10, int(len(cache)/5)*4)
-            for thread in cache:
-                if k > 0:
-                    oldcache[thread] = cache[thread].matching
-                    k -= 1
-                else:
-                    break
-        else:
-            for thread in cache:
-                oldcache[thread] = cache[thread].matching
-
-        for key, rule in self._rules_list:
-            try:
-                pos = rule.key_gids.index('thread')
-            except ValueError:
-                continue
-
-            purge_list = []
-            for idx in rule.results:
-                thread = idx[pos]
-                if thread in oldcache:
-                    if not oldcache[thread]:
-                        purge_list.append(idx)
-                
-            for idx in purge_list:
-                del rule.results[idx]
