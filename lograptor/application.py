@@ -64,7 +64,7 @@ class AppRule:
     _known_hosts = {}
     _known_uids = {}
 
-    def __init__(self, pattern, is_filter, thread_opt):
+    def __init__(self, pattern, has_filters, thread_opt):
         """
         AppRule attributes:
             - regexp : re.compile object for rule pattern
@@ -75,10 +75,20 @@ class AppRule:
             - _ip_lookup = Address translation
             - _uid_lookup = UID translation
         """
-        self.regexp = re.compile(pattern)
+        try:
+            self.regexp = re.compile(pattern)
+        except:
+            if not has_filters:
+                msg = 'Wrong pattern in configuration: "{0}"'.format(pattern)
+                raise lograptor.ConfigError(msg)
+            else:
+                msg = 'Wrong pattern specification in filters!'
+                raise lograptor.OptionError(has_filters, msg)
+            
         self.results = dict()
-        self.is_filter = is_filter
-        self.is_useful = is_filter or \
+        self.filters = has_filters
+        self.is_filter = len(has_filters)>0
+        self.is_useful = self.is_filter or \
                          (thread_opt and 'thread' in self.regexp.groupindex)
         
         self.key_gids = [ 'hostname' ]
@@ -347,7 +357,7 @@ class AppLogParser:
     """
 
     # Class internal processing attributes
-    _filters = None    
+    _filters = None
     _and_filters = None     # Process filters with logical AND
     _filter_keys = None     # Passed filter options
     _no_filter_keys = None  # Filter options not passed
@@ -386,7 +396,7 @@ class AppLogParser:
         self.name = name            # Application name
         self.cfgfile = appcfgfile   # Complete path to app config file
         self.rules = dict()         # Regexp rules for the app
-        self.has_filters = False    # If the app has at least one filter rule 
+        self.has_filters = set()    # Set of the filters provided by the app 
         self.repitems = []
 
         # Setting other instance internal variables for process phase
@@ -507,13 +517,13 @@ class AppLogParser:
 
         # Set threads cache using finally rules list
         if self._thread:
-            self.cache = lograptor.linecache.LineCache(self._rules_list)
+            self.cache = lograptor.linecache.LineCache(config['and_filters'], len(self._filter_keys))
         
     def add_rules(self, rules, config):
         """
         Add a set of rules to the app, dividing between filter and other rule set
         """
-        for key,pattern in rules:                  
+        for key,pattern in rules:
             from lograptor.__init__ import Lograptor
             
             if ((pattern[0] == '"' and pattern[-1] == '"') or
@@ -525,29 +535,34 @@ class AppLogParser:
                 raise lograptor.ConfigError('Error in app "{0}" configuration: '
                                             'empty rules not admitted!'.format(key))
                 
-            is_filter = self._and_filters
+            filter_keys = list()
             for opt in self._filter_keys:
                 next_pattern = string.Template(pattern).safe_substitute({opt:config[opt]})
                 if next_pattern!=pattern:
-                    self._filters[opt] = True
-                    if not self._and_filters:
-                        is_filter = True
-                else:
-                    if self._and_filters:
-                        is_filter = False
+                    filter_keys.append(opt)                    
                 pattern = next_pattern
+                
+            if self._and_filters and not self._thread:
+                if len(filter_keys)>=len(self._filter_keys):
+                    self.has_filters.add(filter_keys)
+            else:
+                self.has_filters.update(filter_keys)
 
             for opt in self._no_filter_keys:
                 pattern = string.Template(pattern).safe_substitute({opt:config[opt]})     
-
-            if is_filter:
-                self.has_filters = True
             
             # Adding to app rules
-            self.rules[key] = AppRule(pattern, is_filter, config['thread'])
-            logger.debug('Added regexp rule "{0}" (is_filter={1}): {2}'
-                        .format(key, is_filter, pattern))
-            logger.debug('Rule "{0}" gids : {1}'.format(key,self.rules[key].key_gids))
+            self.rules[key] = AppRule(pattern, filter_keys, config['thread'])
+            logger.debug('Added regexp rule "{0}" (filters={1}): {2}'
+                        .format(key, filter_keys, pattern))
+            logger.debug('Rule "{0}" gids : {1}'.format(key, self.rules[key].key_gids))
+
+        if self._and_filters:
+            if len(self.has_filters)<len(self._filter_keys):
+                self.has_filters = []
+
+        for key in self.has_filters:
+            self._filters[key] = True
 
     def purge_rules(self):
         """
@@ -568,6 +583,38 @@ class AppLogParser:
         for key in purge_list:
             logger.debug("Delete rule: {0}".format(key))
             del self.rules[key]
+
+    def purge_unmatched_threads(self, event_time=0):
+        """
+        Purge the old unmatched threads from application's results.
+        """
+        cache = self.cache.data
+        
+        for key, rule in self._rules_list:
+            try:
+                pos = rule.key_gids.index('thread')
+            except ValueError:
+                continue
+
+            purge_list = []
+            for idx in rule.results:
+                thread = idx[pos]
+                if thread in cache:
+                    if (not (cache[thread].pattern_match and cache[thread].filter_match) and
+                        (abs(event_time - cache[thread].end_time) > 3600)):
+                        
+                        purge_list.append(idx)
+                
+            for idx in purge_list:
+                del rule.results[idx]
+
+    def increase_last(self, k):
+        """
+        Increase the last rule result by k.
+        """
+        idx = self._last_idx
+        if idx is not None:
+            self._last_rule.results[idx] += int(k)
         
     def process(self, hostname, datamsg, debug):
         """
@@ -597,30 +644,23 @@ class AppLogParser:
             if match is not None:
                 if debug: logger.debug('Rule "{0}" match'.format(key))
                 self._last_rule = rule
-                    
+
+                result = (rule.is_filter or not self.has_filters)
                 if self._thread and 'thread' in rule.regexp.groupindex:
                     thread = match.group('thread')
                     if self._report:
                         self._last_idx = rule.add_result(hostname, match)
-                    return ((rule.is_filter or not self.has_filters), thread)
+                    return (result, rule.filters, thread)
                 else:
-                    if self._report and (rule.is_filter or not self.has_filters):
+                    if result and self._report:
                         self._last_idx = rule.add_result(hostname, match)                                            
-                    return ((rule.is_filter or not self.has_filters), None)                 
+                    return (result, None, None)            
 
         # No rule match: the application log message is unparsable
         # by enabled rules.
         self._last_rule = self._last_idx = None
         if self._unparsed:
-            return (None, None)
+            return (None, None, None)
         else:
-            return (not self.has_filters, None)
-
-    def increase_last(self, k):
-        """
-        Increase the last rule result by k.
-        """
-        idx = self._last_idx
-        if idx is not None:
-            self._last_rule.results[idx] += int(k)
+            return (not self.has_filters, None, None)
         

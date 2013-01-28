@@ -152,7 +152,7 @@ def parse_args(cli_parser):
     ### Define the options for the group "Output Control"                      
     group=optparse.OptionGroup(cli_parser,"Output Control")
     group.add_option("-c", "--count", action="store_true", default=False,
-                    help="Suppress normal output; instead print a count of matching"
+                    help="Suppress normal output; instead print a count of matching "
                     "lines for each input file.  With  the  -v, --invert-match "
                     "option, count non-matching lines.")
     group.add_option("-q", "--quiet", action="store_true", default=None,

@@ -47,7 +47,7 @@ __author__ = "Davide Brunato"
 __copyright__ = "Copyright 2011-2012, SISSA"
 __credits__ = ["Davide Brunato"]
 __license__ = "GPLv2+"
-__version__ = "Lograptor-0.8b4"
+__version__ = "Lograptor-0.8b5"
 __maintainer__ = "Davide Brunato"
 __email__ = "brunato@sissa.it"
 __status__ = "Beta"
@@ -513,26 +513,33 @@ class Lograptor:
 
         logger.info('Start the log processing main routine ...')
 
-        # Class instance internal variables for processing
-        self._count = self.config['count']
-        self._counter = 0
-        self._first_event = self._last_event = None
-        self._debug = (self.config['loglevel'] == 4)
-        self._thread = self.config['thread']
-        self._useapps = not self.config['noapps']
-
+        # Local variables
+        apps = self.apps
+        config = self.config
+        _output = self._output
+        _out_filenames = self._out_filenames
+        _outstatus = self._outstatus
+        _process_logfile = self._process_logfile
         tot_files = tot_lines = tot_counter = 0
         logfiles = []
+        
+        # Class instance internal variables for processing
+        self._count = config['count']
+        self._counter = 0
+        self._first_event = self._last_event = None
+        self._debug = (config['loglevel'] == 4)
+        self._thread = config['thread']
+        self._useapps = not config['noapps']
 
         # Set unparsed lines counter at max value if report is requested
         # and '-u/--unparsed' option is passed.
-        if self.config['report'] and self.config['unparsed']:
-            self._include_unparsed = self.config['max_unparsed']
+        if config['report'] and config['unparsed']:
+            self._include_unparsed = config['max_unparsed']
         else:
             self._include_unparsed = 0
 
         # Create temporary file for matches rawlog
-        if self.config['format'] is not None and self.report.need_rawlogs():
+        if config['format'] is not None and self.report.need_rawlogs():
             self.mktempdir()
             self.rawfh = tempfile.NamedTemporaryFile(mode='w+', delete=False)
             logger.info('RAW strings file created in "{0}"'.format(self.rawfh.name))
@@ -544,21 +551,20 @@ class Lograptor:
             
             logger.info('Process log {0} for apps {1}.'.format(logfile, applist))
             
-            if ((self._output and self._out_filenames is None) or
-                self._outstatus):
+            if ((_output and _out_filenames is None) or _outstatus):
                 print('\n*** Filename: {0} ***'.format(logfile))
-            if self.rawfh is not None and self._out_filenames is None:
+            if self.rawfh is not None and _out_filenames is None:
                 self.rawfh.write('\n*** Filename: {0} ***\n'.format(logfile))
             
             # When process CLI paths use the ordered list of apps instead of "*"
             if applist[0] == "*" and self._useapps:
-                applist = self.applist 
+                applist = self.applist
 
             try:
                 logfile = fileinput.input(logfile, openhook=fileinput.hook_compressed)
-                self._process_logfile(logfile, applist)
+                _process_logfile(logfile, applist)
             except IOError as msg:    
-                if not self.config['no_messages']:
+                if not config['no_messages']:
                     logger.error(msg)
 
             logfiles.append(logfile.filename())
@@ -567,6 +573,13 @@ class Lograptor:
             tot_files += self._num_files
             tot_lines += logfile.lineno()
             tot_counter += self._counter
+
+            if self._thread:
+                for app in applist:
+                    try:
+                        apps[app].purge_unmatched_threads()
+                    except UnboundLocalError:
+                        break
 
             # If option count is enabled print number of
             # matching lines for each file.
@@ -582,7 +595,7 @@ class Lograptor:
         logger.info('Total files processed: {0}'.format(tot_files))
         logger.info('Total log lines processed: {0}'.format(tot_lines))
 
-        # Set report time stamps
+        # Final report processing: purge all unmatched threads and set time stamps
         if self.config['report']:
             try:
                 starttime = datetime.datetime.fromtimestamp(self._first_event)
@@ -646,7 +659,8 @@ class Lograptor:
         for line in logfile:
             
             # Counters and status
-            if logfile.isfirstline():
+            filelineno = logfile.filelineno()
+            if filelineno == 1:
                 self._num_files += 1
                 prefout = '{0}: '.format(logfile.filename()) if self._out_filenames else ''
 
@@ -656,11 +670,11 @@ class Lograptor:
                 if outstatus and not debug:
                     progressbar = tui.ProgressBar(sys.stdout, fstat.st_size, "lines parsed")
                     readsize = len(line)
-                    progressbar.redraw(readsize, logfile.filelineno())
+                    progressbar.redraw(readsize, filelineno)
             else:
                 if outstatus and not debug:
                     readsize += len(line)
-                    progressbar.redraw(readsize, logfile.filelineno())
+                    progressbar.redraw(readsize, filelineno)
                         
             ###
             # Header matching
@@ -749,7 +763,7 @@ class Lograptor:
             ###
             # Application message parsing:
             if useapps:
-                result, appthread = app.process(host, datamsg, debug)
+                result, rule_filters, app_thread = app.process(host, datamsg, debug)
 
                 if result is None:
                     if debug: logger.debug('Unparsable line: {0}'.format(line[:-1]))
@@ -782,37 +796,35 @@ class Lograptor:
                         if last_event < event_time:
                             last_event = event_time
 
-                if appthread is not None:
-                    app.cache.add_line(line, appthread, pattern_search, result, event_time)
+                if app_thread is not None:
+                    app.cache.add_line(line, app_thread, pattern_search, result, rule_filters, event_time)
 
                 prec_match = match
                         
 
             ###
-            # Matched line: print line to output and increment counters 
-            if debug: logger.debug('Matched line: {0}'.format(line[:-1]))
-            counter += 1
+            # Increment line matched counter 
             if thread:
-                if (counter % 1000) == 0:
+                if (filelineno % 1000) == 0:
                     for app in applist:
-                        apps[app].cache.purge_results(event_time)
-                        if output:
-                            apps[app].cache.purge_cache(prefout, event_time)                        
+                        apps[app].purge_unmatched_threads(event_time)
+                        counter += apps[app].cache.flush_old_cache(output, prefout, event_time)                        
             elif output:
+                counter += 1
+                if debug: logger.debug('Matched line: {0}'.format(line[:-1]))
                 print('{0}{1}'.format(prefout, line), end='')
                 
             if rawfh is not None:
                 rawfh.write('{0}{1}'.format(prefout, line))
 
-        # Flush the cache to output (only matched threads)
+        # End-of file thread matching and output
         if thread:
             for app in applist:
                 try:
-                    apps[app].cache.purge_results(event_time)
+                    apps[app].purge_unmatched_threads(event_time)
                 except UnboundLocalError:
                     break
-                if output:
-                    apps[app].cache.flush_cache(prefout, event_time)
+                counter += apps[app].cache.flush_cache(output, prefout, event_time)
 
         # Save modificable class variables
         self._header = header
