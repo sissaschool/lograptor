@@ -500,15 +500,20 @@ class AppLogParser:
         if not config['unparsed']:
             self.purge_rules()
 
-        # Define a list of rules items for processing
+        # Define a list of rules items for processing.
+        # Put rules with filters before the others.
         if self.has_filters:
             self._rules_list = sorted(self.rules.items(), key=lambda x:not x[1].is_filter)
         elif self._filter_keys:
             self.enabled = False
-            msg = "No rules for filters"
+            msg1  = ''
             for key in self._filter_keys:
-                msg = '{0} --{1}'.format(msg, key)
-            raise lograptor.OptionError("-a/--apps", msg)
+                msg1 = '{0}/--{1}'.format(msg1, key)
+            if config['and_filters'] and not config['thread']:
+                msg2 = "No single rule with all required filters"
+            else:
+                msg2 = "No rules for parsing filters"
+            raise lograptor.OptionError(msg1[1:], msg2)
         else:
             self._rules_list = self.rules.items()
             
@@ -544,7 +549,7 @@ class AppLogParser:
                 
             if self._and_filters and not self._thread:
                 if len(filter_keys)>=len(self._filter_keys):
-                    self.has_filters.add(filter_keys)
+                    self.has_filters.update(filter_keys)
             else:
                 self.has_filters.update(filter_keys)
 
@@ -637,7 +642,7 @@ class AppLogParser:
         """
         
         if not self._rules_list:
-            return (True, None)
+            return (True, None, None)
 
         for key,rule in self._rules_list:
             match = rule.regexp.search(datamsg)

@@ -44,6 +44,7 @@ class CacheEntry:
     def __init__(self, event_time):
         self.pattern_match = False
         self.filter_match = False
+        self.counted = False
         self.filter_set = set()
         self.buffer = list()        
         self.start_time = self.end_time = event_time
@@ -55,11 +56,9 @@ class LineCache(UserDict):
     """
     
     def __init__(self, and_filters, tot_filters):
-        #UserDict.__init__(self)
+        self.data = OrderedDict()
         self._and_filters = and_filters
         self._tot_filters = tot_filters
-        print(self._tot_filters)
-        self.data = OrderedDict()
     
     def add_line(self, line, thread, pattern_match, filter_match, rule_filters, event_time):        
         try:
@@ -89,9 +88,12 @@ class LineCache(UserDict):
         cache = self.data
         counter = 0
         
-        for thread in cache.keys(): #sorted(cache, key=lambda x:cache[x].end_time):
+        for thread in cache.keys():
             if cache[thread].pattern_match and cache[thread].filter_match:
-                counter += len(cache[thread].buffer)
+                if not cache[thread].counted:
+                    counter += 1
+                    cache[thread].counted = True
+
                 if cache[thread].buffer:
                     if output:
                         for line in cache[thread].buffer:
@@ -112,10 +114,13 @@ class LineCache(UserDict):
         cache = self.data
         counter = 0
         
-        for thread in cache.keys(): #sorted(cache, key=lambda x:cache[x].end_time):
+        for thread in cache.keys():
             if (abs(event_time - cache[thread].end_time) > 3600):
                 if cache[thread].pattern_match and cache[thread].filter_match:
-                    counter += len(cache[thread].buffer)
+                    if not cache[thread].counted:
+                        counter += 1
+                        cache[thread].counted = True
+
                     if output and cache[thread].buffer:
                         for line in cache[thread].buffer:
                             print('{0}{1}'.format(prefix, line), end='')

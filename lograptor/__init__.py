@@ -809,10 +809,10 @@ class Lograptor:
                     for app in applist:
                         apps[app].purge_unmatched_threads(event_time)
                         counter += apps[app].cache.flush_old_cache(output, prefout, event_time)                        
-            elif output:
+            else:
                 counter += 1
                 if debug: logger.debug('Matched line: {0}'.format(line[:-1]))
-                print('{0}{1}'.format(prefout, line), end='')
+                if output: print('{0}{1}'.format(prefout, line), end='')
                 
             if rawfh is not None:
                 rawfh.write('{0}{1}'.format(prefout, line))

@@ -228,7 +228,7 @@ class ReportItem(UserDict):
                 return False
         return True
 
-        # TODO if required: matching also report item gids
+        # TODO if requested: matching also report item gids
         
     def make_text_plain(self, width):
         """
@@ -264,7 +264,7 @@ class ReportItem(UserDict):
                 self.text = '{0}{1} | {2}\n'.format(self.text, ' ' * width1, self.headers.strip('"'))
                 self.text = '{0}{1}-+-{2}-\n'.format(self.text, '-' * width1, '-' * width2 )
 
-                for res in sorted(self.results, key=lambda x:x[0]):
+                for res in self.results:
                     if res is not None:
                         padding = ' ' * (width1 - len(res[0]) + 1)
                         filling = '{0}| '.format(' ' * (width1 + 1))
@@ -329,7 +329,7 @@ class ReportItem(UserDict):
                         .format(lograptor.utils.htmlsafe(self.title.strip()), self.color)
 
             if self.results[0] is not None:
-                for res in sorted(self.results, key=lambda x:x[0]):
+                for res in self.results:
                     if res is not None:
                         self.text = '{0}<tr><td valign="top" align="right">{1}</td>'\
                                     '<td valign="top" width="90%">{2}</td></tr>'\
@@ -415,7 +415,7 @@ class ReportItem(UserDict):
             rows = []
             rows.append(['Value', self.headers.strip('"')])
             if self.results[0] is not None:                
-                for res in sorted(self.results, key=lambda x:x[0]):
+                for res in self.results:
                     if res is not None:
                         rows.append(tuple([res[0], ','.join(res[1])]))
                 writer.writerows(rows)
@@ -497,20 +497,10 @@ class Subreport:
                         match = repitem.parse_report_rule(opt)
 
                         valfld = match.group('valfld')
-                        unit = match.group('unit')
                         field = match.group('fields')
                         usemax = match.group('add2res') is None
 
-                        toplist = repitem.rules[opt].top_events(k, valfld, usemax, field)
-                        for res in toplist:
-                            if res is None:
-                                continue
-                            if unit is not None:
-                                v, u = lograptor.utils.get_value_unit(res[0], unit, 'T')
-                                res[0] = '{0} {1}'.format(v, u)
-                            else:
-                                res[0] = str(res[0])
-
+                        toplist = repitem.rules[opt].top_events(k, valfld, usemax, field)                        
                         repitem.results.extend(toplist)
                         
                 elif repitem.function == 'table':
@@ -525,6 +515,27 @@ class Subreport:
 
                 if repitem.results:
                     self.repitems.append(repitem)
+
+        # Sort and rewrite results as strings with units 
+        for repitem in self.repitems:
+            if repitem.function == 'top':
+                # Sort values
+                repitem.results = sorted(repitem.results, key=lambda x:x[0], reverse=True) 
+
+                # Get the unit if any and convert numeric results to strings
+                unit = None
+                for opt in repitem:
+                    match = repitem.parse_report_rule(opt)
+                    unit = match.group('unit')
+                    if unit is not None:
+                        break
+
+                for res in repitem.results:
+                    if unit is not None:
+                        v, u = lograptor.utils.get_value_unit(res[0], unit, 'T')
+                        res[0] = '{0} {1}'.format(v, u)
+                    else:
+                        res[0] = str(res[0])
 
     def make_format(self, fmt, width):
         """
@@ -597,10 +608,11 @@ class Report:
         self.text_template = config['text_template'].strip()
 
         self.filters = {
-            'user'  : config['user'] if not config.is_default('user') else "",
-            'from'  : config['from'] if not config.is_default('from') else "",
-            'rcpt'  : config['rcpt'] if not config.is_default('rcpt') else "",
-            'client': config['client'] if not config.is_default('client') else ""
+            'user' : config['user'] if not config.is_default('user') else "",
+            'from' : config['from'] if not config.is_default('from') else "",
+            'rcpt' : config['rcpt'] if not config.is_default('rcpt') else "",
+            'client' : config['client'] if not config.is_default('client') else "",
+            'pid' : config['pid'] if not config.is_default('pid') else ""
             }
         
         self.unparsed = config['unparsed']
@@ -721,13 +733,18 @@ class Report:
             'version'       : lograptor.__version__
             }
 
-        logger.debug('Concatenate provided filters together')
+        logger.debug('Provide filtering informations')
         filters = ''
         for key,flt in self.filters.items():
             if flt != '':
-                filters = '{0}--{1}="{2}"'.format(filters, key, flt)
-
-        if filters == '': filters = 'None'
+                filters = '{0}--{1}="{2}", '.format(filters, key, flt)
+        
+        if filters == '':
+            filters = 'None'
+        elif self.config['and_filters']:
+            filters = 'all({0})'.format(filters[:-2])
+        else:
+            filters = 'any({0})'.format(filters[:-2])
         valumap['filters'] = filters        
 
         logger.debug('Get run\'s stats')
