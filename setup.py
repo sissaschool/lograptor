@@ -129,7 +129,7 @@ class my_install(distutils.command.install.install):
 
         
 setup(name='lograptor',
-      version='0.8b5',
+      version='0.8.0',
       author='Davide Brunato',
       author_email='brunato@sissa.it',
       description='Command-line utility for searching into log files.',

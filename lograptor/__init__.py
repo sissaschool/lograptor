@@ -47,7 +47,7 @@ __author__ = "Davide Brunato"
 __copyright__ = "Copyright 2011-2012, SISSA"
 __credits__ = ["Davide Brunato"]
 __license__ = "GPLv2+"
-__version__ = "Lograptor-0.8b5"
+__version__ = "Lograptor-0.8.0"
 __maintainer__ = "Davide Brunato"
 __email__ = "brunato@sissa.it"
 __status__ = "Beta"
@@ -241,6 +241,7 @@ class Lograptor:
             raise OptionError('--last, --date', msg)
 
         if self.config['date'] is not None:
+            logger.debug('Option --date: {0}'.format(self.config['date']))
             try:
                 self.ini_datetime, self.fin_datetime = timedate.parse_date(self.config['date'])
             except TypeError:
@@ -250,6 +251,7 @@ class Lograptor:
                 
         else:
             if self.config['last'] is not None:
+                logger.debug('Option --last: {0}'.format(self.config['last']))    
                 try:
                     diff = timedate.parse_last(self.config['last'])
                 except TypeError:
@@ -265,7 +267,7 @@ class Lograptor:
                 del oldest
             
             now = int(time.time())
-            self.fin_datetime = datetime.datetime.fromtimestamp(now)
+            self.fin_datetime = datetime.datetime.fromtimestamp(now + 3600) # 1h advance for open log files
             self.ini_datetime = datetime.datetime.fromtimestamp(now - diff)
             del now,diff
         
@@ -273,10 +275,11 @@ class Lograptor:
 
         # Check the -T/--time-range option 
         if self.config['timerange'] is not None:
+            logger.debug('Option --tr/--time-range: {0}'.format(self.config['timerange']))    
             try:                
                 self.config['timerange'] = timedate.TimeRange(self.config['timerange'])
             except ValueError:
-                msg = "format error!! Use: -T HH:MM,HH:MM"
+                msg = "format error!! Use: --tr=HH:MM,HH:MM"
                 raise OptionError('--tr/--time-range', msg)
 
         # Check --count and --quiet options 

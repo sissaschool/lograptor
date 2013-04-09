@@ -116,17 +116,17 @@ class LogMap:
                 if filename is None and self.__logmap[logfile][1] == "*":
                     logger.error('No file corresponding to path {0}'.format(logfile))
              
-    def check_log_datetime_range(self, logname, outerrs=False):
+    def check_log_datetime_range(self, logfile, outerrs=False):
         """
         Check (True/False) if the logfile is in the datetime range of the LogMap.  
         """
-        statinfo = os.stat(logname)
+        statinfo = os.stat(logfile)
         dt = datetime.datetime.fromtimestamp(statinfo.st_mtime)
-        logger.debug('Log file: {0}; {1}'.format(logname, dt))
+        logger.info('Log file: {0}; {1}'.format(logfile, dt))
         check = ( dt >= self.dt1 ) and ( dt <= self.dt2 )
         if (not check) and outerrs:
             if not ((self.dt1-dt).days == 0 or (dt-self.dt2).days == 0):  
-                logger.error('Log file ({0}) not in datetime range!!'.format(logname))
+                logger.error('Log file ({0}) not in datetime range!!'.format(logfile))
         return check
     
     def add(self, appname, fileset, priority=0 ):
