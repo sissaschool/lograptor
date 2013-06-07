@@ -47,10 +47,10 @@ __author__ = "Davide Brunato"
 __copyright__ = "Copyright 2011-2012, SISSA"
 __credits__ = ["Davide Brunato"]
 __license__ = "GPLv2+"
-__version__ = "Lograptor-0.8.0"
+__version__ = "Lograptor-0.8.1"
 __maintainer__ = "Davide Brunato"
 __email__ = "brunato@sissa.it"
-__status__ = "Beta"
+__status__ = "Production"
 __description__ = """Command-line utility for searching into 
 log files. Produces matching outputs and reports.
 """
@@ -260,12 +260,9 @@ class Lograptor:
                 logger.info("No --date/--last provided. Consider last 24h.") 
                 diff = 86400    # 24h = 86400 seconds 
             else:
-                logger.info("No --date/--last provided. Setting the default from "
-                            "command-line arguments paths.") 
-                oldest = min( [ os.stat(logfile).st_mtime for logfile in args] )
-                diff = int(time.time()) - oldest
-                del oldest
-            
+                logger.info("No --date/--last provided with args: use Epoch as initial datetime.") 
+                diff = int(time.time())
+                
             now = int(time.time())
             self.fin_datetime = datetime.datetime.fromtimestamp(now + 3600) # 1h advance for open log files
             self.ini_datetime = datetime.datetime.fromtimestamp(now - diff)
@@ -621,42 +618,45 @@ class Lograptor:
 
     def _process_logfile(self, logfile, applist):
         """
-        Process a log file.
+        Process a single log file.
         """
-        prec_match = None
-        debug_fmt = "date,time,repeat,host,tag : {0}-{1}-{2},{3},{4},{5},{6}"
 
-        # Load names to local function variables
-        # to speed-up the line-by-line iteration.
+        # Load names to local variables to speed-up the run
         header = self._header        
         parser = header.parser
         extract = header.extract
-        datagid = header.datagid
-        
+        datagid = header.datagid                
         headers = self.headers
         num_headers = self._num_headers
-        
         outstatus = self._outstatus
         debug = self._debug
         tagmap = self.tagmap
-        hostlist = []
-        regex_hosts = self.hosts
-        patterns = self.patterns
-        thread = self._thread
-        counter = 0
-        output = self._output
-        first_event = self._first_event
-        last_event = self._last_event
         include_unparsed = self._include_unparsed
         unparsed = self.unparsed
         apps = self.apps
         rawfh = self.rawfh
         useapps = self._useapps
-
-        all_hosts_flag = self.config.is_default('hostnames')
+        regex_hosts = self.hosts
+        patterns = self.patterns
+        thread = self._thread
+        output = self._output
         invert = self.config['invert']
         report = self.config['report']
         timerange = self.config['timerange']
+
+        # Other local variables for the file lines iteration
+        prec_match = None
+        debug_fmt = "date,time,repeat,host,tag : {0}-{1}-{2},{3},{4},{5},{6}"
+
+        hostlist = []
+        counter = 0
+        
+        ini_datetime = time.mktime(self.ini_datetime.timetuple())
+        fin_datetime = time.mktime(self.fin_datetime.timetuple())
+        first_event = self._first_event
+        last_event = self._last_event
+
+        all_hosts_flag = self.config.is_default('hostnames')
         prefout = ''
         
         for line in logfile:
@@ -668,7 +668,7 @@ class Lograptor:
                 prefout = '{0}: '.format(logfile.filename()) if self._out_filenames else ''
 
                 fstat = os.fstat(logfile.fileno())
-                self._header.set_file_mdate(fstat.st_mtime)
+                self._header.set_file_mtime(fstat.st_mtime)
                 
                 if outstatus and not debug:
                     progressbar = tui.ProgressBar(sys.stdout, fstat.st_size, "lines parsed")
@@ -703,8 +703,29 @@ class Lograptor:
             pri, ver, year, month, day, ltime, offset, secfrac, repeat, host, tag = extract(match)
             if debug:
                 logger.debug(debug_fmt.format(year, month, day, ltime, repeat, host, tag))
-            
-            # Skip lines not in timerange, when there is the option
+
+            # Converts event time into a timestamp from Epoch to speed-up comparisons
+            hour = ltime[:2]
+            minute = ltime[3:5]
+            second = ltime[6:]
+            event_time = time.mktime((int(year), int(month), int(day),
+                                      int(hour), int(minute), int(second),
+                                      0, 0, -1))
+
+            # Skip line if the event is older than the initial datetime of the range
+            if event_time < ini_datetime:
+                if debug: logger.debug('Skip older line: {0}'.format(line[:-1]))
+                prec_match = None
+                continue
+
+            # Break the cycle if event is newer than final datetime of the range
+            if event_time > fin_datetime:
+                print("Break", datetime.datetime.fromtimestamp(event_time))
+                if debug: logger.debug('Newer line, skip the rest of the file: {0}'.format(line[:-1]))
+                prec_match = None
+                break
+
+            # Skip line not in timerange, if the option is provided.
             if timerange is not None and not timerange.between(ltime):
                 if debug: logger.debug('Skip line not in timerange: {0}'.format(line[:-1]))
                 prec_match = None
@@ -783,13 +804,6 @@ class Lograptor:
                 ###
                 # Handle timestamps
                 if report or thread:
-                    hour = ltime[:2]
-                    minute = ltime[3:5]
-                    second = ltime[6:]
-                    event_time = time.mktime((int(year), int(month), int(day),
-                                              int(hour), int(minute), int(second),
-                                              0, 0, -1))
-
                     if first_event is None:
                         first_event = event_time
                         last_event = event_time

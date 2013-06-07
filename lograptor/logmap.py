@@ -22,12 +22,13 @@ This module contains classes and methods to handle a map of log files.
 # @Author Davide Brunato <brunato@sissa.it>
 ##
 
-import datetime
+import datetime 
 import logging
 import re
 import fnmatch
 import glob
 import os
+import platform
 
 logger = logging.getLogger("lograptor")
 
@@ -96,7 +97,7 @@ class LogMap:
                         
                         filename = None
                         for filename in glob.iglob(newpath):
-                            if self.check_log_datetime_range(filename, sub_day or logfile_by_args):
+                            if self.check_logfile_stat(filename, sub_day or logfile_by_args):
                                 yield (filename, applist)
                         if filename is None and self.__logmap[logfile][1] == "*":
                             logger.error('No file corresponding to path {0}'.format(newpath))
@@ -111,14 +112,44 @@ class LogMap:
 
                 filename = None
                 for filename in glob.iglob(logfile):
-                    if self.check_log_datetime_range(filename, logfile_by_args):
+                    if self.check_logfile_stat(filename, logfile_by_args):
                         yield (filename, applist)
                 if filename is None and self.__logmap[logfile][1] == "*":
                     logger.error('No file corresponding to path {0}'.format(logfile))
+
+
+    def check_logfile_stat(self, logfile, outerrs=False):
+        """
+        Checks logfile stat information to exclude older or newer files. On linux
+        it's possible to checks only modification time, because file creation info
+        are not available, so it's possible to exclude only older files.
+        In Unix BSD systems and windows informations about file creation date and times are available,
+        so is possible to exclude too newer files.
+        """
+        statinfo = os.stat(logfile)
+        st_mtime = datetime.datetime.fromtimestamp(statinfo.st_mtime)
+        if platform.system() == 'Windows':
+            st_ctime = datetime.datetime.fromtimestamp(statinfo.st_mtime)
+            logger.info('Log file: {0}; st_ctime: {1}; st_mtime: {2}'
+                        .format(logfile, st_ctime, st_mtime))
+            check = (st_mtime >= self.dt1) and (st_ctime <= self.dt2)
+            if outerrs and not check:
+                if not ((self.dt1 - st_mtime).days == 0 or (st_ctime - self.dt2).days == 0):  
+                    logger.error('Log file ({0}) not in datetime range!!'.format(logfile))
+        else:
+            logger.info('Log file: {0}; st_mtime: {1}'
+                        .format(logfile, st_mtime))
+            check = (st_mtime >= self.dt1)
+            if outerrs and not check:
+                if not ((self.dt1 - st_mtime).days == 0):  
+                    logger.error('Log file ({0}) is older than expected!!'.format(logfile))
+        return check
              
     def check_log_datetime_range(self, logfile, outerrs=False):
         """
-        Check (True/False) if the logfile is in the datetime range of the LogMap.  
+        Check (True/False) if the logfile is in the datetime range of the LogMap.
+        Both st_ctime and st_mtime are checked. Despite ctime sign only metadata
+        change on unix, it's a flag about file change
         """
         statinfo = os.stat(logfile)
         dt = datetime.datetime.fromtimestamp(statinfo.st_mtime)

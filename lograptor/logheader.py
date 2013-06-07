@@ -53,7 +53,7 @@ class LogHeader:
         """
         return [match.group(idx) for idx in range(1, self.parser.groups)]
 
-    def set_file_mdate(self, mtime):
+    def set_file_mtime(self, mtime):
         """
         Use file mtime (file modification time) to set reference
         modification date, that is necessary for partial date header
@@ -94,9 +94,8 @@ class RFC3164_Header(LogHeader):
         that is necessary for partial header formats (RFC3164).
         """
         LogHeader.set_file_mtime(self, mtime)
-        year = self.file_mtime.year
-        self._year = str(year)
-        self._prev_year = str(year - 1) 
+        self._year = str(self.file_year)
+        self._prev_year = str(self.file_year - 1) 
             
     def extract(self, match):
         """
