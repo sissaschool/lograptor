@@ -44,10 +44,10 @@ import lograptor.report
 import lograptor.tui
 
 __author__ = "Davide Brunato"
-__copyright__ = "Copyright 2011-2012, SISSA"
+__copyright__ = "Copyright 2011-2014, SISSA"
 __credits__ = ["Davide Brunato"]
 __license__ = "GPLv2+"
-__version__ = "Lograptor-0.8.1"
+__version__ = "Lograptor-1.0"
 __maintainer__ = "Davide Brunato"
 __email__ = "brunato@sissa.it"
 __status__ = "Production"
