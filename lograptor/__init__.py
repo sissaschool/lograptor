@@ -2,7 +2,7 @@
 This module contain core classes and methods for Lograptor package.
 """
 ##
-# Copyright (C) 2011-2012 by SISSA
+# Copyright (C) 2011-2014 by SISSA and Davide Brunato
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License

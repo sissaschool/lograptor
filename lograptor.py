@@ -4,7 +4,7 @@ Search utility for syslog files written in Python.
 Try `lograptor --help' for more information.
 """
 ##
-# Copyright (C) 2011-2012 by SISSA
+# Copyright (C) 2011-2014 by SISSA and Davide Brunato
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -27,7 +27,6 @@ import sys
 import contextlib
 import errno
 import optparse
-import lograptor.utils
 
 from lograptor import __version__, __description__, Lograptor, ConfigError, OptionError, FormatError, FileMissingError, FileAccessError  
 
@@ -76,7 +75,7 @@ def parse_args(cli_parser):
                      "4 is the debugging level.")
     group.add_option("--cron", dest="cron", action="store_true", default=False,
                      help="Run as a batch/cron job, with no output and enabling "
-                     "reporting, plus it will create a lock file that will not "
+                     "reporting. Plus it will create a lock file that will not "
                      "allow more than one cron instance of lograptor to run.")
     cli_parser.add_option_group(group)
 
@@ -220,7 +219,6 @@ def main(options,args):
     try:
         my_raptor = Lograptor(options.cfgfile, options, args)
     except OptionError as e:
-        print("Errore")
         cli_parser.error(e)
     except (ConfigError, FormatError, FileMissingError, FileAccessError) as e:
         sys.exit(e)

@@ -2,7 +2,7 @@
 This module contains classes and methods to handle Lograptor environment variables.
 """
 ##
-# Copyright (C) 2012 by SISSA
+# Copyright (C) 2012-2014 by SISSA and Davide Brunato
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -59,14 +59,14 @@ class ConfigMap(UserDict):
 
     # Fixed sections in the config file
     _cfgfile_sections = {
-        'main' : ['cfgdir', 'logdir', 'tmpdir', 'vardir', 'pidfile',
-                  'fromaddr', 'smtpserv'],
-        'patterns' : ['rfc3164_pattern', 'rfc5424_pattern', 'dnsname_pattern',
+        'main' : ('cfgdir', 'logdir', 'tmpdir', 'vardir', 'pidfile',
+                  'fromaddr', 'smtpserv',),
+        'patterns' : ('rfc3164_pattern', 'rfc5424_pattern', 'dnsname_pattern',
                       'ipaddr_pattern', 'email_pattern', 'username_pattern',
-                      'pid_pattern'],
-        'report' : ['title', 'html_template', 'text_template', 'publishers',
-                    'include_unparsed', 'max_unparsed'], 
-        'subreports' : [] 
+                      'pid_pattern',),
+        'report' : ('title', 'html_template', 'text_template', 'publishers',
+                    'include_unparsed', 'max_unparsed',), 
+        'subreports' : ()
         }
 
     def __init__(self, cfgfile=None, options=None):
@@ -196,13 +196,13 @@ class ConfigMap(UserDict):
 
         logger.debug('Reading entries from configuration file')
         for sect,sect_options in self._cfgfile_sections.items():
-
+            
             # If option list is empty, read option list from cfgfile.
             if not sect_options:
                 sect_options = self.parser.options(sect)
 
             # Reverse to put the setting of options in correct order
-            sect_options.reverse()
+            #sect_options.reverse()
             
             for opt in sect_options:
                 try:
