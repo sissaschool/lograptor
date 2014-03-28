@@ -146,6 +146,9 @@ def parse_args(cli_parser):
     group.add_option("-t","--thread", dest="thread", action="store_true", default=False,
                      help="Perform a second level extraction of whole thread. This processing "
                      "depends by application (example: for postfix consider queue IDs).")        
+    group.add_option("-u", "--unparsed", action="store_true", dest="unparsed",
+                     default=False, help="Match unparsed. Useful for checking "
+                     "anomalies and application's rules debugging.")
     cli_parser.add_option_group(group)
 
     ### Define the options for the group "Output Control"                      
@@ -154,6 +157,11 @@ def parse_args(cli_parser):
                     help="Suppress normal output; instead print a count of matching "
                     "lines for each input file.  With  the  -v, --invert-match "
                     "option, count non-matching lines.")
+    group.add_option("-m", "--max-count", metavar='NUM',
+                     action="store", type="string", dest="max_count", default=None,
+                     help="Stop reading a file after NUM matching lines. When the -c "
+                     "or --count option is also used, lograptor does not output a "
+                     "count greater than NUM.")
     group.add_option("-q", "--quiet", action="store_true", default=None,
                       help="Quiet; do not write anything  to standard output. Exit "
                     "immediately with zero status if any match  is found, even "
@@ -167,28 +175,16 @@ def parse_args(cli_parser):
                      default=None, help="Suppress the default headers with filenames on "
                      "output. This is the default behaviour for output also when "
                      "the search is in only one file.")
-    cli_parser.add_option_group(group)
-    
-    ### Define the options for the group "Report Control"                      
-    group=optparse.OptionGroup(cli_parser,"Report Control")
-    group.add_option("-r", action="store_true", dest="report",
-                    default=False, help="Make a report at the end of processing and print "
-                     "it on console as plain text.")
-    group.add_option("--report", "-R", dest="format", default=None, metavar="[html|csv|plain]",
-                      help="Make and publish the report "
-                     "in the specified format, using the publishers described and enabled "
-                     "in the configuration file. This option is mutually exclusive with"
-                     "-r option.")
-    group.add_option("-p", "--publishers", dest="publist", default="",
+    group.add_option("-r", "--report", dest="report", default=None, metavar="[html|csv|pdf]",
+                     help="Make a report. and publish the report. The report is attached "
+                     "at the end of processing on the console as formatted plain text, if "
+                     "no different format is specified. If a format is provided the report "
+                     "is published using the list of methods defined in the configuration.")
+    group.add_option("-p", "--publisher", dest="publist", default="",
                      metavar='[<PUBLISHER>|"<PUBLISHER>, ..."]',
                      help="Use a specific list of publishers rather than the one defined "
                      "in the configuration file. This option is ignored if report is "
                      "disabled, ie neither option -r nor -R/--report is passed.")
-    group.add_option("-u", "--unparsed", action="store_true", dest="unparsed",
-                     default=False, help="Force inclusion of unparsed logs (max 1000 lines) "
-                     "in report. Useful for application's rules debugging. This option is "
-                     "ignored if report is disabled, ie neither option -r nor "
-                     "-R/--report is passed.")
     group.add_option("--ip", action="store_true", dest="ip_lookup",
                      default=False, help="Do a reverse lookup for IP addresses. Nothing is "
                      "done if the no report is required.")
