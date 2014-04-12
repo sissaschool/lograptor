@@ -89,8 +89,8 @@ def parse_args(cli_parser):
                      "host names.")    
     group.add_option("-a", "--app", metavar='[<APP>|"<APP>, ..."]',
                      action="store", type="string", dest="applications", default=None,
-                     help="Will analyze only log lines related to a specific applications. "
-                     "Applications list could be passed between quotes, separated by "
+                     help="Analyze only log lines related to one or more applications. "
+                     "A list of applications could be passed between quotes, separated by "
                      "commas or spaces.")
     group.add_option("-A", "--no-apps", action="store_true", dest="noapps", default=False,
                      help="Skip application processing. The searches are performed only "
@@ -105,7 +105,7 @@ def parse_args(cli_parser):
                      help="Will analyze only log lines related to a date. You should "
                      "provide a date interval, with consecutive dates separated by a "
                      "comma.")
-    group.add_option("--time-range", "--tr", metavar="HH:MM,HH:MM",
+    group.add_option("--time", metavar="HH:MM,HH:MM",
                       action="store", type="string", dest="timerange", default=None,
                       help="Will analyze only log lines related to a time range.")
     cli_parser.add_option_group(group)
@@ -147,8 +147,8 @@ def parse_args(cli_parser):
                      help="Perform a second level extraction of whole thread. This processing "
                      "depends by application (example: for postfix consider queue IDs).")        
     group.add_option("-u", "--unparsed", action="store_true", dest="unparsed",
-                     default=False, help="Match unparsed. Useful for checking "
-                     "anomalies and application's rules debugging.")
+                     default=False, help="Match unparsed. Useful for finding "
+                     "anomalies and for application's rules debugging.")
     cli_parser.add_option_group(group)
 
     ### Define the options for the group "Output Control"                      
@@ -163,34 +163,35 @@ def parse_args(cli_parser):
                      "or --count option is also used, lograptor does not output a "
                      "count greater than NUM.")
     group.add_option("-q", "--quiet", action="store_true", default=None,
-                      help="Quiet; do not write anything  to standard output. Exit "
-                    "immediately with zero status if any match  is found, even "
-                    "if an error was detected. Also see the -s or --no-messages "
-                    "option.")
+                     help="Quiet; do not write anything  to standard output. Exit "
+                     "immediately with zero status if any match  is found, even "
+                     "if an error was detected. Also see the -s or --no-messages "
+                     "option.")
     group.add_option("-s", "--no-messages", action="store_true", default=False,
                      help="Suppress error messages about nonexistent or unreadable files.")
     group.add_option("-o", "--with-filename", action="store_true", dest="out_filenames",
-                    default=None, help="Print the filename for each match line.")        
+                    default=None, help="Print the filename for each matching line.")        
     group.add_option("-O", "--no-filename", action="store_false", dest="out_filenames",
                      default=None, help="Suppress the default headers with filenames on "
                      "output. This is the default behaviour for output also when "
                      "the search is in only one file.")
     group.add_option("-r", "--report", dest="report", default=None, metavar="[html|csv|pdf]",
-                     help="Make a report. and publish the report. The report is attached "
-                     "at the end of processing on the console as formatted plain text, if "
-                     "no different format is specified. If a format is provided the report "
-                     "is published using the list of methods defined in the configuration.")
-    group.add_option("-p", "--publisher", dest="publist", default="",
+                     help="Make a report at the end of processing. If you don't provide a "
+                     "format the report is dumped as plain text after log processing. "
+                     "If one or more format are passed the report is published using "
+                     "specified formats. The default publishing method is used, unless "
+                     "other publishing methods are provided with -p/--publish.")
+    group.add_option("-p", "--publish", dest="publist", default="",
                      metavar='[<PUBLISHER>|"<PUBLISHER>, ..."]',
-                     help="Use a specific list of publishers rather than the one defined "
-                     "in the configuration file. This option is ignored if report is "
-                     "disabled, ie neither option -r nor -R/--report is passed.")
+                     help="Publish the report using a set of publishers, selected from the ones "
+                     "defined in the configuration file.")
     group.add_option("--ip", action="store_true", dest="ip_lookup",
-                     default=False, help="Do a reverse lookup for IP addresses. Nothing is "
-                     "done if the no report is required.")
+                     default=False, help="Do a reverse lookup for IP addresses. The lookups "
+                     "using the host DNS configuration and could slowing down the process.")
     group.add_option("--uid", action="store_true", dest="uid_lookup",
-                    default=False, help="Translate uids with system interface. Nothing is "
-                     "done if no report is required.")
+                     default=False, help="Translate numeric uids with local system auth "
+                     "configuration. This sounds sense if the local system use the same "
+                     "authentication directory of the origin of the log files.")
     cli_parser.add_option_group(group)
 
     return cli_parser.parse_args()
