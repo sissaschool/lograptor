@@ -632,6 +632,8 @@ class Lograptor:
         debug = self._debug
         tagmap = self.tagmap
         include_unparsed = self._include_unparsed
+        match_unparsed = self.match_unparsed
+        max_count = self.max_count
         unparsed = self.unparsed
         apps = self.apps
         rawfh = self.rawfh

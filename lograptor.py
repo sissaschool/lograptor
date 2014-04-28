@@ -189,7 +189,7 @@ def parse_args(cli_parser):
                      default=False, help="Do a reverse lookup for IP addresses. The lookups "
                      "using the host DNS configuration and could slowing down the process.")
     group.add_option("--uid", action="store_true", dest="uid_lookup",
-                     default=False, help="Translate numeric uids with local system auth "
+                     default=False, help="Translates numeric uids with local system auth "
                      "configuration. This sounds sense if the local system use the same "
                      "authentication directory of the origin of the log files.")
     cli_parser.add_option_group(group)

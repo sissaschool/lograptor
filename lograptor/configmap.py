@@ -121,7 +121,7 @@ class ConfigMap(UserDict):
             # options of a publisher sections 
             'method' : None,
             'mailto' : 'root',
-            'format' : 'both',
+            #'format' : 'both',
             # options of a mail publisher section
             'include_rawlogs' : False,
             'rawlogs_limit' : 200,
@@ -167,18 +167,17 @@ class ConfigMap(UserDict):
             'case' : False,
             'invert' : False,
             'thread' : False,
+            'unparsed' : False,
 
             # Output control options
             'count' : False,
+            'max_count' : None,
             'quiet' : False,
             'no_messages' : False,
             'out_filenames' : None,
-
-            # Report control options
             'report' : False,
-            'format' : None,
+            #'format' : None, # Dropped
             'publist' : '',
-            'unparsed' : False,
             'ip_lookup' : False,
             'uid_lookup' : False
             }
