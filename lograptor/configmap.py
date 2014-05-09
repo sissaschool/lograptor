@@ -64,8 +64,7 @@ class ConfigMap(UserDict):
         'patterns' : ('rfc3164_pattern', 'rfc5424_pattern', 'dnsname_pattern',
                       'ipaddr_pattern', 'email_pattern', 'username_pattern',
                       'pid_pattern',),
-        'report' : ('title', 'html_template', 'text_template', 'publishers',
-                    'include_unparsed', 'max_unparsed',), 
+        'report' : ('title', 'html_template', 'text_template', 'publishers',), 
         'subreports' : ()
         }
 
@@ -109,8 +108,6 @@ class ConfigMap(UserDict):
             'html_template' : '$cfgdir/report_template.html',
             'text_template' : '$cfgdir/report_template.txt',
             'publishers' : 'mail, file',
-            'include_unparsed' : False,
-            'max_unparsed' : 1000,
 
             # options of the section 'subreports'
             'logins_report' : 'Logins',
@@ -175,8 +172,7 @@ class ConfigMap(UserDict):
             'quiet' : False,
             'no_messages' : False,
             'out_filenames' : None,
-            'report' : False,
-            #'format' : None, # Dropped
+            'report' : None,
             'publist' : '',
             'ip_lookup' : False,
             'uid_lookup' : False

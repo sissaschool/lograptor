@@ -23,10 +23,11 @@ Try `lograptor --help' for more information.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 ##
-import sys
 import contextlib
 import errno
 import optparse
+import os
+import sys
 
 from lograptor import __version__, __description__, Lograptor, ConfigError, OptionError, FormatError, FileMissingError, FileAccessError  
 
@@ -64,38 +65,33 @@ def parse_args(cli_parser):
 
     ### Define the options for the group "General Options"                      
     group = optparse.OptionGroup(cli_parser, "General Options")
+    group.add_option("--verify", dest="check", action="store_true", default=False,
+                     help="Check configuration and exit.")
     group.add_option("--conf", dest="cfgfile", type="string",
                      default=CFGFILE_DEFAULT, metavar="<CONFIG_FILE>",
                      help="Use a custom configuration file instead of default [{0}]"
                      .format(CFGFILE_DEFAULT))
     group.add_option("-d", dest="loglevel", default=1, type="int", metavar="[0-4]",
-                     help="Logging level. The default is 1. Level 0 will produce "
-                     "no output except for critical errors and 1 show all errors. "
-                     "Level 2 show also warnings and 3 show more informations. "
-                     "4 is the debugging level.")
-    group.add_option("--cron", dest="cron", action="store_true", default=False,
-                     help="Run as a batch/cron job, with no output and enabling "
-                     "reporting. Plus it will create a lock file that will not "
-                     "allow more than one cron instance of lograptor to run.")
+                     help="Logging level. The default is 1. Level 0 log only "
+                     "critical errors, higher levels show more informations.")
     cli_parser.add_option_group(group)
 
     ### Define the options for the group "Scope Options"                      
     group = optparse.OptionGroup(cli_parser,"Scope Options")
     group.add_option("-H","--host", metavar="<HOSTNAME/IP ADDRESS>",
-                      action="store", type="string", dest="hostnames", default=None,
+                      action="append", type="string", dest="hostnames", default=None,
                       help="Will analyze only log lines related to a specific server host "
-                     "or a list of server hosts. Hosts list could be passed between quotes, "
-                     "separated by commas or spaces. File path wildcards are usable for "
-                     "host names.")    
+                     "or a list of server hosts. File path wildcards are usable for "
+                     "host names.")
+    cli_parser.set_defaults(apps="*")
     group.add_option("-a", "--app", metavar='[<APP>|"<APP>, ..."]',
-                     action="store", type="string", dest="applications", default=None,
+                     action="append", type="string", dest="apps",
                      help="Analyze only log lines related to one or more applications. "
-                     "A list of applications could be passed between quotes, separated by "
-                     "commas or spaces.")
-    group.add_option("-A", "--no-apps", action="store_true", dest="noapps", default=False,
+                     "An app is valid when a configuration file is defined.")
+    group.add_option("-A", "--no-apps", action="store_const", dest="apps", const=None,
                      help="Skip application processing. The searches are performed only "
                      "with pattern(s) matching. This option is incompatible with report,"
-                     "filtering and thread matching options.")    
+                     "filtering and thread matching options.")
     group.add_option("--last",
                      action="store", type="string", dest="last", default=None,
                      metavar="[hour|day|week|month|Nh|Nd|Nw|Nm]",
@@ -143,22 +139,26 @@ def parse_args(cli_parser):
                      help="Ignore case distinctions in matching.")        
     group.add_option("-v", "--invert-match", action="store_true", dest="invert", default=False,
                      help="Invert the sense of matching, to select non-matching lines.")
+    
+    group.add_option("--filter", metavar="[<FILTER_NAME>=<PATTERN>,",
+                      action="store", type="string", dest="user", default=None,
+                      help="Search only in the log lines related to a username.")
     group.add_option("-t","--thread", dest="thread", action="store_true", default=False,
                      help="Perform a second level extraction of whole thread. This processing "
-                     "depends by application (example: for postfix consider queue IDs).")        
+                     "depends by application (example: for postfix consider queue IDs).")
     group.add_option("-u", "--unparsed", action="store_true", dest="unparsed",
-                     default=False, help="Match unparsed. Useful for finding "
-                     "anomalies and for application's rules debugging.")
+                     default=False, help="Match unparsed lines. Require app processing. "
+                     "Useful for finding anomalies and for application's rules debugging.")
     cli_parser.add_option_group(group)
 
-    ### Define the options for the group "Output Control"                      
+    ### Define the options for the group "Output Control"
     group=optparse.OptionGroup(cli_parser,"Output Control")
     group.add_option("-c", "--count", action="store_true", default=False,
                     help="Suppress normal output; instead print a count of matching "
                     "lines for each input file.  With  the  -v, --invert-match "
                     "option, count non-matching lines.")
     group.add_option("-m", "--max-count", metavar='NUM',
-                     action="store", type="string", dest="max_count", default=None,
+                     action="store", type="int", dest="max_count", default=None,
                      help="Stop reading a file after NUM matching lines. When the -c "
                      "or --count option is also used, lograptor does not output a "
                      "count greater than NUM.")
@@ -175,16 +175,19 @@ def parse_args(cli_parser):
                      default=None, help="Suppress the default headers with filenames on "
                      "output. This is the default behaviour for output also when "
                      "the search is in only one file.")
-    group.add_option("-r", "--report", dest="report", default=None, metavar="[html|csv|pdf]",
+    group.add_option("-r", "--report", dest="report", action="store_true",
+                     default=False, metavar="[html|csv|pdf]",
                      help="Make a report at the end of processing. If you don't provide a "
                      "format the report is dumped as plain text after log processing. "
                      "If one or more format are passed the report is published using "
                      "specified formats. The default publishing method is used, unless "
                      "other publishing methods are provided with -p/--publish.")
-    group.add_option("-p", "--publish", dest="publist", default="",
-                     metavar='[<PUBLISHER>|"<PUBLISHER>, ..."]',
-                     help="Publish the report using a set of publishers, selected from the ones "
-                     "defined in the configuration file.")
+    group.add_option("--format", dest="format", default=None, metavar="[html|csv|pdf]",
+                     help="Use a different format to publish the report (default is plain "
+                     " text). This option is ignored otherwise.")
+    group.add_option("-p", action="append", dest="publist", default="", metavar='<PUBLISHER>',
+                     help="Publish the report using a publisher defined in the configuration "
+                     "file. You can provide many publishers options.")
     group.add_option("--ip", action="store_true", dest="ip_lookup",
                      default=False, help="Do a reverse lookup for IP addresses. The lookups "
                      "using the host DNS configuration and could slowing down the process.")
@@ -255,14 +258,19 @@ def main(options,args):
 
 if __name__ == '__main__':
     
-    if sys.version_info<(2,6,0):
-      sys.stderr.write("You need python 2.6 or later to run this program\n")
-      sys.exit(1)
+    if sys.version_info < (2,6,0):
+        sys.stderr.write("You need python 2.6 or later to run this program\n")
+        sys.exit(1)
       
     # Get command line options and arguments 
-    cli_parser=optparse.OptionParser(version=__version__, description=__description__)
+    cli_parser = optparse.OptionParser(version=__version__, description=__description__)
+    cli_parser.disable_interspersed_args()
     (options, args) = parse_args(cli_parser)
-    if not options.cron:
+    print(sys.argv, dir(cli_parser))
+    print(args)
+    
+    sys.exit()
+    if not os.isatty(sys.stdout.fileno()):
         main(options,args)
     else:
         with nostdout():
