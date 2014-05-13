@@ -125,9 +125,6 @@ class Lograptor:
       - args: List with almost one search path and filename paths.
     """            
 
-    # List of options that define filters
-    filter_options = tuple(['user', 'from', 'rcpt', 'client', 'pid'])
-
     def __init__(self, cfgfile=None, options=None, args=[]):
         """
         Initialize parameters for lograptor instance and load apps configurations.
@@ -164,6 +161,7 @@ class Lograptor:
         self._search_flags = re.IGNORECASE if self.config['case'] else 0
         self.rawfh = None
         self.tmpprefix = None
+        self.cron = os.isatty(sys.stdin.fileno())
         
         # Check and initialize the logger if not already defined. If the program is run
         # by cron and is not a debug loglevel set the logging level to 0 (log only critical messages).
@@ -173,7 +171,7 @@ class Lograptor:
 
         # Set the logger only if no handler is already defined (from caller method
         # when loglevel is 4).
-        if self.config['cron'] and self.config['loglevel'] < 4:
+        if self.cron and self.config['loglevel'] < 4:
             lograptor.utils.set_logger(0)
         else:
             lograptor.utils.set_logger(self.config['loglevel'])
@@ -203,7 +201,7 @@ class Lograptor:
                     logger.info('No option -e or -f provided, use the first argument: "{0}"'
                                 .format(self.config['pattern']))
                 except IndexError:
-                    raise OptionError('-e, -f', "you must provide a pattern!")
+                    self.config['pattern'] = ''
 
             if self.config['pattern'] is None or len(self.config['pattern']) == 0:
                 self.patterns = []
@@ -214,7 +212,7 @@ class Lograptor:
             for i in range(len(self.patterns)):
                 logger.debug('Search pattern {0}: {1}'.format(i, self.patterns[i].pattern))
         else:
-            logger.warning('Empty pattern(s) provided: matching all strings')
+            logger.warning('No patterns provided: matching all strings')
 
         # Check and clear paths from command line args. Skip the directories, deleting them
         # from input arguments. Exit with an error if a file in the list doesn't exist.
@@ -232,40 +230,31 @@ class Lograptor:
         else:
             logger.info('No file list by arguments')
 
-        # Check and initialize date interval to consider. Only one option between --last,
-        # and --date should be provided. 
-        if ( self.config['last'] is not None and self.config['date'] is not None):
-            msg = "mutually exclusive options!"
-            raise OptionError('--last, --date', msg)
-
-        if self.config['date'] is not None:
-            logger.debug('Option --date: {0}'.format(self.config['date']))
-            try:
-                self.ini_datetime, self.fin_datetime = timedate.parse_date(self.config['date'])
-            except TypeError:
-                raise OptionError('--date')
-            except ValueError as msg:
-                raise OptionError('--date', msg)
-                
-        else:
-            if self.config['last'] is not None:
-                logger.debug('Option --last: {0}'.format(self.config['last']))    
-                try:
-                    diff = timedate.parse_last(self.config['last'])
-                except TypeError:
-                    raise OptionError('--last')
-            elif len(args) == 0:
-                logger.info("No --date/--last provided. Consider last 24h.") 
-                diff = 86400    # 24h = 86400 seconds 
-            else:
-                logger.info("No --date/--last provided with args: use Epoch as initial datetime.") 
+        # Check and initialize date interval to consider. Try first to parse option value
+        # as previous time period. If it fails then try to parse as a date. 
+        period = self.config['period']
+        if period is None or period.strip() == '':
+            if len(args) > 0 and period is None:
                 diff = int(time.time())
-                
-            now = int(time.time())
-            self.fin_datetime = datetime.datetime.fromtimestamp(now + 3600) # 1h advance for open log files
-            self.ini_datetime = datetime.datetime.fromtimestamp(now - diff)
-            del now,diff
-        
+                logger.info("No --date/--last provided with args: use Epoch as initial datetime.")             
+            else:
+                diff = 86400    # 24h = 86400 seconds
+            self.fin_datetime, self.ini_datetime = \
+                timedate.get_interval(int(time.time()), diff, 3600)
+        else:
+            try:
+                diff = timedate.parse_last(period)
+                logger.debug('Option --last: {0}'.format(period))    
+                self.fin_datetime, self.ini_datetime = \
+                    timedate.get_interval(int(time.time()), diff, 3600)
+            except TypeError:
+                try:
+                    self.ini_datetime, self.fin_datetime = timedate.parse_date(period)
+                    logger.debug('Option --date: {0}'.format(period))
+                except TypeError:
+                    raise OptionError('--date/--last')
+                except ValueError as msg:
+                    raise OptionError('--date', msg)
         logger.info('Datetime interval to process: ({0}, {1})'.format(self.ini_datetime, self.fin_datetime))    
 
         # Check the -T/--time-range option 
@@ -287,29 +276,27 @@ class Lograptor:
             msg = "must be a positive integer!"
             raise OptionError('-m/--max-count', msg)
 
-        # Check and adjust the report option
-        if self.config['report'] is not None:
-            print('REPORT: {0}'.format(self.config['report']))
-            self.config['report'] = self.config['report'].lower()
-            if not self.config['report'] in ['', 'csv', 'html', 'pdf']:
-                msg = "optional value must be 'csv', 'html' or 'pdf'"
-                raise OptionError('-r/--report', msg)
+        # Check and adjust the report format option
+        if self.config['format'] not in ['plain', 'csv', 'html', 'pdf']:
+            msg = "value must be 'csv', 'html' or 'pdf'"
+            raise OptionError('--format', msg)
 
         # Check filters 
-        for key in self.filter_options:
+        for key in self.config.options('filters'):
+            continue
             if not self.config.is_default(key):
                 self.filters[key] = False
         logger.info("Provided filters: {0}".format(self.filters.keys()))
                 
         # Setting self.output and self.outstatus options for processing.
-        # If --cron option is provided the output and the progress status are disabled.
-        # The output is disabled if --quiet is specified: in this case an output of
+        # If the process is a cron-batch the output and the progress status are disabled.
+        # The output is disabled also if --quiet is specified: in this case an output of
         # status is produced olny if report is enabled. If --count is provided the
         # output is only a total of matchings for each file.
         # The last case is a configuration error (the application is called
         # without a scope). The fourth case is the classical grep output (
         # output of matching lines).
-        if self.config['cron']:
+        if self.cron:
             utils.cron_lock(self.config['pidfile'])
             logger.info('Cron mode: disabling output and status')
             self._output = self._outstatus = False
@@ -353,20 +340,17 @@ class Lograptor:
         logger.debug('Set the output of filenames to: {0}'.format(self._out_filenames))
 
         # Check incompatibilities of -A option 
-        if self.config['noapps']:
-            if self.config['applications'] is not None:
-                msg = "mutually exclusive options!"
-                raise OptionError('-A/--no-apps, -a/--app', msg)
+        if self.config['apps'] is None:
             if self.config['report'] is not None:
-                raise OptionError('-A/--no-apps', 'incompatible with report')
+                raise OptionError('-A', 'incompatible with report')
             if self.config['unparsed'] is not None:
-                raise OptionError('-A/--no-apps', 'incompatible with unparsed matching')
+                raise OptionError('-A', 'incompatible with unparsed matching')
             if self.filters:
-                raise OptionError('-A/--no-apps', 'incompatible with filters')
+                raise OptionError('-A', 'incompatible with filters')
             if self.config['thread']:
-                raise OptionError('-A/--no-apps', 'incompatible with thread option')
+                raise OptionError('-A', 'incompatible with thread matching')
             if not args:
-                raise OptionError('-A/--no-apps', 'no file provided')
+                raise OptionError('-A', 'missing file arguments! (Nothing to process ...)')
 
         # Set the headers iterator.
         # TODO: extend with modules for other formats
@@ -377,14 +361,14 @@ class Lograptor:
         self._header = next(self.headers)
 
         # Set the host re objects
-        hostset = set(re.split('\s*,\s*', self.config['hostnames'].strip()))
+        hostset = set(re.split('\s*,\s*', self.config['hosts'].strip()))
         for host in hostset:
             self.hosts.append(re.compile(fnmatch.translate(host)))
         if hostset:
             logger.debug('Process hosts: {0}'.format(hostset))
             
         # Load and init applications and check filters usage        
-        if not self.config['noapps']:
+        if self.config['apps'] is not None:
             application.AppLogParser.set_options(self.config, self.filters)
             self._load_applications()
 
@@ -411,6 +395,21 @@ class Lograptor:
                 app = self.apps[key]
                 self.logmap.add(app.name, app.files, app.priority)
 
+    def get_applist(self):
+        """
+        Return the list of defined applications. Don't make config checks, simply
+        return .conf files in 'conf.d' subdirectory.
+        """
+        applist = []
+        appscfgdir = self.appscfgdir
+        for filename in os.listdir(appscfgdir):
+            cfgfile = os.path.join(appscfgdir, filename)
+            if not os.path.isfile(cfgfile) or cfgfile[-5:] != '.conf':
+                logger.debug('Not a config file: {0}'.format(cfgfile))
+                continue
+            applist.append(filename[0:-5])
+        return applist
+
     def _load_applications(self):
         """
         Read apps configurations from files. If no explicit apps (-a parameter)
@@ -420,34 +419,27 @@ class Lograptor:
         file. Almost one app must be enabled to run.
         """
         logger.debug('Reading apps configurations ...')
-        appscfgdir = os.path.join(self.config['cfgdir'], 'conf.d')
-        logger.debug('appscfgdir={0}'.format(appscfgdir))
-
-        if not os.path.isdir(appscfgdir):
-            raise ConfigError('conf.d not found in "{0}"'.format(appscfgdir))
+        self.appscfgdir = os.path.join(self.config['cfgdir'], 'conf.d')
+        if not os.path.isdir(self.appscfgdir):
+            raise ConfigError('conf.d not found in "{0}"'.format(self.config['cfgdir']))
 
         # Determine the application list
-        if self.config['applications'] is None:
-            appset = []
+        if self.config['apps'] == '':
             logger.info('Get the applications from conf.d directory ...')
-            for filename in os.listdir(appscfgdir):
-                cfgfile = os.path.join(appscfgdir, filename)
-                if not os.path.isfile(cfgfile) or cfgfile[-5:] != '.conf':
-                    logger.debug('Not a config file: {0}'.format(cfgfile))
-                    continue
-                logger.info('Found application config file: {0}'.format(cfgfile))
-                appset.append(filename[0:-5])
+            appset = self.get_applist()
             if not appset:
                 raise ConfigError("No application configuration found")
+            else:
+                logger.info('Found apps: {0}'.format(appset))
         else:
-            appset = list(set(re.split('\s*,\s*', self.config['applications'].strip())))
+            appset = list(set(re.split('\s*,\s*', self.config['apps'].strip())))
             if not appset:
-                raise ConfigError("-a parameter provides an empty set of applications")
+                raise ConfigError("--apps option has not valid app names")
 
         # Load applications's configurations
         logger.debug('Load app set: {0}'.format(appset))
         for app in appset:
-            cfgfile = os.path.join(appscfgdir, "".join([app,".conf"]))
+            cfgfile = os.path.join(self.appscfgdir, "".join([app,".conf"]))
             if not os.path.isfile(cfgfile):
                 logger.error('Skip app "{0}": no configuration file!!'.format(app))
                 continue
@@ -458,7 +450,7 @@ class Lograptor:
                 logger.error('Skip app "{0}": {1}'.format(app, err))
                 continue
             except OptionError as err:
-                if self.config['applications'] is not None:
+                if self.config['apps'] != '':
                     logger.error('Skip app "{0}": {1}'.format(app, err))
                 else:
                     logger.warning('Skip app "{0}": {1}'.format(app, err))
@@ -504,6 +496,32 @@ class Lograptor:
                              'for this app'.format(key))
                 app.enabled = None
 
+    def display_configuration(self):
+        """
+        Display the instance configuration to stdout.
+        """        
+        print("---------------------------\n"
+              "| {0} configuration |\n"
+              "---------------------------".format(self.__class__.__name__))
+        print("Configuration main file: {0}".format(self.config['cfgfile']))
+        print("Configuration directory: {0}".format(self.config['cfgdir']))
+        print("Enabled applications: {0}".format(', '.join(self.apps.keys())))
+        print("Disabled applications: {0}".format(', '.join([
+            app for app in self.get_applist() if app not in self.apps
+            ])))
+        print("Available filters: {0}".format(', '.join([
+            opt for opt in self.config.options('filters')
+            ])))
+        print("Report HTML template file: {0}".format(self.config['html_template']))
+        print("Report plain text template file: {0}".format(self.config['text_template']))
+        self.report = report.Report(self.apps, self.config)
+        print("Subreports: {0}".format(', '.join([
+            subreport.name for subreport in self.report.subreports
+            ])))
+        print("Report publishers: {0}".format(', '.join([
+            pub[:-10] for pub in self.config.parser.sections()
+            if pub.endswith('_publisher')])))
+        
     def process(self):
         """
         Log processing main routine. Iterate over the defined LogBase instance,
@@ -529,7 +547,7 @@ class Lograptor:
         self._first_event = self._last_event = None
         self._debug = (config['loglevel'] == 4)
         self._thread = config['thread']
-        self._useapps = not config['noapps']
+        self._useapps = config['apps'] is not None
 
         # Create temporary file for matches rawlog
         if config['report'] is not None and self.report.need_rawlogs():
@@ -582,7 +600,7 @@ class Lograptor:
             logfile.close()
 
         if tot_files==0:
-            raise FileMissingError("\nNo file found in the datetime interval [{0},{1}]!!"
+            raise FileMissingError("\nNo file found in the datetime interval [{0}, {1}]!!"
                                    .format(self.ini_datetime, self.fin_datetime))
 
         logger.info('Total files processed: {0}'.format(tot_files))
@@ -654,7 +672,7 @@ class Lograptor:
         first_event = self._first_event
         last_event = self._last_event
 
-        all_hosts_flag = self.config.is_default('hostnames')
+        all_hosts_flag = self.config.is_default('hosts')
         prefout = ''
         
         for line in logfile:
@@ -850,12 +868,12 @@ class Lograptor:
         """
         Create the report based on the result of Lograptor run
         """
-        if self.config['report'] is None:
+        if not self.config['report']:
             return False
 
         if self.report.make():
-            self.report.make_format(self.config['report'])
-            return True        
+            self.report.make_format(self.config['format'])
+            return True
         return False
                 
     def publish_report(self):
@@ -883,7 +901,7 @@ class Lograptor:
             msg = 'Could not create a temp directory in "{0}"'.format(tmpprefix)
             raise ConfigError(msg)
 
-        self.tmpprefix   = tmpprefix
+        self.tmpprefix = tmpprefix
         tempfile.tempdir = tmpprefix
 
         logger.info('Temporary directory created in "{0}"'.format(tmpprefix))

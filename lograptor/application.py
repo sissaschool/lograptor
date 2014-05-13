@@ -372,9 +372,11 @@ class AppLogParser:
         """
         AppLogParser._filters = filters
         AppLogParser._filter_keys = tuple(filters.keys())
-        AppLogParser._no_filter_keys = tuple([ key for key in lograptor.Lograptor.filter_options
-                                               if key not in AppLogParser._filter_keys ])
-        AppLogParser._and_filters = config['and_filters']
+        AppLogParser._no_filter_keys = tuple([
+            key for key in config.options('filters')
+            if key not in AppLogParser._filter_keys
+            ])
+        AppLogParser._and_filters = False #config['and_filters']
         AppLogParser._report = config['report']
         AppLogParser._thread = config['thread']
         AppLogParser._unparsed = config['unparsed']
@@ -436,7 +438,7 @@ class AppLogParser:
         # First check if the application is enabled. If disables skip parameter
         # or rules syntax checks.
         if not self.enabled:
-            if config['applications'] is not None:
+            if config['apps'] != '':
                 self.enabled = True
                 logger.debug('App "{0}" is enabled by option'.format(self.name))
             else:
@@ -444,8 +446,8 @@ class AppLogParser:
                 return
 
         # Expand application's fileset
-        if config['hostnames'] == '*':
-            subdict = {'logdir' : config['logdir'], 'hostname' : config['hostnames']}                 
+        if config['hosts'] == '*':
+            subdict = {'logdir' : config['logdir'], 'hostname' : config['hosts']}                 
             self.files = string.Template(self.files).safe_substitute(subdict)
             self.files = set(re.split('\s*,\s*', self.files))
         else:
@@ -453,7 +455,7 @@ class AppLogParser:
             self.files = set(re.split('\s*,\s*', self.files))
 
             filelist = []
-            hostnames = set(re.split('\s*,\s*', config['hostnames'].strip()))
+            hostnames = set(re.split('\s*,\s*', config['hosts'].strip()))
             for tmpl in self.files:
                 for host in hostnames:
                     filename = string.Template(tmpl).safe_substitute({'hostname' : host})
