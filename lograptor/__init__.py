@@ -392,7 +392,7 @@ class Lograptor:
             raise lograptor.OptionError("-F", msg)
 
         # Initialize the report object if the option is enabled
-        if self.config['report']:
+        if self.config['report'] is not None:
             self.report = report.Report(self.apps, self.config)
 
         # Create and configure the log base object, with the list of files to scan.
