@@ -162,7 +162,7 @@ class Lograptor:
         self._search_flags = re.IGNORECASE if self.config['case'] else 0
         self.rawfh = None
         self.tmpprefix = None
-        self.cron = os.isatty(sys.stdin.fileno())
+        self.cron = not os.isatty(sys.stdin.fileno())
         
         # Check and initialize the logger if not already defined. If the program is run
         # by cron and is not a debug loglevel set the logging level to 0 (log only critical messages).
@@ -310,9 +310,9 @@ class Lograptor:
             utils.cron_lock(self.config['pidfile'])
             logger.info('Cron mode: disabling output and status')
             self._output = self._outstatus = False
-            if self.config['report'] is None:
-                self.config['report'] = 'html'
-        elif self.config['quiet'] and self.config['report'] is not None:
+            if self.config['format'] is None:
+                self.config['format'] = 'html'
+        elif self.config['quiet'] and self.config['report']:
             logger.info('Quiet option provided: disabling output')
             self._output = False
             self._outstatus = True
@@ -324,12 +324,13 @@ class Lograptor:
             logger.info('Count option provided: disabling output and status')
             self._output = False
             self._outstatus = False
-        elif not self.filters and len(self.patterns)==0:
-            self._output = self.config['report'] is None
-            self._outstatus = self.config['report'] is not None
+        elif self.filters is None and len(self.patterns)==0:
+            self._output = not self.config['report']
+            self._outstatus = self.config['report']
         else:
             self._output = True
             self._outstatus = False
+        print(self.config['report'], self._output)
         
         # Setting the output for filenames:
         #   out_filenames == None --> print only as header
@@ -351,7 +352,7 @@ class Lograptor:
 
         # Check incompatibilities of -A option 
         if self.config['apps'] is None:
-            if self.config['report'] is not None:
+            if self.config['report']:
                 raise OptionError('-A', 'incompatible with report')
             if self.config['unparsed'] is not None:
                 raise OptionError('-A', 'incompatible with unparsed matching')
@@ -561,7 +562,7 @@ class Lograptor:
         self._useapps = config['apps'] is not None
 
         # Create temporary file for matches rawlog
-        if config['report'] is not None and self.report.need_rawlogs():
+        if config['report'] and self.report.need_rawlogs():
             self.mktempdir()
             self.rawfh = tempfile.NamedTemporaryFile(mode='w+', delete=False)
             logger.info('RAW strings file created in "{0}"'.format(self.rawfh.name))
