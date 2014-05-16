@@ -157,7 +157,7 @@ class ConfigMap(UserDict):
             'pattern_file' : None,
             'case' : False,
             'invert' : False,
-            'filter' : None,
+            'filters' : None,
             'thread' : False,
             'unparsed' : False,
 

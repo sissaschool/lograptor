@@ -114,7 +114,7 @@ def parse_args(cli_parser):
     group.add_option("-v", "--invert-match", action="store_true", dest="invert", default=False,
                      help="Invert the sense of matching, to select non-matching lines.")    
     group.add_option("-F", metavar="FILTER=<PATTERN>[,FILTER=PATTERN...]",
-                     action="append", type="string", dest="filter", default=None,
+                     action="append", type="string", dest="filters", default=None,
                      help="Refine the search with a comma separated list of app's filters. "
                      "The filter list are applied with logical disjunction (OR). "
                      "Providing more --filter options perform logical conjunction filtering (AND).")

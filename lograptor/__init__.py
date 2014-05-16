@@ -30,6 +30,7 @@ import re
 import logging
 import fileinput
 import tempfile
+import string
 import sys
 import itertools
 import fnmatch
@@ -146,7 +147,7 @@ class Lograptor:
         
         # Instance attributes:
         #  headers: cycle iterator of defined header classes
-        #  filters: dictionary with passed filter options
+        #  filters: list with passed filter options
         #  hosts: list with host names passed with the option
         #  apps: dictionary with enabled applications
         #  tagmap: dictionary map from syslog tags to apps
@@ -154,7 +155,7 @@ class Lograptor:
         #  rawfh: raw file handler
         #  tmpprefix: location for temporary files
         self.headers = None
-        self.filters = dict()
+        self.filters = []
         self.hosts = list()
         self.apps = dict()
         self.tagmap = dict()
@@ -281,12 +282,21 @@ class Lograptor:
             msg = "value must be 'csv', 'html' or 'pdf'"
             raise OptionError('--format', msg)
 
-        # Check filters 
-        for key in self.config.options('filters'):
-            continue
-            if not self.config.is_default(key):
-                self.filters[key] = False
-        logger.info("Provided filters: {0}".format(self.filters.keys()))
+        # Translate config filter list (-F options) 
+        if self.config['filters'] is not None:
+            for item in self.config['filters']:
+                self.filters.append(dict())
+                for flt in item.split(','):
+                    try:
+                        key, value = map(string.strip, flt.split('=', 1))
+                        if key.lower() not in self.config.options('filters'):
+                            raise OptionError('-F', 'filter \'%s\': not a filter!' % key)
+                        key = key.lower()
+                        self.filters[-1][key] = value.strip('\'"')
+                    except ValueError:
+                        raise OptionError('-F', 'filter \'%s\': wrong format!' % flt)            
+                continue
+            logger.debug("Provided filters: {0}".format(self.filters))
                 
         # Setting self.output and self.outstatus options for processing.
         # If the process is a cron-batch the output and the progress status are disabled.
@@ -367,15 +377,18 @@ class Lograptor:
         if hostset:
             logger.debug('Process hosts: {0}'.format(hostset))
             
-        # Load and init applications and check filters usage        
+        # Initalize app parser class and load applications. Then checks filters usage        
         if self.config['apps'] is not None:
             application.AppLogParser.set_options(self.config, self.filters)
             self._load_applications()
 
-            for opt in self.filters:
-                if not self.filters[opt]:
-                    msg = 'The filter --{0} is not used by any application'
-                    logger.warning(msg.format(opt))
+        # Partially disable (enable=None) apps that have no rules or filters,
+        # in order to skip app processing and reporting. 
+        if self.config['filters'] is not None and all([
+            not app.has_filters for key, app in self.apps.items()
+            ]):
+            msg = 'No app\'s rules compatible with provided filters!'
+            raise lograptor.OptionError("-F", msg)
 
         # Initialize the report object if the option is enabled
         if self.config['report'] is not None:
@@ -443,7 +456,7 @@ class Lograptor:
             if not os.path.isfile(cfgfile):
                 logger.error('Skip app "{0}": no configuration file!!'.format(app))
                 continue
-            
+
             try:
                 self.apps[app] = application.AppLogParser(app, cfgfile, self.config)
             except (ConfigError, FormatError) as err:
@@ -459,7 +472,13 @@ class Lograptor:
             if not self.apps[app].enabled:
                 logger.info('Skip app "{0}": not enabled'.format(app))
                 del self.apps[app]
+                continue
 
+            if not self.apps[app].rules:
+                logger.warning('Skip app "{0}": no rules defined!'.format(app))
+                del self.apps[app]
+                continue
+            
         # Exit if no application is enabled
         if not self.apps:
             raise ConfigError('No application configured and enabled! Exiting ...')
@@ -486,15 +505,7 @@ class Lograptor:
         if len(self.tagmap) == 0:
             raise ConfigError('No tags for enabled apps! Exiting ...')        
 
-        logger.info('Use the applist: {0}'.format(self.apps.keys())) 
-
-        # Partially disable (enable=None) apps that have no rules or filters,
-        # in order to skip app processing and reporting. 
-        for key,app in self.apps.items():
-            if not app.rules:
-                logger.warning('No rules for app "{0}": disable processing/report '
-                             'for this app'.format(key))
-                app.enabled = None
+        logger.info('Use the applist: {0}'.format(self.apps.keys()))
 
     def display_configuration(self):
         """

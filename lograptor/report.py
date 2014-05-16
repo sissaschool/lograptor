@@ -127,13 +127,12 @@ class ReportItem(UserDict):
                         msg = 'First parameter of function "top" must be a positive integer'
                         raise lograptor.OptionError('function', msg)
             else:
-                # Load and check names of report rule options  
-                if opt in rules:
-                    rules[opt].is_useful = True
-                    self.rules[opt] = rules[opt]
-                elif opt[:-1] in rules and opt[-1].isdigit():
-                    rules[opt[:-1]].is_useful = True
-                    self.rules[opt] = rules[opt[:-1]]
+                # Load and check names of report rule options
+                for rule in rules:                    
+                    if rule.name == opt or (opt[-1].isdigit() and opt[:-1] == rule.name):
+                        rule.used_by_report = True
+                        self.rules[opt] = rule
+                        break
                 else:
                     msg = 'cannot associate report rule with an app rule!'
                     raise lograptor.OptionError(opt, msg)
