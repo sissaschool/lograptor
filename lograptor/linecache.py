@@ -45,8 +45,7 @@ class CacheEntry:
         self.pattern_match = False
         self.filter_match = False
         self.counted = False
-        self.filter_set = set()
-        self.buffer = list()        
+        self.buffer = list()
         self.start_time = self.end_time = event_time
 
 
@@ -55,12 +54,10 @@ class LineCache(UserDict):
     A class to manage line caching
     """
     
-    def __init__(self, and_filters, tot_filters):
+    def __init__(self):
         self.data = OrderedDict()
-        self._and_filters = and_filters
-        self._tot_filters = tot_filters
-    
-    def add_line(self, line, thread, pattern_match, filter_match, rule_filters, event_time):        
+
+    def add_line(self, line, thread, pattern_match, filter_match, event_time):
         try:
             cache_entry = self.data[thread]
         except KeyError:
@@ -69,12 +66,7 @@ class LineCache(UserDict):
         if pattern_match:
             cache_entry.pattern_match = True
         if filter_match:
-            if not self._and_filters:
-                cache_entry.filter_match = True
-            elif not cache_entry.filter_match:
-                cache_entry.filter_set.update(rule_filters)
-                cache_entry.filter_match = (len(cache_entry.filter_set) >= self._tot_filters)
-                
+            cache_entry.filter_match = True
         cache_entry.buffer.append(line)
         cache_entry.end_time = event_time
         

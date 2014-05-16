@@ -741,7 +741,7 @@ class Lograptor:
                     app = tagmap[tag]
                     app.increase_last(repeat)
                     if app_thread is not None:
-                        app.cache.add_line(line, app_thread, pattern_search, result, rule_filters, event_time)
+                        app.cache.add_line(line, app_thread, pattern_search, result, filter_match, event_time)
                     prev_match = None
                 continue
             prev_match = None
@@ -810,7 +810,8 @@ class Lograptor:
             
             # Log message parsing (with config app's rules)
             if useapps:
-                result, rule_filters, app_thread = app.process(host, datamsg, debug)
+                result, filter_match, app_thread = app.process(host, datamsg, debug)
+                print(result, filelineno)
 
                 if result is None:
                     # Log message unparsable by app rules
@@ -836,7 +837,7 @@ class Lograptor:
                             last_event = event_time
 
                 if app_thread is not None:
-                    app.cache.add_line(line, app_thread, pattern_search, result, rule_filters, event_time)
+                    app.cache.add_line(line, app_thread, pattern_search, result, filter_match, event_time)
 
             # Matchin only if survive to both pattern and app's matching 
             if pattern_search:

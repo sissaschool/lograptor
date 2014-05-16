@@ -641,17 +641,17 @@ class AppLogParser:
             return (True, None, None)
 
         for rule in self.rules:
+            print(rule.is_filter)
             match = rule.regexp.search(datamsg)
             if match is not None:
                 if debug: logger.debug('Rule "{0}" match'.format(rule.name))
                 self._last_rule = rule
-
                 result = (rule.is_filter or not self.has_filters)
                 if self._thread and 'thread' in rule.regexp.groupindex:
                     thread = match.group('thread')
                     if self._report:
                         self._last_idx = rule.add_result(hostname, match)
-                    return (result, rule.filters, thread)
+                    return (result, rule.is_filter, thread)
                 else:
                     if result and self._report:
                         self._last_idx = rule.add_result(hostname, match)                                            
