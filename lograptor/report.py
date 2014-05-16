@@ -127,13 +127,12 @@ class ReportItem(UserDict):
                         msg = 'First parameter of function "top" must be a positive integer'
                         raise lograptor.OptionError('function', msg)
             else:
-                # Load and check names of report rule options  
-                if opt in rules:
-                    rules[opt].is_useful = True
-                    self.rules[opt] = rules[opt]
-                elif opt[:-1] in rules and opt[-1].isdigit():
-                    rules[opt[:-1]].is_useful = True
-                    self.rules[opt] = rules[opt[:-1]]
+                # Load and check names of report rule options
+                for rule in rules:                    
+                    if rule.name == opt or (opt[-1].isdigit() and opt[:-1] == rule.name):
+                        rule.used_by_report = True
+                        self.rules[opt] = rule
+                        break
                 else:
                     msg = 'cannot associate report rule with an app rule!'
                     raise lograptor.OptionError(opt, msg)
@@ -617,11 +616,6 @@ class Report:
         
         self.unparsed = config['unparsed']
 
-        if config['publist'] != "":
-            publishers = config['publist']
-        else:
-            publishers = config['publishers']
-
         titlevars = {
             'localhost' : socket.gethostname(),
             'localtime' : time.strftime('%c', self.runtime)
@@ -636,39 +630,32 @@ class Report:
         logger.debug('filters={0}'.format(self.filters))
         logger.debug('unparsed={0}'.format(self.unparsed))
 
-        logger.debug('publishers={0}'.format(publishers))
-        logger.info('Initializing publishers')
+        if config['publish'] is not None:
+            logger.debug('publishers={0}'.format(config['publish']))
+            logger.info('Initializing publishers')
 
-        for sec in publishers.split(','):
-            sec = sec.strip()
-
-            if sec not in config.parser.sections():
-                msg = 'publisher section "{0}" not found'.format(sec)
-                if config['publist'] != "":
-                    raise lograptor.OptionError('-p/--publishers', msg)
+            for sec in config['publish'].split(','):
+                sec = u'{0}_publisher'.format(sec.strip())
+                try:
+                    method = config.get(sec, 'method')
+                except configparser.NoSectionError:
+                    msg = 'section for "{0}" not found'.format(sec[:-10])
+                    if config['publish'] is not None:
+                        raise lograptor.OptionError('--publish', msg)
+                    else:                        
+                        raise lograptor.ConfigError(msg)
+                except configparser.NoOptionError:
+                    raise lograptor.ConfigError('Publishing method not defined in "{0}" section!'
+                                                .format(sec))
+                if method == 'file':
+                    publisher = lograptor.publishers.FilePublisher(sec, config)
+                elif method == 'mail':
+                    publisher = lograptor.publishers.MailPublisher(sec, config)
                 else:
-                    raise lograptor.ConfigError(msg)
-
-            try:
-                method = config.get(sec, 'method')
-            except configparser.NoSectionError:
-                raise lograptor.ConfigError('Publishing section "{0}" not defined'
-                                            .format(sec))
-            except configparser.NoOptionError:
-                raise lograptor.ConfigError('Publishing method not defined in "{0}"'
-                                            .format(sec))
-
-            logger.debug('Publishing method={0}'.format(method))
-            
-            if method == 'file':
-                publisher = lograptor.publishers.FilePublisher(sec, config)
-            elif method == 'mail':
-                publisher = lograptor.publishers.MailPublisher(sec, config)
-            else:
-                raise lograptor.ConfigError('Publishing method "{0}" not supported'
-                                            .format(method))
-            
-            self.publishers.append(publisher)
+                    raise lograptor.ConfigError('Publishing method "{0}" not supported'
+                                                .format(method))
+                logger.debug('Add {0} publisher \'{1}\''.format(method, sec[:-10]))
+                self.publishers.append(publisher)
 
     def need_rawlogs(self):
         """
@@ -713,7 +700,7 @@ class Report:
             self.stats[key] = value
             logger.debug('{0}={1}'.format(key,value))
 
-    def publish(self, unparsed, rawfh):
+    def publish(self, rawfh):
         """
         Publishes the report with attachments or files, using all enabled publishers.
         """
@@ -728,8 +715,8 @@ class Report:
             'localhost'     : socket.gethostname(),
             'pattern'       : self.config['pattern'],
             'pattern_file'  : self.config['pattern_file'],
-            'hostname'      : self.config['hostnames'],
-            'applications'  : self.config['applications'],
+            'hosts'         : self.config['hosts'],
+            'apps'          : self.config['apps'],
             'version'       : lograptor.__version__
             }
 
@@ -754,13 +741,13 @@ class Report:
         report_parts = []
         if self.fmt == 'plain' or self.fmt is None:
             logger.info('Creating a plain text page report')
-            report_parts.append(self.make_text_page(valumap, unparsed))
+            report_parts.append(self.make_text_page(valumap))
         elif self.fmt == 'html':
             logger.info('Creating a standard html page report')
-            report_parts.append(self.make_html_page(valumap, unparsed))
+            report_parts.append(self.make_html_page(valumap))
         else:
             logger.info('Creating a list of csv files')
-            report_parts.extend(self.make_csv_tables(valumap, unparsed))
+            report_parts.extend(self.make_csv_tables(valumap))
             pass
         
         if self.fmt is not None:
@@ -770,7 +757,7 @@ class Report:
         else:
             print('\n{0}'.format(report_parts[0].text))
 
-    def make_html_page(self, valumap, unparsed):
+    def make_html_page(self, valumap):
         """
         Builds the report as html page, using the template page from file.
         """
@@ -795,20 +782,6 @@ class Report:
         
         valumap['subreports'] = allsubrep
 
-        unpartext = ""
-        if self.unparsed:
-            logger.info('Create the subreport for unparsed strings')
-            if unparsed:
-                for line in unparsed:
-                    unpartext = '{0}{1}'.format(unpartext, lograptor.utils.htmlsafe(line))
-            else:
-                unpartext = "No unparsed strings"
-
-            unpartext = '\n<h2>{0}</h2>\n<pre>\n{1}</pre>\n<hr />'\
-                        .format("Unparsed Strings:", unpartext)
-            
-        valumap['unparsed_strings'] = unpartext
-
         logger.info('Create the final report')
         endpage = Template(template).safe_substitute(valumap)
 
@@ -818,7 +791,7 @@ class Report:
 
         return TextPart("Lograptor report", endpage, 'html')
 
-    def make_text_page(self, valumap, unparsed):
+    def make_text_page(self, valumap):
         """
         Builds the report as text page, using the template page from file.
         """
@@ -843,20 +816,6 @@ class Report:
 
         valumap['subreports'] = allsubrep
         
-        unpartext = ""
-        if self.unparsed:
-            logger.info('Create the subreport for unparsed strings')
-            if unparsed:
-                for line in unparsed:                    
-                    unpartext = '{0}{1}'.format(unpartext, line)
-            else:
-                unpartext = "No unparsed strings"
-
-            unpartext = '{0}\n***** {1} *****\n{0}\n\n{2}'\
-                        .format('*' * 29, "Unparsed Strings:", unpartext)
-
-        valumap['unparsed_strings'] = unpartext
-
         logger.info('Create the final report')
         endpage = Template(template).safe_substitute(valumap)
 
@@ -866,7 +825,7 @@ class Report:
 
         return TextPart("Lograptor report", endpage, 'txt')
 
-    def make_csv_tables(self, valumap, unparsed):
+    def make_csv_tables(self, valumap):
         """
         Builds the report as a list of csv tables with titles.
         """
@@ -891,12 +850,5 @@ class Report:
                 for repitem in subrep.repitems:
                     report_parts.append(TextPart(repitem.title, repitem.text, 'csv'))
 
-        if self.unparsed:
-            logger.info('Create unparsed strings')
-            if unparsed:
-                for line in unparsed:                    
-                    unpartext = '{0}{1}'.format(unpartext, line)
-                    report_parts.append(TextPart("Unparsed Strings", unpartext, 'txt'))
-        
         return report_parts
     

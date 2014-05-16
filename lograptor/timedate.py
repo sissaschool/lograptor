@@ -62,6 +62,18 @@ def parse_last(last):
     return diff
 
 
+def get_interval(timestamp, diff, offset=0):
+    """
+    Returns datetime interval from timestamp backward in the past,
+    computed using the milliseconds difference passed as argument.
+    The final datetime is corrected with an optional offset.
+    """
+    import datetime
+    fin_datetime = datetime.datetime.fromtimestamp(timestamp + offset)
+    ini_datetime = datetime.datetime.fromtimestamp(timestamp - diff)
+    return (fin_datetime, ini_datetime)
+
+
 def parse_date(date):
     """
     Parse the --date value and return a couple of datetime object.

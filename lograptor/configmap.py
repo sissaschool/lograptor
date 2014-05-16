@@ -59,13 +59,13 @@ class ConfigMap(UserDict):
 
     # Fixed sections in the config file
     _cfgfile_sections = {
-        'main' : ('cfgdir', 'logdir', 'tmpdir', 'vardir', 'pidfile',
+        'main' : ('cfgdir', 'logdir', 'tmpdir', 'pidfile',
                   'fromaddr', 'smtpserv',),
         'patterns' : ('rfc3164_pattern', 'rfc5424_pattern', 'dnsname_pattern',
                       'ipaddr_pattern', 'email_pattern', 'username_pattern',
                       'pid_pattern',),
-        'report' : ('title', 'html_template', 'text_template', 'publishers',
-                    'include_unparsed', 'max_unparsed',), 
+        'filters' : ('user', 'from', 'rcpt', 'client', 'pid'),  
+        'report' : ('title', 'html_template', 'text_template', ), 
         'subreports' : ()
         }
 
@@ -78,7 +78,6 @@ class ConfigMap(UserDict):
             'cfgdir' : '/etc/lograptor/',
             'logdir' : '/var/log',
             'tmpdir' : '/var/tmp',
-            'vardir' : '/var/lib/lograptor',
             'pidfile' : "/var/run/lograptor.pid",
             'fromaddr' : 'root@{0}'.format(socket.gethostname()),
             'smtpserv' : '/usr/sbin/sendmail -t',
@@ -104,13 +103,17 @@ class ConfigMap(UserDict):
                 r'(@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)?\b',
             'pid_pattern' : r'[0-9]+',
 
+            # options of the section 'filters'
+            'user' : r'${username_pattern}',
+            'from' : r'${email_pattern}',
+            'rcpt' : r'${email_pattern}',
+            'client' : r'(${dnsname_pattern}|${ipaddr_pattern})',
+            'pid' : r'${pid_pattern}',
+
             # options of the section 'report'
             'title' : '$hostname system events: $localtime',
             'html_template' : '$cfgdir/report_template.html',
             'text_template' : '$cfgdir/report_template.txt',
-            'publishers' : 'mail, file',
-            'include_unparsed' : False,
-            'max_unparsed' : 1000,
 
             # options of the section 'subreports'
             'logins_report' : 'Logins',
@@ -118,17 +121,16 @@ class ConfigMap(UserDict):
             'command_report' : 'System commands',
             'query_report': 'Database & directory lookups',
 
-            # options of a publisher sections 
+            # options for all publisher sections 
             'method' : None,
             'mailto' : 'root',
-            #'format' : 'both',
-            # options of a mail publisher section
+            # options for mail publisher sections
             'include_rawlogs' : False,
             'rawlogs_limit' : 200,
             'gpg_encrypt' : False,
             'gpg_keyringdir' : None,
             'gpg_recipients' : None,
-            # options of a file publisher section
+            # options for file publisher sections
             'pubdir' : '/var/www/lograptor',
             'dirmask' : '%Y-%b-%d_%a',
             'filemask' :'%H%M',
@@ -143,29 +145,19 @@ class ConfigMap(UserDict):
             # General options
             'cfgfile' : "/etc/lograptor/lograptor.conf",
             'loglevel': 1,
-            'cron' : False,
 
             # Scope options
-            'hostnames' : "*",
-            'applications' : None,
-            'noapps' : False,
-            'last' : None,
-            'date' : None,
+            'hosts' : "*",
+            'apps' : '',
+            'period' : None,
             'timerange' : None,
-                            
-            # Filtering options
-            'user' : r'${username_pattern}',
-            'from' : r'${email_pattern}',
-            'rcpt' : r'${email_pattern}',
-            'client' : r'(${dnsname_pattern}|${ipaddr_pattern})',
-            'pid' : r'${pid_pattern}',
-            'and_filters' : False,
 
             # Matching control options
             'pattern' : None,
             'pattern_file' : None,
             'case' : False,
             'invert' : False,
+            'filters' : None,
             'thread' : False,
             'unparsed' : False,
 
@@ -175,9 +167,11 @@ class ConfigMap(UserDict):
             'quiet' : False,
             'no_messages' : False,
             'out_filenames' : None,
-            'report' : False,
-            #'format' : None, # Dropped
-            'publist' : '',
+
+            # Report control options
+            'report' : None,
+            'format' : 'plain',
+            'publish' : None,
             'ip_lookup' : False,
             'uid_lookup' : False
             }
@@ -205,18 +199,18 @@ class ConfigMap(UserDict):
             
             for opt in sect_options:
                 try:
-                    if isinstance(self._cfgfile_defaults[opt],bool):
+                    if isinstance(self._cfgfile_defaults[opt], bool):
                         self.data[opt] = self.parser.getboolean(sect, opt)
-                    elif isinstance(self._cfgfile_defaults[opt],int):
+                    elif isinstance(self._cfgfile_defaults[opt], int):
                         self.data[opt] = self.parser.getint(sect, opt)
-                    elif isinstance(self._cfgfile_defaults[opt],float):
+                    elif isinstance(self._cfgfile_defaults[opt], float):
                         self.data[opt] = self.parser.getfloat(sect, opt)
                     else:
                         self.data[opt] = self.parser.get(sect, opt).strip('\'"')
                 except KeyError:
                     self.data[opt] = self.parser.get(sect, opt)
                 except configparser.NoOptionError as s:
-                    logger.debug('No option "{0}" in section "{1}"'.format(opt, sect))    
+                    logger.debug('No option "{0}" in section "{1}": use default.'.format(opt, sect))    
                     self.parser.set(sect,opt,self._cfgfile_defaults[opt])
                     self.data[opt] = self._cfgfile_defaults[opt]
                 except configparser.NoSectionError:
@@ -258,7 +252,6 @@ class ConfigMap(UserDict):
             'cfgdir' : self.data['cfgdir'],
             'logdir' : self.data['logdir'],
             'tmpdir' : self.data['tmpdir'],
-            'vardir' : self.data['vardir']
             }
 
     def _interpolate(self, option):
@@ -288,7 +281,7 @@ class ConfigMap(UserDict):
         if option in self._options_defaults:
             return self.data[option]==self._options_defaults[option]
         elif option in self._cfgfile_defaults:
-            if _cfgfile_defaults[option] is None:
+            if self._cfgfile_defaults[option] is None:
                 return self.data[option] is None
             return self.data[option]==self._cfgfile_defaults[option]
         else:
