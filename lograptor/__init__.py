@@ -330,7 +330,6 @@ class Lograptor:
         else:
             self._output = True
             self._outstatus = False
-        print(self.config['report'], self._output)
         
         # Setting the output for filenames:
         #   out_filenames == None --> print only as header
@@ -391,6 +390,8 @@ class Lograptor:
             msg = 'No app\'s rules compatible with provided filters!'
             raise lograptor.OptionError("-F", msg)
 
+        #print([ app.has_filters for key, app in self.apps.items() ])
+        #print([ rule.regexp.pattern for rule in self.apps['postfix'].rules ])
         # Initialize the report object if the option is enabled
         if self.config['report'] is not None:
             self.report = report.Report(self.apps, self.config)
@@ -479,7 +480,9 @@ class Lograptor:
                 logger.warning('Skip app "{0}": no rules defined!'.format(app))
                 del self.apps[app]
                 continue
-            
+
+        print(self.apps)
+        print(self._output)
         # Exit if no application is enabled
         if not self.apps:
             raise ConfigError('No application configured and enabled! Exiting ...')
@@ -811,9 +814,9 @@ class Lograptor:
             # Log message parsing (with config app's rules)
             if useapps:
                 result, filter_match, app_thread = app.process(host, datamsg, debug)
-                print(result, filelineno)
-
-                if result is None:
+                if filter_match:
+                    print(result, line)
+                if not result:
                     # Log message unparsable by app rules
                     if not match_unparsed:
                         if debug: logger.debug('Unparsable line: {0}'.format(line[:-1]))
@@ -821,7 +824,7 @@ class Lograptor:
                 elif match_unparsed:
                     # Log message parsed but match_unparsed option
                     continue
-                elif not result and not thread:
+                elif not filter_match and app.has_filters and not thread:
                     if debug: logger.debug('Filtered line: {0}'.format(line[:-1]))
                     continue
                 

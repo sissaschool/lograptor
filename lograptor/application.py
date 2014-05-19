@@ -636,32 +636,25 @@ class AppLogParser:
         The appthread is returned with the value of thread named group of
         the rule. If the rule doesn't have a thread group, a None is returned.
         """
-        
-        if not self.rules:
-            return (True, None, None)
-
+        counter = 0
         for rule in self.rules:
-            print(rule.is_filter)
+            counter += 1
             match = rule.regexp.search(datamsg)
             if match is not None:
                 if debug: logger.debug('Rule "{0}" match'.format(rule.name))
                 self._last_rule = rule
-                result = (rule.is_filter or not self.has_filters)
                 if self._thread and 'thread' in rule.regexp.groupindex:
                     thread = match.group('thread')
                     if self._report:
                         self._last_idx = rule.add_result(hostname, match)
-                    return (result, rule.is_filter, thread)
+                    return (True, rule.is_filter, thread)
                 else:
-                    if result and self._report:
+                    if rule.is_filter and self._report:
                         self._last_idx = rule.add_result(hostname, match)                                            
-                    return (result, None, None)            
+                    return (True, rule.is_filter, None)            
 
         # No rule match: the application log message is unparsable
         # by enabled rules.
         self._last_rule = self._last_idx = None
-        if self._unparsed:
-            return (None, None, None)
-        else:
-            return (not self.has_filters, None, None)
+        return (False, None, None)
         
