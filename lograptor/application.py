@@ -533,7 +533,7 @@ class AppLogParser:
 
         # Set threads cache using finally rules list
         if self._thread:
-            self.cache = lograptor.linecache.LineCache(True, len(self._filter_keys))
+            self.cache = lograptor.linecache.LineCache()
         
     def add_rules(self, rules, config):
         """

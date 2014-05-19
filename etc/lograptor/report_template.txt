@@ -7,8 +7,8 @@
 Pattern: "$pattern"
 Pattern file: $pattern_file
 Filters: $filters
-Hostnames: $hostname
-Applications: $applications
+Hostnames: $hosts
+Applications: $apps
 
 First event: $starttime
 Last event: $endtime
@@ -17,5 +17,4 @@ Total files examined: $totalfiles
 Total log lines parsed: $totallines
 ---------------------------------------------------------
 $subreports
-$unparsed_strings
 ----- Brought to you by $version -----

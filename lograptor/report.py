@@ -508,7 +508,7 @@ class Subreport:
                         match = repitem.parse_report_rule(opt)
                         cond = match.group('condition')
                         fields = re.split('\s*,\s*', match.group('fields'))
-                        tablelist = apps[appname].rules[opt]\
+                        tablelist = repitem.rules[opt]\
                                     .list_events(cond, cols, fields)
                         repitem.results.extend(tablelist)
 
@@ -681,7 +681,6 @@ class Report:
         Make report item texts in a specified format
         """
         width = 100 if fmt is not None else lograptor.tui.getTerminalSize()[0]
-
         self.fmt = fmt
         for subrep in self.subreports:
             subrep.make_format(self.fmt, width)        
@@ -750,11 +749,11 @@ class Report:
             report_parts.extend(self.make_csv_tables(valumap))
             pass
         
-        if self.fmt is not None:
+        if self.publishers:
             for publisher in self.publishers:
                 logger.info('Invoking publisher "{0}"'.format(publisher.name))
                 publisher.publish(self.title, report_parts, rawfh)
-        else:
+        elif self.fmt == 'plain':
             print('\n{0}'.format(report_parts[0].text))
 
     def make_html_page(self, valumap):
@@ -851,4 +850,3 @@ class Report:
                     report_parts.append(TextPart(repitem.title, repitem.text, 'csv'))
 
         return report_parts
-    

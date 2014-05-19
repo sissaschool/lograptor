@@ -377,18 +377,23 @@ class Lograptor:
         if hostset:
             logger.debug('Process hosts: {0}'.format(hostset))
             
-        # Initalize app parser class and load applications. Then checks filters usage        
+        # Initalize app parser class and load applications. After applications
+        # reassign configuration parameter with the effecti
         if self.config['apps'] is not None:
             application.AppLogParser.set_options(self.config, self.filters)
             self._load_applications()
+            if self.config['filters'] is not None:
+                if all([not app.has_filters for key, app in self.apps.items()]):
+                    msg = 'No app\'s rules compatible with provided filters!'
+                    raise lograptor.OptionError("-F", msg)
+                self.config['apps'] = u', '.join([
+                    appname for appname, app in self.apps.items() if app.has_filters
+                ])
+            else:
+                self.config['apps'] = u', '.join([appname for appname in self.apps])
 
         # Partially disable (enable=None) apps that have no rules or filters,
         # in order to skip app processing and reporting. 
-        if self.config['filters'] is not None and all([
-            not app.has_filters for key, app in self.apps.items()
-            ]):
-            msg = 'No app\'s rules compatible with provided filters!'
-            raise lograptor.OptionError("-F", msg)
 
         #print([ app.has_filters for key, app in self.apps.items() ])
         #print([ rule.regexp.pattern for rule in self.apps['postfix'].rules ])
@@ -409,6 +414,8 @@ class Lograptor:
             for key in self.apps:                
                 app = self.apps[key]
                 self.logmap.add(app.name, app.files, app.priority)
+
+        print(self.config['apps'])
 
     def get_applist(self):
         """
@@ -481,8 +488,6 @@ class Lograptor:
                 del self.apps[app]
                 continue
 
-        print(self.apps)
-        print(self._output)
         # Exit if no application is enabled
         if not self.apps:
             raise ConfigError('No application configured and enabled! Exiting ...')
@@ -684,8 +689,9 @@ class Lograptor:
         
         ini_datetime = time.mktime(self.ini_datetime.timetuple())
         fin_datetime = time.mktime(self.fin_datetime.timetuple())
-        first_event = self._first_event
-        last_event = self._last_event
+        if report:
+            first_event = self._first_event
+            last_event = self._last_event
 
         all_hosts_flag = self.config.is_default('hosts')
         prefout = ''
@@ -744,7 +750,7 @@ class Lograptor:
                     app = tagmap[tag]
                     app.increase_last(repeat)
                     if app_thread is not None:
-                        app.cache.add_line(line, app_thread, pattern_search, result, filter_match, event_time)
+                        app.cache.add_line(line, app_thread, pattern_search, filter_match, event_time)
                     prev_match = None
                 continue
             prev_match = None
@@ -814,8 +820,6 @@ class Lograptor:
             # Log message parsing (with config app's rules)
             if useapps:
                 result, filter_match, app_thread = app.process(host, datamsg, debug)
-                if filter_match:
-                    print(result, line)
                 if not result:
                     # Log message unparsable by app rules
                     if not match_unparsed:
@@ -824,12 +828,14 @@ class Lograptor:
                 elif match_unparsed:
                     # Log message parsed but match_unparsed option
                     continue
-                elif not filter_match and app.has_filters and not thread:
-                    if debug: logger.debug('Filtered line: {0}'.format(line[:-1]))
+                elif app_thread is not None:
+                    app.cache.add_line(line, app_thread, pattern_search, filter_match, event_time)
+                elif not filter_match and app.has_filters:
+                    if debug: print('Filtered line: {0}'.format(line[:-1]))
                     continue
                 
-                # Handle timestamps
-                if report or thread:
+                # Handle timestamps for report
+                if report:
                     if first_event is None:
                         first_event = event_time
                         last_event = event_time
@@ -839,10 +845,7 @@ class Lograptor:
                         if last_event < event_time:
                             last_event = event_time
 
-                if app_thread is not None:
-                    app.cache.add_line(line, app_thread, pattern_search, result, filter_match, event_time)
-
-            # Matchin only if survive to both pattern and app's matching 
+            # Record current matching in case the next line is "last message repeat..."
             if pattern_search:
                 prev_match = match
 
@@ -877,8 +880,9 @@ class Lograptor:
         # Save modificable class variables
         self._header = header
         self._counter = counter
-        self._first_event = first_event
-        self._last_event = last_event
+        if report:
+            self._first_event = first_event
+            self._last_event = last_event
             
     def make_report(self):
         """
