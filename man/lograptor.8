@@ -9,18 +9,18 @@
 \fBlograptor\fR [options] [ -e PATTERN | -f FILE ] [FILE ...]
 
 .SH DESCRIPTION
-Lograptor is a new search tool for logs written in legacy BSD syslog format
-(RFC 3164) or IETF syslog format specified by RFC 5424.
-It was written with the idea to have a compact and highly configurable CLI tool
-for analysis and reporting of logs. Lograptor is derived from ideas and partly 
-from the code of Epylog, mixed with other code written in the past for parsing 
-email servers logs.
+Lograptor is a search tool for system logs saved with legacy BSD syslog format
+(RFC 3164) or IETF syslog format (RFC 5424).
+It is developed as a compact and highly configurable CLI tool for analysis and
+reporting of system logs. Lograptor is derived from ideas and partly 
+from the code of Epylog, merged with older code written by the author for parsing 
+a Postfix email server logs.
 
-The program can perform searches in syslog files like as the UNIX command 
-"grep", but with the addition of some filters and parameters, usefuls to 
-restrict the search field and retrieve the relevant informations from log 
-files. You should specify parameters like hostname, applications, date, 
-timerange, plus a set of filters on message data. 
+The program mix a classical pattern search as the UNIX command "grep" with
+additional filters and parameters, taylored to restrict and retrieve relevant
+informations from log files. For example you could restrict a search to an
+hostname or to a date. Configurable filters can be applied on message data.
+Each application is defined with a configuration file. 
 Lograptor can also produce reports and publish them it in a directory or send 
 them by e-mail. The report may be a general or a specific report taylored for 
 some accounts/hosts. With cron you could run Lograptor to produce general 

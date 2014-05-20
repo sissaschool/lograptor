@@ -395,8 +395,6 @@ class Lograptor:
         # Partially disable (enable=None) apps that have no rules or filters,
         # in order to skip app processing and reporting. 
 
-        #print([ app.has_filters for key, app in self.apps.items() ])
-        #print([ rule.regexp.pattern for rule in self.apps['postfix'].rules ])
         # Initialize the report object if the option is enabled
         if self.config['report'] is not None:
             self.report = report.Report(self.apps, self.config)
@@ -414,8 +412,6 @@ class Lograptor:
             for key in self.apps:                
                 app = self.apps[key]
                 self.logmap.add(app.name, app.files, app.priority)
-
-        print(self.config['apps'])
 
     def get_applist(self):
         """
