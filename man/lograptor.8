@@ -21,26 +21,28 @@ additional filters and parameters, taylored to restrict and retrieve relevant
 informations from log files. For example you could restrict a search to an
 hostname or to a date. Configurable filters can be applied on message data.
 Each application is defined with a configuration file. 
-Lograptor can also produce reports and publish them it in a directory or send 
-them by e-mail. The report may be a general or a specific report taylored for 
+Lograptor can also produce reports and publish them in a directory or send
+by e-mail. The report may be a general or a specific report taylored for
 some accounts/hosts. With cron you could run Lograptor to produce general 
-reports, similarly as you can do with Epylog.
+reports.
 
 Lograptor log analysis is based on application or device that originated the 
 message. This reflect the structure of syslog lines, as described in details 
 by RFC 5424 (see paragraph 6.2.5 APP-NAME).
 
 .SH OPTIONS
+.B \-\^\-version
+show program's version number and exit
+.B \-h, \-\-help
+show this help message and exit
 .SS "General Options"
 .TP
 .B \-\^\-conf=<CONFIG_FILE>
-Use a custom configuration file instead of default [/etc/lograptor/lograptor.conf]
+Provide a different configuration to Lograptor, alternative to
+the default file located in /etc/lograptor/lograptor.conf.
 .TP
 .B \-d [0-4]
-Logging level. The default is 1. Level 0 will produce no output 
-except for critical errors and 1 show all errors. Level 2 show 
-also warnings and 3 show more informations. 4 is the debugging level.
-.TP
+Logging level. The default is 1. Level 0 log only critical errors, higher levels show more informations..TP
 .B \-\-cron
 Run as a batch/cron job, with no output and enabling reporting, plus it 
 will create a lock file that will not allow more than one cron instance
@@ -48,13 +50,11 @@ of lograptor to run.
 
 .SS "Scope Options"
 .TP
-.B \-H <HOSTNAME>, \-\-host=<HOSTNAME>
-Will analyze only log lines related to a specific server host or a
-list of server hosts. Hosts list could be passed between quotes, 
-separated by commas or spaces. File path wildcards are usable for 
-host names.
+.B \-H HOST/IP[,HOST/IP...], \-\-host=HOST/IP[,HOST/IP...]
+Will analyze only log lines related to comma separated list of hostnames and/or IP addresses.
+File path wildcards can be used for hostnames.
 .TP
-.B \-a [<APP>|"<APP>, ..."], \-\-app=[<APP>|"<APP>, ..."]
+.B \-a APP[,APP...], \-\-apps=APP[,APP...]
 Will analyze only log lines related to a specific application. 
 An application list should be passed between quotes, separated by
 commas or spaces.

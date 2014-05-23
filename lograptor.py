@@ -67,7 +67,8 @@ def parse_args(cli_parser):
     group = optparse.OptionGroup(cli_parser, "General Options")
     group.add_option("--conf", dest="cfgfile", type="string",
                      default=CFGFILE_DEFAULT, metavar="<CONFIG_FILE>",
-                     help="Use a custom configuration file instead of default [{0}]"
+                     help="Provide a different configuration to Lograptor, "
+                          "alternative to the default file located in {0}."
                      .format(CFGFILE_DEFAULT))
     group.add_option("-d", dest="loglevel", default=1, type="int", metavar="[0-4]",
                      help="Logging level. The default is 1. Level 0 log only "
@@ -76,13 +77,13 @@ def parse_args(cli_parser):
 
     ### Define the options for the group "Scope Options"                      
     group = optparse.OptionGroup(cli_parser,"Scope Options")
-    group.add_option("--hosts", metavar="HOST/IP[,HOST/IP...]",
+    group.add_option("-H", "--hosts", metavar="HOST/IP[,HOST/IP...]",
                      action="store", type="string", dest="hosts", default='*',
                      help="Will analyze only log lines related to comma separated list "
-                     "of hostnames and/or IP addresses. File path wildcards are usable for "
-                     "hostnames.")
+                     "of hostnames and/or IP addresses. File path wildcards can be used "
+                     "for hostnames.")
     cli_parser.set_defaults(apps='')
-    group.add_option("--apps", metavar='APP[,APP...]',
+    group.add_option('-a', "--apps", metavar='APP[,APP...]',
                      action="store", type="string", dest="apps",
                      help="Analyze only log lines related to a comma separated list of applications. "
                      "An app is valid when a configuration file is defined. For default the program "
@@ -113,7 +114,7 @@ def parse_args(cli_parser):
                      help="Ignore case distinctions in matching.")        
     group.add_option("-v", "--invert-match", action="store_true", dest="invert", default=False,
                      help="Invert the sense of matching, to select non-matching lines.")    
-    group.add_option("-F", metavar="FILTER=<PATTERN>[,FILTER=PATTERN...]",
+    group.add_option("-F", metavar="FILTER=PATTERN[,FILTER=PATTERN...]",
                      action="append", type="string", dest="filters", default=None,
                      help="Refine the search with a comma separated list of app's filters. "
                      "The filter list are applied with logical disjunction (OR). "
@@ -150,29 +151,28 @@ def parse_args(cli_parser):
                      default=None, help="Suppress the default headers with filenames on "
                      "output. This is the default behaviour for output also when "
                      "the search is in only one file.")
+    group.add_option("-r", "--report", dest="report", action="store_true", default=False,
+                     help="Make a report at the end of processing and display on console.")
     cli_parser.add_option_group(group)
 
-    ### Define the options for the group "Report Control"
-    group=optparse.OptionGroup(cli_parser,"Report Control")
-    group.add_option("-r", "--report", dest="report", action="store_true", default=False,
-                     help="Make a report at the end of processing. For default the report "
-                     "is dumped as formatted plain text on console at the end of log "
-                     "processing. You should provide different format and publishing "
-                     "methods using --format and --publish options.")
-    group.add_option("--format", dest="format", default="plain", metavar="[html|csv|pdf]",
-                     help="Use a different format to publish the report (default is "
-                     "formatted plain text).")
+    ### Define the options for the group "Publishing Control"
+    group=optparse.OptionGroup(cli_parser,"Publishing Control")
     group.add_option("--publish", dest="publish", default=None,
                      metavar='PUBLISHER[,PUBLISHER...]',
-                     help="Publish the report using a comma separated list of publishers. "
-                     "A publisher is defined in the configuration file.")
+                     help="Make a report and publish it using a comma separated list of "
+                     "publishers, "
+                     "choosed from the ones defined in the configuration file. You have to "
+                     "define your publishers in the main configuration file.")
     group.add_option("--ip", action="store_true", dest="ip_lookup",
-                     default=False, help="Do a reverse lookup for IP addresses. The lookups "
-                     "using the host DNS configuration and could slowing down the process.")
+                     default=False, help="Do a reverse lookup translation for the IP addresses "
+                     "contained in the final report. The lookups use the DNS resolve "
+                     "facility of the running host.")
     group.add_option("--uid", action="store_true", dest="uid_lookup",
-                     default=False, help="Translates numeric uids with local system auth "
-                     "configuration. This sounds sense if the local system use the same "
-                     "authentication directory of the origin of the log files.")
+                     default=False, help="Translate numeric UIDs into corresponding names. "
+                     "The local system authentication is used for lookups, therefore its "
+                     "configuration must be congruent with the UIDs of the log files.")
+    group.add_option("--anonymize", action="store_true", dest="anonymize",
+                     default=False, help="Anonymize report UIDs, hostnames and IPs.")
     cli_parser.add_option_group(group)
 
     return cli_parser.parse_args()

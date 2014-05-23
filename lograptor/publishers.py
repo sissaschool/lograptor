@@ -372,7 +372,7 @@ class FilePublisher:
 
         fmtname = '{0}-{1}-{2}.{3}' if len(report_parts) > 1 else '{0}.{3}'
         
-        for i in range(len(report_parts)):        
+        for i in range(len(report_parts)):
             filename = fmtname.format(self.filename, i, report_parts[i].title,
                                       report_parts[i].ext)            
             repfile = os.path.join(self.pubdir, filename)
