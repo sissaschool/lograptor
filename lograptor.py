@@ -151,6 +151,16 @@ def parse_args(cli_parser):
                      default=None, help="Suppress the default headers with filenames on "
                      "output. This is the default behaviour for output also when "
                      "the search is in only one file.")
+    group.add_option("--ip", action="store_true", dest="ip_lookup",
+                     default=False, help="Do a reverse lookup translation for the IP addresses. "
+                     "The lookups use the DNS resolve facility of the running host.")
+    group.add_option("--uid", action="store_true", dest="uid_lookup",
+                     default=False, help="Translate numeric UIDs into corresponding names. "
+                     "The local system authentication is used for lookups, therefore its "
+                     "configuration must be congruent with the UIDs of the log files.")
+    group.add_option("--anonymize", action="store_true", dest="anonymize",
+                     default=False, help="Anonymize UIDs, hostnames and IPs for output."
+                     "A token translation table is builded and used on each run and across files.")
     group.add_option("-r", "--report", dest="report", action="store_true", default=False,
                      help="Make a report at the end of processing and display on console.")
     cli_parser.add_option_group(group)
@@ -163,16 +173,6 @@ def parse_args(cli_parser):
                      "publishers, "
                      "choosed from the ones defined in the configuration file. You have to "
                      "define your publishers in the main configuration file.")
-    group.add_option("--ip", action="store_true", dest="ip_lookup",
-                     default=False, help="Do a reverse lookup translation for the IP addresses "
-                     "contained in the final report. The lookups use the DNS resolve "
-                     "facility of the running host.")
-    group.add_option("--uid", action="store_true", dest="uid_lookup",
-                     default=False, help="Translate numeric UIDs into corresponding names. "
-                     "The local system authentication is used for lookups, therefore its "
-                     "configuration must be congruent with the UIDs of the log files.")
-    group.add_option("--anonymize", action="store_true", dest="anonymize",
-                     default=False, help="Anonymize report UIDs, hostnames and IPs.")
     cli_parser.add_option_group(group)
 
     return cli_parser.parse_args()
