@@ -161,12 +161,12 @@ def parse_args(cli_parser):
     group.add_option("--anonymize", action="store_true", dest="anonymize",
                      default=False, help="Anonymize UIDs, hostnames and IPs for output."
                      "A token translation table is builded and used on each run and across files.")
-    group.add_option("-r", "--report", dest="report", action="store_true", default=False,
-                     help="Make a report at the end of processing and display on console.")
     cli_parser.add_option_group(group)
 
-    ### Define the options for the group "Publishing Control"
-    group=optparse.OptionGroup(cli_parser,"Publishing Control")
+    ### Define the options for the group "Report Control"
+    group=optparse.OptionGroup(cli_parser,"Report Control")
+    group.add_option("-r", "--report", dest="report", action="store_true", default=False,
+                     help="Make a formatted text report at the end of processing and display on console.")
     group.add_option("--publish", dest="publish", default=None,
                      metavar='PUBLISHER[,PUBLISHER...]',
                      help="Make a report and publish it using a comma separated list of "
@@ -182,20 +182,25 @@ def parse_args(cli_parser):
 # Main function: create the Lograptor instance and manages the phases of
 # processing calling the main methods in sequence.
 ##########################################################################
-def main(options, args):
+def main():
     """
-    Main routine: create the Lograptor instance, call processing of log
-    files and manage exception errors.
+    Main routine: parse command line, create the Lograptor instance, call
+    processing of log files and manage exception errors.
     """
+
+    # Get command line options and arguments
+    cli_parser = optparse.OptionParser(version=__version__, description=__description__)
+    cli_parser.disable_interspersed_args()
+    (options, args) = parse_args(cli_parser)
 
     # If a debug level activate logger immediately
     if options.loglevel == 4:    
         import lograptor.utils
         lograptor.utils.set_logger(options.loglevel)
- 
+
     # Create the Lograptor class, exit if there are configuration errors
     try:
-        my_raptor = Lograptor(options.cfgfile, options, args)
+        my_raptor = Lograptor(options.cfgfile, options, cli_parser.defaults, args)
     except OptionError as e:
         cli_parser.error(e)
     except (ConfigError, FormatError, FileMissingError, FileAccessError) as e:
@@ -243,14 +248,9 @@ if __name__ == '__main__':
     if sys.version_info < (2,6,0):
         sys.stderr.write("You need python 2.6 or later to run this program\n")
         sys.exit(1)
-      
-    # Get command line options and arguments 
-    cli_parser = optparse.OptionParser(version=__version__, description=__description__)
-    cli_parser.disable_interspersed_args()
-    (options, args) = parse_args(cli_parser)
-    
+
     if os.isatty(sys.stdout.fileno()):
-        main(options, args)
+        main()
     else:
         with nostdout():
-            main(options, args)
+            main()

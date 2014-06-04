@@ -30,6 +30,7 @@ import re
 import logging
 import fileinput
 import tempfile
+import socket
 import string
 import sys
 import itertools
@@ -126,7 +127,77 @@ class Lograptor:
       - args: List with almost one search path and filename paths.
     """            
 
-    def __init__(self, cfgfile=None, options=None, args=[]):
+    # Lograptor default configuration
+    default_config = {
+        'main': {
+            'cfgdir' : '/etc/lograptor/',
+            'logdir' : '/var/log',
+            'tmpdir' : '/var/tmp',
+            'pidfile' : "/var/run/lograptor.pid",
+            'fromaddr' : 'root@{0}'.format(socket.gethostname()),
+            'smtpserv' : '/usr/sbin/sendmail -t',
+            },
+        'patterns': {
+            'rfc3164_pattern' : r'^(?:<(?P<pri>[0-9]{1,3})>|)'
+                r'(?P<month>[A-Z,a-z]{3}) (?P<day>(?:[1-3]| )[0-9]) '
+                r'(?P<time>[0-9]{2}:[0-9]{2}:[0-9]{2}) '
+                r'(?:last message repeated (?P<repeat>[0-9]{1,3}) times|'
+                r'(?P<host>\S{1,255}) (?P<datamsg>(?P<tag>[^ \[\(\:]{1,32}).*))',
+            'rfc5424_pattern' : r'^(?:<(?P<prix>[0-9]{1,3})>(?P<ver>[0-9]{0,2}) |)'
+                r'(?:-|(?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})T)'
+                r'(?P<time>[0-9]{2}:[0-9]{2}:[0-9]{2})(?:|\.(?P<secfrac>[0-9]{1,6}))'
+                r'(?:Z |(?P<offset>(?:\+|-)[0-9]{2}:[0-9]{2}) )'
+                r'(?:-|(?P<host>\S{1,255})) (?P<datamsg>(?:-|(?P<tag>\S{1,48})) .*)',
+            'dnsname_pattern' : r'((\b[a-zA-Z]\b|\b[a-zA-Z][a-zA-Z0-9\-]*[a-zA-Z0-9]\b)\.)'
+                r'*(\b[A-Za-z]\b|\b[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9]\b)',
+            'ipaddr_pattern' : r'(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.'
+                r'((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))',
+            'email_pattern' : r'\b([\=A-Za-z0-9!$%&*+_~-]+(?:\.[\=A-Za-z0-9!$%&*+_~-]+)*)(@(?:[A-Za-z0-9]'
+                r'(?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)?\b',
+            'username_pattern' : r'\b([A-Za-z0-9!$%&*+_~-]+(?:\.[A-Za-z0-9!$%&*+_~-]+)*)'
+                r'(@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)?\b',
+            'pid_pattern' : r'[0-9]+',
+            },
+        'filters': {
+            'user' : r'${username_pattern}',
+            'from' : r'${email_pattern}',
+            'rcpt' : r'${email_pattern}',
+            'client' : r'(${dnsname_pattern}|${ipaddr_pattern})',
+            'pid' : r'${pid_pattern}',
+            },
+        'report': {
+            'title' : '$hostname system events: $localtime',
+            'html_template' : '$cfgdir/report_template.html',
+            'text_template' : '$cfgdir/report_template.txt',
+            },
+        'subreports': {
+            'logins_report' : 'Logins',
+            'mail_report' : 'Message delivery',
+            'command_report' : 'System commands',
+            'query_report': 'Database & directory lookups',
+            },
+        None: {
+            'method' : None,
+            'notify' : '',
+            'format' : 'plain',
+            # options for mail publisher sections
+            'mailto' : 'root',
+            'include_rawlogs' : False,
+            'rawlogs_limit' : 200,
+            'gpg_encrypt' : False,
+            'gpg_keyringdir' : None,
+            'gpg_recipients' : None,
+            # options for file publisher sections
+            'pubdir' : '/var/www/lograptor',
+            'dirmask' : '%Y-%b-%d_%a',
+            'filemask' :'%H%M',
+            'save_rawlogs' : False,
+            'expire_in' : 7,
+            'pubroot' : 'http://localhost/lograptor'
+            },
+        }
+
+    def __init__(self, cfgfile=None, options=None, defaults=None, args=[]):
         """
         Initialize parameters for lograptor instance and load apps configurations.
         """            
@@ -136,10 +207,16 @@ class Lograptor:
         if not isinstance(args, list):
             raise FormatError('Argument "args" must be a list!!')
 
+        # Update default configuration values with provided defaults
+        if defaults is not None:
+            if not isinstance(defaults, dict):
+                raise FormatError('Argument "defaults" must be a dictionary!!')
+            self.default_config.update({'options': defaults })
+
         # Create the lograptor configuration instance, setting configuration from file
         # and options from passed argument.
         try:
-            self.config = configmap.ConfigMap(cfgfile, options)
+            self.config = configmap.ConfigMap(cfgfile, self.default_config, options)
         except IOError as e:
             logger.critical('Configuration file {0} missing or not accessible!'.format(cfgfile))
             logger.critical(e)
@@ -171,7 +248,7 @@ class Lograptor:
             raise OptionError('-d', msg)
 
         # Set the logger only if no handler is already defined (from caller method
-        # when loglevel is 4).
+        # when cfgfile is 4).
         if self.cron and self.config['loglevel'] < 4:
             lograptor.utils.set_logger(0)
         else:
@@ -277,11 +354,6 @@ class Lograptor:
             msg = "must be a positive integer!"
             raise OptionError('-m/--max-count', msg)
 
-        # Check and adjust the report format option
-        if self.config['format'] not in ['plain', 'csv', 'html', 'pdf']:
-            msg = "value must be 'csv', 'html' or 'pdf'"
-            raise OptionError('--format', msg)
-
         # Translate config filter list (-F options) 
         if self.config['filters'] is not None:
             for item in self.config['filters']:
@@ -310,8 +382,6 @@ class Lograptor:
             utils.cron_lock(self.config['pidfile'])
             logger.info('Cron mode: disabling output and status')
             self._output = self._outstatus = False
-            if self.config['format'] is None:
-                self.config['format'] = 'html'
         elif self.config['quiet'] and self.config['report']:
             logger.info('Quiet option provided: disabling output')
             self._output = False
@@ -409,7 +479,7 @@ class Lograptor:
         if len(args) > 0:
             self.logmap.add("*", args)
         else:
-            for key in self.apps:                
+            for key in self.apps:
                 app = self.apps[key]
                 self.logmap.add(app.name, app.files, app.priority)
 
