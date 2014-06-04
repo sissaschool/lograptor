@@ -49,6 +49,7 @@ except ImportError:
 
 import lograptor.report
 import lograptor.linecache
+import lograptor.configmap
 
 logger = logging.getLogger("lograptor")
 
@@ -370,6 +371,7 @@ class AppLogParser:
     _thread = None          # Thread flag
     _unparsed = None        # Unparsed flag
 
+    
     @staticmethod
     def set_options(config, filters):
         """
@@ -418,37 +420,26 @@ class AppLogParser:
 
         # Setting other instance internal variables for process phase
         self._last_rule = self._last_idx = None
-            
-        # Parse app configuration file. 
-        appconfig = configparser.RawConfigParser(dict_type=OrderedDict)
-        
-        try: 
-            appconfig.read(self.cfgfile)
-        except (configparser.ParsingError, configparser.DuplicateOptionError) as err:
-            logger.error(err)
-            raise lograptor.FormatError('Could not parse application config file "{0}"'.format(self.cfgfile))
 
-        # Get the program options from section [main]. Each option is mandatory.
-        # Unknown options in section [main] are ignored.
-        try:
-            self.desc = appconfig.get('main','desc')
-            self.tags = appconfig.get('main','tags')
-            self.files = appconfig.get('main', 'files')
-            self.enabled = appconfig.getboolean('main','enabled')
-            self.priority = appconfig.getint('main', 'priority')
+        self.default_config = {
+            'main': {
+                'desc': None,
+                'tags': None,
+                'files': None,
+                'enabled': True,
+                'priority': 1,
+                }
+            }
 
-            logger.debug('App "{0}" description: "{1}"'.format(self.name,self.desc))
-            logger.debug('App "{0}" tags: {1}'.format(self.name, self.tags))
-            logger.debug('App "{0}" files: {1}'.format(self.name, self.files))
-            logger.debug('App "{0}" enabled: {1}'.format(self.name, self.enabled))
-            logger.debug('App "{0}" priority: {1}'.format(self.name, self.priority))
+        appconfig = lograptor.configmap.ConfigMap(self.cfgfile, self.default_config)
 
-        except configparser.NoSectionError:
-            raise lograptor.ConfigError('No section [main] in the configuration file "{0}"'
-                                        .format(self.cfgfile))        
-        except configparser.NoOptionError as msg:
-            raise lograptor.ConfigError('No option "{0}" in section [main] of configuration file "{1}"'
-                                        .format(msg,self.cfgfile))
+        print(appconfig)
+
+        self.desc = appconfig['desc']
+        self.tags = appconfig['tags']
+        self.files = appconfig['files']
+        self.enabled = appconfig['enabled']
+        self.priority = appconfig['priority']
 
         # First check if the application is enabled. If disables skip parameter
         # or rules syntax checks.
@@ -463,6 +454,7 @@ class AppLogParser:
         # Expand application's fileset
         if config['hosts'] == '*':
             subdict = {'logdir' : config['logdir'], 'hostname' : config['hosts']}                 
+            print(self.files)
             self.files = string.Template(self.files).safe_substitute(subdict)
             self.files = set(re.split('\s*,\s*', self.files))
         else:
@@ -485,7 +477,7 @@ class AppLogParser:
         # when it doesn't have almost a rule.
         logger.debug('Load rules for app "{0}"'.format(self.name))
         try:
-            rules = appconfig.items('rules')
+            rules = appconfig.parser.items('rules')
         except configparser.NoSectionError as err:
             raise lograptor.ConfigError('No section [rules] in config file of app "{0}"'.format(self.name))
         if not rules:
@@ -494,26 +486,26 @@ class AppLogParser:
         
         self.add_rules(rules, config)
         
-        # Read report sections, used to manage
-        # results composition into the report.
-        sections = appconfig.sections()
+        # Read report items, used to manage
+        # report composition from results.
+        sections = appconfig.parser.sections()
         sections.remove('main')
         sections.remove('rules')
         
         for sect in sections:
             try:
-                repitem = lograptor.report.ReportItem(sect, appconfig.items(sect), 
-                                                       config.options('subreports'), self.rules)
+                repitem = lograptor.report.ReportItem(sect, appconfig.parser.items(sect),
+                                                      config.options('subreports'), self.rules)
             except lograptor.OptionError as msg:
                 raise lograptor.ConfigError('section "{0}" of "{1}": {2}'
                                             .format(sect, os.path.basename(self.cfgfile), msg))
             except configparser.NoOptionError as msg:
-                raise lograptor.ConfigError('No option "{0}" in section "{1}" of configuration file "{1}"'
-                                            .format(msg, sect, self.cfgfile))            
+                raise lograptor.ConfigError('No option "{0}" in section "{1}" of configuration '
+                                            'file "{1}"'.format(msg, sect, self.cfgfile))     
             self.repitems.append(repitem)
 
-        # If 'unparsed' matching is disabled restrict the set of rules to
-        # the ones useful for processing.
+        # If 'unparsed' matching is disabled then restrict the set of rules to
+        # the minimal set useful for processing.
         if config['unparsed']:
             logger.debug('Purge unused rules for "{0}" app.'.format(self.name))
             self.rules = [
@@ -522,7 +514,7 @@ class AppLogParser:
                    (self._thread and 'thread' in rule.regexp.groupindex)
                 ]
         
-        # Reorder rules if the app has filters, putting filter rules before the others.
+        # If the app has filters, reorder rules putting filters first.
         if self.has_filters:
             self.rules = sorted(self.rules, key=lambda x:not x.is_filter)
 
@@ -550,8 +542,8 @@ class AppLogParser:
                 raise lograptor.ConfigError('Error in app "{0}" configuration: '
                                             'empty rules not admitted!'.format(option))
 
-            # Iterate over filter list. Each item is a group of filters to be processed
-            # with AND logic.
+            # Iterate over filter list. Each item is a set of filtering rules
+            # to be applied with AND logical operator.
             rule_added = False
             for filter_group in self._filters:
                 new_pattern = pattern
@@ -562,7 +554,7 @@ class AppLogParser:
                         filter_keys.append(fltname)
                     new_pattern = next_pattern
 
-                # Do not insert rule if the rule is not related to all filters of the group
+                # Exclude rule if not related to all filters of the group
                 if len(filter_keys) < len(filter_group):
                     continue
 
