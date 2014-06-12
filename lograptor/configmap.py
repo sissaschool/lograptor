@@ -77,14 +77,9 @@ class ConfigMap(UserDict):
                 msg = "Configuration file {0} not found!".format(cfgfile)
                 raise OptionError('cfgfile', msg)
             self.parser.read(cfgfile)
-        except configparser.ParsingError as err:
-            logger.error(err)
-            raise FormatError('Could not parse config file "{0}": {1}'
-                              .format(cfgfile, err))
-        except configparser.DuplicateOptionError as err:
-            logger.error(err)
-            raise FormatError('Duplicate option in config file "{0}": {1}'
-                              .format(cfgfile, err))
+        except configparser.ParsingError:
+            raise FormatError('Could not parse configuration file {0}'
+                              .format(self.data['cfgfile']))
 
         # Read configuration from file
         logger.debug('Reading other entries from configuration file')
