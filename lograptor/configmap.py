@@ -100,8 +100,7 @@ class ConfigMap(UserDict):
                     else:
                         self.data[opt] = self.parser.get(sect, opt).strip('\'"')
                 except (configparser.NoSectionError, configparser.NoOptionError):
-                    # If missing section/option the use default value
-                    # and set config parser object
+                    # If missing section/option then use default value
                     if not self.parser.has_section(sect):
                         self.parser.add_section(sect)
                     self.parser.set(sect, opt, self.defaults[opt])

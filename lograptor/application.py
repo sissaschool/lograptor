@@ -371,7 +371,17 @@ class AppLogParser:
     _thread = None          # Thread flag
     _unparsed = None        # Unparsed flag
 
-    
+    # Default values for application config files
+    default_config = {
+        'main': {
+        'desc': u'${appname}',
+        'tags': u'${appname}',
+        'files': u'${logdir}/messages',
+        'enabled': True,
+        'priority': 1,
+        }
+    }
+
     @staticmethod
     def set_options(config, filters):
         """
@@ -421,28 +431,21 @@ class AppLogParser:
         # Setting other instance internal variables for process phase
         self._last_rule = self._last_idx = None
 
-        self.default_config = {
-            'main': {
-                'desc': None,
-                'tags': None,
-                'files': None,
-                'enabled': True,
-                'priority': 1,
-                }
-            }
+        extra_options={ 'appname': self.name, 'logdir' : config['logdir'] }
+        hostnames = list(set(re.split('\s*,\s*', config['hosts'].strip())))
+        if len(hostnames) == 1:
+            extra_options.update({'hostname' : hostnames[0]})
 
-        appconfig = lograptor.configmap.ConfigMap(self.cfgfile, self.default_config)
-
-        print(appconfig)
+        appconfig = lograptor.configmap.ConfigMap(appcfgfile, self.default_config, extra_options)
 
         self.desc = appconfig['desc']
         self.tags = appconfig['tags']
-        self.files = appconfig['files']
+        self.files = list(set(re.split('\s*,\s*', appconfig['files'])))
         self.enabled = appconfig['enabled']
         self.priority = appconfig['priority']
 
-        # First check if the application is enabled. If disables skip parameter
-        # or rules syntax checks.
+        # Check if application is explicitly enabled or enabled by 'apps' option.
+        # Exit if the application is not enabled at the end of checks.
         if not self.enabled:
             if config['apps'] != '':
                 self.enabled = True
@@ -451,26 +454,15 @@ class AppLogParser:
                 logger.debug('App "{0}" is not enabled: ignore.'.format(self.name))
                 return
 
-        # Expand application's fileset
-        if config['hosts'] == '*':
-            subdict = {'logdir' : config['logdir'], 'hostname' : config['hosts']}                 
-            print(self.files)
-            self.files = string.Template(self.files).safe_substitute(subdict)
-            self.files = set(re.split('\s*,\s*', self.files))
-        else:
-            self.files = string.Template(self.files).safe_substitute({'logdir' : config['logdir']})
-            self.files = set(re.split('\s*,\s*', self.files))
-
-            filelist = []
-            hostnames = set(re.split('\s*,\s*', config['hosts'].strip()))
-            for tmpl in self.files:
+        # Expand application's fileset if many hostsnames are provided
+        if len(hostnames) > 1:
+            filelist = set()
+            for filename in self.files:
                 for host in hostnames:
-                    filename = string.Template(tmpl).safe_substitute({'hostname' : host})
-                    filelist.append(filename)
-                    if tmpl==filename:
-                        break
-            self.files = filelist
-            
+                    filelist.add(string.Template(filename)
+                                 .safe_substitute({'hostname' : host}))
+            self.files = list(filelist)
+
         logger.info('App "{0}" run fileset: {1}'.format(self.name, self.files))
 
         # Read app rules from configuration file. An app is disabled
@@ -498,10 +490,10 @@ class AppLogParser:
                                                       config.options('subreports'), self.rules)
             except lograptor.OptionError as msg:
                 raise lograptor.ConfigError('section "{0}" of "{1}": {2}'
-                                            .format(sect, os.path.basename(self.cfgfile), msg))
+                                            .format(sect, os.path.basename(appcfgfile), msg))
             except configparser.NoOptionError as msg:
                 raise lograptor.ConfigError('No option "{0}" in section "{1}" of configuration '
-                                            'file "{1}"'.format(msg, sect, self.cfgfile))     
+                                            'file "{1}"'.format(msg, sect, appcfgfile))
             self.repitems.append(repitem)
 
         # If 'unparsed' matching is disabled then restrict the set of rules to

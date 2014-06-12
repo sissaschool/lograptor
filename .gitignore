@@ -5,6 +5,7 @@
 *~
 MANIFEST
 lograptor.conf
+etc/lograptor/conf.d/testapp.conf
 !etc/lograptor/lograptor.conf
 exclude-list.txt
 package-build
@@ -14,7 +15,6 @@ build/
 deb_dist/
 dist/
 doc/
-etc/lograptor/conf.d/testapp.conf
 man/*.html
 man/*.gz
 packages/
