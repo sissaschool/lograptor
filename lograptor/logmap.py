@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 This module contains classes and methods to handle a map of log files.
 """

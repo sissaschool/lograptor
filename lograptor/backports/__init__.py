@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 This package contains classes and methods to handle backports
 when Lograptor run in 2.6 environment.

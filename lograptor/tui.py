@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 This module contains functions and classes to manage output on text-based
 user interface (TUI).
@@ -24,8 +25,9 @@ user interface (TUI).
 #
 ##
 
-import sys
 import logging
+import os
+import sys
 
 logger = logging.getLogger('lograptor')
 
@@ -97,6 +99,7 @@ def _getTerminalSize_tput():
 
 
 def _getTerminalSize_linux():
+    env = os.environ
     def ioctl_GWINSZ(fd):
         try:
             import fcntl, termios, struct, os
@@ -107,9 +110,9 @@ def _getTerminalSize_linux():
     cr = ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2)
     if not cr:
         try:
-            fd = os.open(os.ctermid(), os.O_RDONLY)
-            cr = ioctl_GWINSZ(fd)
-            os.close(fd)
+            f = os.open(os.ctermid(), os.O_RDONLY)
+            cr = ioctl_GWINSZ(f.fileno())
+            f.close()
         except:
             pass
     if not cr:

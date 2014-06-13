@@ -36,14 +36,15 @@ import sys
 import itertools
 import fnmatch
 
-import lograptor.configmap
-import lograptor.application
-import lograptor.logheader
-import lograptor.logmap
-import lograptor.timedate
-import lograptor.utils
-import lograptor.report
-import lograptor.tui
+from lograptor.application import AppLogParser
+from lograptor.configmap import ConfigMap
+from lograptor.exceptions import ConfigError, FileMissingError, FormatError, OptionError
+from lograptor.logheader import RFC3164_Header, RFC5424_Header
+from lograptor.logmap import LogMap
+from lograptor.report import Report
+from lograptor.timedate import get_interval, parse_date, parse_last, TimeRange
+from lograptor.tui import ProgressBar
+from lograptor.utils import cron_lock, set_logger
 
 __author__ = "Davide Brunato"
 __copyright__ = "Copyright 2011-2014, SISSA"
@@ -59,64 +60,6 @@ log files. Produces matching outputs and reports.
 
 logger = logging.getLogger('lograptor')
 
-###############################################
-# Lograptor module exceptions
-###############################################
-
-class FormatError(Exception):
-    """
-    This exception is raised when there are errors with the
-    format of syslog file processed.
-    """
-    def __init__(self, message):
-        Exception.__init__(self, message)
-        logger.debug('!FormatError: {0}'.format(message))
-
-class ConfigError(Exception):
-    """
-    This exception is raised when there are errors in a configuration
-    file or when there are misconfiguration problems.
-    """
-    def __init__(self, message):
-        Exception.__init__(self, message)
-        logger.debug('!ConfigError: {0}'.format(message))
-
-
-class OptionError(Exception):
-    """
-    This exception is raised when there is a wrong option values or
-    when there are conflicts between options.
-    """
-    def __init__(self, option, message=None):
-        if message is None:
-            message = 'syntax error for option "{0}"'.format(option)
-        else:
-            message = 'option "{0}": {1}'.format(option,message)
-        Exception.__init__(self, message)
-        logger.debug('!OptionError: {0}'.format(message))
-
-
-class FileMissingError(Exception):
-    """
-    This exception is raised when a file is missing.
-    """
-    def __init__(self, message):
-        Exception.__init__(self, message)
-        logger.debug('!FileMissingError: {0}'.format(message))
-
-
-class FileAccessError(Exception):
-    """
-    This exception is raised when Lograptor has problem to access to a file.
-    """
-    def __init__(self, message):
-        Exception.__init__(self, message)
-        logger.debug('!FileAccessError: {0}'.format(message))
-
-
-###############################################
-# Lograptor main class
-###############################################
 
 class Lograptor:
     """
@@ -130,93 +73,100 @@ class Lograptor:
     # Lograptor default configuration
     default_config = {
         'main': {
-            'cfgdir' : '/etc/lograptor/',
-            'logdir' : '/var/log',
-            'tmpdir' : '/var/tmp',
-            'pidfile' : "/var/run/lograptor.pid",
-            'fromaddr' : 'root@{0}'.format(socket.gethostname()),
-            'smtpserv' : '/usr/sbin/sendmail -t',
-            },
+            'cfgdir': '/etc/lograptor/',
+            'logdir': '/var/log',
+            'tmpdir': '/var/tmp',
+            'pidfile': "/var/run/lograptor.pid",
+            'fromaddr': 'root@{0}'.format(socket.gethostname()),
+            'smtpserv': '/usr/sbin/sendmail -t',
+        },
         'patterns': {
-            'rfc3164_pattern' : r'^(?:<(?P<pri>[0-9]{1,3})>|)'
-                r'(?P<month>[A-Z,a-z]{3}) (?P<day>(?:[1-3]| )[0-9]) '
-                r'(?P<time>[0-9]{2}:[0-9]{2}:[0-9]{2}) '
-                r'(?:last message repeated (?P<repeat>[0-9]{1,3}) times|'
-                r'(?P<host>\S{1,255}) (?P<datamsg>(?P<tag>[^ \[\(\:]{1,32}).*))',
-            'rfc5424_pattern' : r'^(?:<(?P<prix>[0-9]{1,3})>(?P<ver>[0-9]{0,2}) |)'
-                r'(?:-|(?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})T)'
-                r'(?P<time>[0-9]{2}:[0-9]{2}:[0-9]{2})(?:|\.(?P<secfrac>[0-9]{1,6}))'
-                r'(?:Z |(?P<offset>(?:\+|-)[0-9]{2}:[0-9]{2}) )'
-                r'(?:-|(?P<host>\S{1,255})) (?P<datamsg>(?:-|(?P<tag>\S{1,48})) .*)',
-            'dnsname_pattern' : r'((\b[a-zA-Z]\b|\b[a-zA-Z][a-zA-Z0-9\-]*[a-zA-Z0-9]\b)\.)'
-                r'*(\b[A-Za-z]\b|\b[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9]\b)',
-            'ipaddr_pattern' : r'(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.'
-                r'((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))',
-            'email_pattern' : r'\b([\=A-Za-z0-9!$%&*+_~-]+(?:\.[\=A-Za-z0-9!$%&*+_~-]+)*)(@(?:[A-Za-z0-9]'
-                r'(?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)?\b',
-            'username_pattern' : r'\b([A-Za-z0-9!$%&*+_~-]+(?:\.[A-Za-z0-9!$%&*+_~-]+)*)'
-                r'(@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)?\b',
-            'pid_pattern' : r'[0-9]+',
-            },
+            'rfc3164_pattern': r'^(?:<(?P<pri>[0-9]{1,3})>|)'
+                               r'(?P<month>[A-Z,a-z]{3}) (?P<day>(?:[1-3]| )[0-9]) '
+                               r'(?P<time>[0-9]{2}:[0-9]{2}:[0-9]{2}) '
+                               r'(?:last message repeated (?P<repeat>[0-9]{1,3}) times|'
+                               r'(?P<host>\S{1,255}) (?P<datamsg>(?P<tag>[^ \[\(\:]{1,32}).*))',
+            'rfc5424_pattern': r'^(?:<(?P<prix>[0-9]{1,3})>(?P<ver>[0-9]{0,2}) |)'
+                               r'(?:-|(?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})T)'
+                               r'(?P<time>[0-9]{2}:[0-9]{2}:[0-9]{2})(?:|\.(?P<secfrac>[0-9]{1,6}))'
+                               r'(?:Z |(?P<offset>(?:\+|-)[0-9]{2}:[0-9]{2}) )'
+                               r'(?:-|(?P<host>\S{1,255})) (?P<datamsg>(?:-|(?P<tag>\S{1,48})) .*)',
+            'dnsname_pattern': r'((\b[a-zA-Z]\b|\b[a-zA-Z][a-zA-Z0-9\-]*[a-zA-Z0-9]\b)\.)'
+                               r'*(\b[A-Za-z]\b|\b[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9]\b)',
+            'ipaddr_pattern': r'(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.'
+                              r'(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.'
+                              r'((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.'
+                              r'(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))',
+            'email_pattern': r'\b([\=A-Za-z0-9!$%&*+_~-]+'
+                             r'(?:\.[\=A-Za-z0-9!$%&*+_~-]+)*)(@(?:[A-Za-z0-9]'
+                             r'(?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*'
+                             r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)?\b',
+            'username_pattern': r'\b([A-Za-z0-9!$%&*+_~-]+(?:\.[A-Za-z0-9!$%&*+_~-]+)*)'
+                                r'(@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*'
+                                r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)?\b',
+            'pid_pattern': r'[0-9]+',
+        },
         'filters': {
-            'user' : r'${username_pattern}',
-            'from' : r'${email_pattern}',
-            'rcpt' : r'${email_pattern}',
-            'client' : r'(${dnsname_pattern}|${ipaddr_pattern})',
-            'pid' : r'${pid_pattern}',
-            },
+            'user': r'${username_pattern}',
+            'from': r'${email_pattern}',
+            'rcpt': r'${email_pattern}',
+            'client': r'(${dnsname_pattern}|${ipaddr_pattern})',
+            'pid': r'${pid_pattern}',
+        },
         'report': {
-            'title' : '$hostname system events: $localtime',
-            'html_template' : '$cfgdir/report_template.html',
-            'text_template' : '$cfgdir/report_template.txt',
-            },
+            'title': '$hostname system events: $localtime',
+            'html_template': '$cfgdir/report_template.html',
+            'text_template': '$cfgdir/report_template.txt',
+        },
         'subreports': {
-            'logins_report' : 'Logins',
-            'mail_report' : 'Message delivery',
-            'command_report' : 'System commands',
+            'logins_report': 'Logins',
+            'mail_report': 'Message delivery',
+            'command_report': 'System commands',
             'query_report': 'Database & directory lookups',
-            },
+        },
         None: {
-            'method' : None,
-            'notify' : '',
-            'format' : 'plain',
+            'method': None,
+            'notify': '',
+            'format': 'plain',
             # options for mail publisher sections
-            'mailto' : 'root',
-            'include_rawlogs' : False,
-            'rawlogs_limit' : 200,
-            'gpg_encrypt' : False,
-            'gpg_keyringdir' : None,
-            'gpg_recipients' : None,
+            'mailto': 'root',
+            'include_rawlogs': False,
+            'rawlogs_limit': 200,
+            'gpg_encrypt': False,
+            'gpg_keyringdir': None,
+            'gpg_recipients': None,
             # options for file publisher sections
-            'pubdir' : '/var/www/lograptor',
-            'dirmask' : '%Y-%b-%d_%a',
-            'filemask' :'%H%M',
-            'save_rawlogs' : False,
-            'expire_in' : 7,
-            'pubroot' : 'http://localhost/lograptor'
-            },
-        }
+            'pubdir': '/var/www/lograptor',
+            'dirmask': '%Y-%b-%d_%a',
+            'filemask': '%H%M',
+            'save_rawlogs': False,
+            'expire_in': 7,
+            'pubroot': 'http://localhost/lograptor'
+        },
+    }
 
-    def __init__(self, cfgfile=None, options=None, defaults=None, args=[]):
+    def __init__(self, cfgfile=None, options=None, defaults=None, args=None):
         """
         Initialize parameters for lograptor instance and load apps configurations.
-        """            
+        """
 
         # Check arguments. For optional pattern and pathnames (args) checks if are passed
         # with a list. For options try to use them as a dictionary or a class instance.
-        if not isinstance(args, list):
+        if args is None:
+            args = list()
+        elif not isinstance(args, list):
             raise FormatError('Argument "args" must be a list!!')
 
         # Update default configuration values with provided defaults
         if defaults is not None:
             if not isinstance(defaults, dict):
                 raise FormatError('Argument "defaults" must be a dictionary!!')
-            self.default_config.update({'options': defaults })
+            self.default_config.update({'options': defaults})
 
         # Create the lograptor configuration instance, setting configuration from file
         # and options from passed argument.
         try:
-            self.config = configmap.ConfigMap(cfgfile, self.default_config, options)
+            self.config = ConfigMap(cfgfile, self.default_config, options)
         except IOError as e:
             logger.critical('Configuration file {0} missing or not accessible!'.format(cfgfile))
             logger.critical(e)
@@ -243,21 +193,21 @@ class Lograptor:
         
         # Check and initialize the logger if not already defined. If the program is run
         # by cron and is not a debug loglevel set the logging level to 0 (log only critical messages).
-        if (self.config['loglevel'] < 0 or self.config['loglevel'] > 4):
+        if self.config['loglevel'] < 0 or self.config['loglevel'] > 4:
             msg = "wrong logging level! (the value of -d parameter must be in [0..4])"
             raise OptionError('-d', msg)
 
         # Set the logger only if no handler is already defined (from caller method
         # when cfgfile is 4).
         if self.cron and self.config['loglevel'] < 4:
-            lograptor.utils.set_logger(0)
+            set_logger(0)
         else:
-            lograptor.utils.set_logger(self.config['loglevel'])
+            set_logger(self.config['loglevel'])
 
         # Check and initialize pattern options. If both options -e and -f options provided
         # exit with error. Try to set the pattern also if neither -e and -f options are provided.
         if self.config['pattern'] is not None and self.config['pattern_file'] is not None:
-            msg ="mutually exclusive options!!"
+            msg = "mutually exclusive options!!"
             raise OptionError('-e, -f', msg)
 
         if self.config['pattern_file'] is not None:
@@ -318,16 +268,16 @@ class Lograptor:
             else:
                 diff = 86400    # 24h = 86400 seconds
             self.fin_datetime, self.ini_datetime = \
-                timedate.get_interval(int(time.time()), diff, 3600)
+                get_interval(int(time.time()), diff, 3600)
         else:
             try:
-                diff = timedate.parse_last(period)
+                diff = parse_last(period)
                 logger.debug('Option --last: {0}'.format(period))    
                 self.fin_datetime, self.ini_datetime = \
-                    timedate.get_interval(int(time.time()), diff, 3600)
+                    get_interval(int(time.time()), diff, 3600)
             except TypeError:
                 try:
-                    self.ini_datetime, self.fin_datetime = timedate.parse_date(period)
+                    self.ini_datetime, self.fin_datetime = parse_date(period)
                     logger.debug('Option --date: {0}'.format(period))
                 except TypeError:
                     raise OptionError('--date/--last')
@@ -339,7 +289,7 @@ class Lograptor:
         if self.config['timerange'] is not None:
             logger.debug('Option --tr/--time-range: {0}'.format(self.config['timerange']))    
             try:                
-                self.config['timerange'] = timedate.TimeRange(self.config['timerange'])
+                self.config['timerange'] = TimeRange(self.config['timerange'])
             except ValueError:
                 msg = "format error!! Use: --tr=HH:MM,HH:MM"
                 raise OptionError('--tr/--time-range', msg)
@@ -350,7 +300,7 @@ class Lograptor:
             raise OptionError('-c/--count, -q/--quiet', msg)
 
         # Check -m/--max-count option 
-        if self.config['max_count'] is not None and self.config['max_count']<=0:
+        if self.config['max_count'] is not None and self.config['max_count'] <= 0:
             msg = "must be a positive integer!"
             raise OptionError('-m/--max-count', msg)
 
@@ -379,7 +329,7 @@ class Lograptor:
         # without a scope). The fourth case is the classical grep output (
         # output of matching lines).
         if self.cron:
-            utils.cron_lock(self.config['pidfile'])
+            cron_lock(self.config['pidfile'])
             logger.info('Cron mode: disabling output and status')
             self._output = self._outstatus = False
         elif self.config['quiet'] and self.config['report']:
@@ -394,7 +344,7 @@ class Lograptor:
             logger.info('Count option provided: disabling output and status')
             self._output = False
             self._outstatus = False
-        elif self.filters is None and len(self.patterns)==0:
+        elif self.filters is None and len(self.patterns) == 0:
             self._output = not self.config['report']
             self._outstatus = self.config['report']
         else:
@@ -434,8 +384,8 @@ class Lograptor:
 
         # Set the headers iterator.
         # TODO: extend with modules for other formats
-        headers = [lograptor.logheader.RFC3164_Header(self.config['rfc3164_pattern']),
-                   lograptor.logheader.RFC5424_Header(self.config['rfc5424_pattern'])]
+        headers = [RFC3164_Header(self.config['rfc3164_pattern']),
+                   RFC5424_Header(self.config['rfc5424_pattern'])]
         self.headers = itertools.cycle(headers)    
         self._num_headers = len(headers)
         self._header = next(self.headers)
@@ -450,12 +400,12 @@ class Lograptor:
         # Initalize app parser class and load applications. After applications
         # reassign configuration parameter with the effecti
         if self.config['apps'] is not None:
-            application.AppLogParser.set_options(self.config, self.filters)
+            AppLogParser.set_options(self.config, self.filters)
             self._load_applications()
             if self.config['filters'] is not None:
                 if all([not app.has_filters for key, app in self.apps.items()]):
                     msg = 'No app\'s rules compatible with provided filters!'
-                    raise lograptor.OptionError("-F", msg)
+                    raise OptionError("-F", msg)
                 self.config['apps'] = u', '.join([
                     appname for appname, app in self.apps.items() if app.has_filters
                 ])
@@ -467,7 +417,7 @@ class Lograptor:
 
         # Initialize the report object if the option is enabled
         if self.config['report'] is not None:
-            self.report = report.Report(self.apps, self.config)
+            self.report = Report(self.apps, self.config)
 
         # Create and configure the log base object, with the list of files to scan.
         # If a list of path is passed as argument, use it and ignore the <files>
@@ -475,13 +425,21 @@ class Lograptor:
         # regexp objects for specific patterns of enabled apps. At the end
         # set an ordered-by-priority list of enabled apps.
         logger.info('Configure log base iterator')
-        self.logmap = logmap.LogMap(self.ini_datetime, self.fin_datetime)
+        self.logmap = LogMap(self.ini_datetime, self.fin_datetime)
         if len(args) > 0:
             self.logmap.add("*", args)
         else:
             for key in self.apps:
                 app = self.apps[key]
                 self.logmap.add(app.name, app.files, app.priority)
+
+        # Set class instance variables for processing
+        self._count = self.config['count']
+        self._max_count = self.config['max_count']
+        self._first_event = self._last_event = None
+        self._debug = (self.config['loglevel'] == 4)
+        self._thread = self.config['thread']
+        self._useapps = self.config['apps'] is not None
 
     def get_applist(self):
         """
@@ -527,13 +485,13 @@ class Lograptor:
         # Load applications's configurations
         logger.debug('Load app set: {0}'.format(appset))
         for app in appset:
-            cfgfile = os.path.join(self.appscfgdir, "".join([app,".conf"]))
+            cfgfile = os.path.join(self.appscfgdir, "".join([app, ".conf"]))
             if not os.path.isfile(cfgfile):
                 logger.error('Skip app "{0}": no configuration file!!'.format(app))
                 continue
 
             try:
-                self.apps[app] = application.AppLogParser(app, cfgfile, self.config)
+                self.apps[app] = AppLogParser(app, cfgfile, self.config)
             except (ConfigError, FormatError) as err:
                 logger.error('Skip app "{0}": {1}'.format(app, err))
                 continue
@@ -559,7 +517,7 @@ class Lograptor:
             raise ConfigError('No application configured and enabled! Exiting ...')
 
         # Set the list of apps, ordered by (priority, name)
-        self.applist = sorted(self.apps, key=lambda x:(self.apps[x].priority,x))
+        self.applist = sorted(self.apps, key=lambda x: (self.apps[x].priority, x))
 
         # Set the tagmap dictionary for mapping syslog app-name --> app
         for app in self.applist:
@@ -593,17 +551,14 @@ class Lograptor:
         print("Configuration directory: {0}".format(self.config['cfgdir']))
         print("Enabled applications: {0}".format(', '.join(self.apps.keys())))
         print("Disabled applications: {0}".format(', '.join([
-            app for app in self.get_applist() if app not in self.apps
-            ])))
+            app for app in self.get_applist() if app not in self.apps])))
         print("Available filters: {0}".format(', '.join([
-            opt for opt in self.config.options('filters')
-            ])))
+            opt for opt in self.config.options('filters')])))
         print("Report HTML template file: {0}".format(self.config['html_template']))
         print("Report plain text template file: {0}".format(self.config['text_template']))
-        self.report = report.Report(self.apps, self.config)
+        self.report = Report(self.apps, self.config)
         print("Subreports: {0}".format(', '.join([
-            subreport.name for subreport in self.report.subreports
-            ])))
+            subreport.name for subreport in self.report.subreports])))
         print("Report publishers: {0}".format(', '.join([
             pub[:-10] for pub in self.config.parser.sections()
             if pub.endswith('_publisher')])))
@@ -619,24 +574,16 @@ class Lograptor:
         # Local variables
         apps = self.apps
         config = self.config
+        make_report = self.config['report']
         _output = self._output
         _out_filenames = self._out_filenames
         _outstatus = self._outstatus
-        _process_logfile = self._process_logfile
+        process_logfile = self.process_logfile
         tot_files = tot_lines = tot_counter = 0
         logfiles = []
-        
-        # Class instance internal variables for processing
-        self._count = config['count']
-        self._max_count = config['max_count']
-        self._counter = 0
-        self._first_event = self._last_event = None
-        self._debug = (config['loglevel'] == 4)
-        self._thread = config['thread']
-        self._useapps = config['apps'] is not None
 
         # Create temporary file for matches rawlog
-        if config['report'] and self.report.need_rawlogs():
+        if make_report and self.report.need_rawlogs():
             self.mktempdir()
             self.rawfh = tempfile.NamedTemporaryFile(mode='w+', delete=False)
             logger.info('RAW strings file created in "{0}"'.format(self.rawfh.name))
@@ -644,11 +591,9 @@ class Lograptor:
         # Iter between log files. The iteration use the log files modified between the
         # initial and the final date, skipping the other files.
         for (logfile, applist) in self.logmap:
-            self._num_files = self._num_lines = 0
-            
             logger.info('Process log {0} for apps {1}.'.format(logfile, applist))
             
-            if ((_output and _out_filenames is None) or _outstatus):
+            if _outstatus or (_output and _out_filenames is None):
                 print('\n*** Filename: {0} ***'.format(logfile))
             if self.rawfh is not None and _out_filenames is None:
                 self.rawfh.write('\n*** Filename: {0} ***\n'.format(logfile))
@@ -659,33 +604,33 @@ class Lograptor:
 
             try:
                 logfile = fileinput.input(logfile, openhook=fileinput.hook_compressed)
-                _process_logfile(logfile, applist)
+                num_files, counter = process_logfile(logfile, applist)
+
+                logfiles.append(logfile.filename())
+
+                tot_files += num_files
+                tot_lines += logfile.lineno()
+                tot_counter += counter
+
+                if self._thread:
+                    for app in applist:
+                        try:
+                            apps[app].purge_unmatched_threads()
+                        except UnboundLocalError:
+                            break
+
+                # If option count is enabled print number of
+                # matching lines for each file.
+                if self._count:
+                    print('{0}: {1}'.format(logfile.filename(), counter))
+
             except IOError as msg:    
                 if not config['no_messages']:
                     logger.error(msg)
 
-            logfiles.append(logfile.filename())
-                    
-            logger.info('Processed {0} files.'.format(self._num_files))            
-            tot_files += self._num_files
-            tot_lines += logfile.lineno()
-            tot_counter += self._counter
-
-            if self._thread:
-                for app in applist:
-                    try:
-                        apps[app].purge_unmatched_threads()
-                    except UnboundLocalError:
-                        break
-
-            # If option count is enabled print number of
-            # matching lines for each file.
-            if self._count:
-                print('{0}: {1}'.format(logfile.filename(), self._counter))
-  
             logfile.close()
 
-        if tot_files==0:
+        if tot_files == 0:
             raise FileMissingError("\nNo file found in the datetime interval [{0}, {1}]!!"
                                    .format(self.ini_datetime, self.fin_datetime))
 
@@ -693,7 +638,7 @@ class Lograptor:
         logger.info('Total log lines processed: {0}'.format(tot_lines))
 
         # Final report processing: purge all unmatched threads and set time stamps
-        if self.config['report']:
+        if make_report:
             try:
                 starttime = datetime.datetime.fromtimestamp(self._first_event)
                 endtime = datetime.datetime.fromtimestamp(self._last_event)
@@ -702,18 +647,18 @@ class Lograptor:
                 
             self.report.set_stats(
                 {
-                    'starttime'  : starttime,
-                    'endtime'    : endtime,
-                    'totalfiles' : tot_files,
-                    'totallines' : tot_lines,
-                    'logfiles'   : ', '.join(logfiles)
+                    'starttime': starttime,
+                    'endtime': endtime,
+                    'totalfiles': tot_files,
+                    'totallines': tot_lines,
+                    'logfiles': ', '.join(logfiles)
                 })
             if self.rawfh is not None:
                 self.rawfh.close()
         
-        return tot_counter>0
+        return tot_counter > 0
 
-    def _process_logfile(self, logfile, applist):
+    def process_logfile(self, logfile, applist):
         """
         Process a single log file.
 
@@ -740,10 +685,11 @@ class Lograptor:
         patterns = self.patterns
         thread = self._thread
         output = self._output
-        invert = self.config['invert']
-        match_unparsed = self.config['unparsed']
-        report = self.config['report']
-        timerange = self.config['timerange']
+        config = self.config
+        invert = config['invert']
+        match_unparsed = config['unparsed']
+        make_report = config['report']
+        timerange = config['timerange']
 
         # Other local variables for the file lines iteration
         prev_match = None
@@ -752,14 +698,19 @@ class Lograptor:
 
         hostlist = []
         counter = 0
-        
+        num_files = 0
+
+        readsize = 0
+        progressbar = None
+        pattern_search = False
+        filter_match = False
+
         ini_datetime = time.mktime(self.ini_datetime.timetuple())
         fin_datetime = time.mktime(self.fin_datetime.timetuple())
-        if report:
-            first_event = self._first_event
-            last_event = self._last_event
+        first_event = self._first_event
+        last_event = self._last_event
 
-        all_hosts_flag = self.config.is_default('hosts')
+        all_hosts_flag = config.is_default('hosts')
         prefout = ''
         
         for line in logfile:
@@ -767,14 +718,14 @@ class Lograptor:
             # Counters and status
             filelineno = logfile.filelineno()
             if filelineno == 1:
-                self._num_files += 1
+                num_files += 1
                 prefout = '{0}: '.format(logfile.filename()) if self._out_filenames else ''
 
                 fstat = os.fstat(logfile.fileno())
                 self._header.set_file_mtime(fstat.st_mtime)
                 
                 if outstatus and not debug:
-                    progressbar = tui.ProgressBar(sys.stdout, fstat.st_size, "lines parsed")
+                    progressbar = ProgressBar(sys.stdout, fstat.st_size, "lines parsed")
                     readsize = len(line)
                     progressbar.redraw(readsize, filelineno)
             else:    
@@ -787,7 +738,8 @@ class Lograptor:
             match = parser.search(line)
 
             if match is None:
-                if debug: logger.debug("Change header parser")
+                if debug:
+                    logger.debug("Change header parser")
                 for i in range(num_headers):
                     nextheader = headers.next()
                     if i != num_headers:
@@ -807,11 +759,20 @@ class Lograptor:
             if debug:
                 logger.debug(debug_fmt.format(year, month, day, ltime, repeat, host, tag))
 
+            # Converts event time into a timestamp from Epoch to speed-up comparisons
+            hour = ltime[:2]
+            minute = ltime[3:5]
+            second = ltime[6:]
+            event_time = time.mktime((int(year), int(month), int(day),
+                                      int(hour), int(minute), int(second),
+                                      0, 0, -1))
+
             # Process first 'last message repeated N times' log line only
             # according to the previous match, to avoid oversights. 
             if repeat is not None:
                 if prev_match is not None:
-                    if debug: logger.debug('Repetition: {0}'.format(line[:-1]))
+                    if debug:
+                        logger.debug('Repetition: {0}'.format(line[:-1]))
                     tag = prev_match.group('tag')
                     app = tagmap[tag]
                     app.increase_last(repeat)
@@ -821,27 +782,22 @@ class Lograptor:
                 continue
             prev_match = None
 
-            # Converts event time into a timestamp from Epoch to speed-up comparisons
-            hour = ltime[:2]
-            minute = ltime[3:5]
-            second = ltime[6:]
-            event_time = time.mktime((int(year), int(month), int(day),
-                                      int(hour), int(minute), int(second),
-                                      0, 0, -1))
-
             # Skip line if the event is older than the initial datetime of the range
             if event_time < ini_datetime:
-                if debug: logger.debug('Skip older line: {0}'.format(line[:-1]))
+                if debug:
+                    logger.debug('Skip older line: {0}'.format(line[:-1]))
                 continue
 
             # Break the cycle if event is newer than final datetime of the range
             if event_time > fin_datetime:
-                if debug: logger.debug('Newer line, skip the rest of the file: {0}'.format(line[:-1]))
+                if debug:
+                    logger.debug('Newer line, skip the rest of the file: {0}'.format(line[:-1]))
                 break
 
             # Skip line not in timerange, when option is provided.
             if timerange is not None and not timerange.between(ltime):
-                if debug: logger.debug('Skip line not in timerange: {0}'.format(line[:-1]))
+                if debug:
+                    logger.debug('Skip line not in timerange: {0}'.format(line[:-1]))
                 continue
             
             # Skip lines not related to examined hosts
@@ -851,14 +807,16 @@ class Lograptor:
                         hostlist.append(host)
                         break
                 else:
-                    if debug: logger.debug('Skip the line of not selected hosts'.format(line[:-1]))
+                    if debug:
+                        logger.debug('Skip the line of not selected hosts'.format(line[:-1]))
                     continue
 
             # Skip lines not related to enabled apps, provided by option
             # or by configuration
             if useapps:
                 if tag not in tagmap:
-                    if debug: logger.debug('Skip line of another application ({0})'.format(tag))
+                    if debug:
+                        logger.debug('Skip line of another application ({0})'.format(tag))
                     continue
                 app = tagmap[tag]
 
@@ -874,22 +832,25 @@ class Lograptor:
                         break                 
                 else:
                     if not thread:
-                        if debug: logger.debug('Unmatched line: {0}'.format(line[:-1]))
+                        if debug:
+                            logger.debug('Unmatched line: {0}'.format(line[:-1]))
                         continue
                     pattern_search = False
             elif invert:
                 if not thread:
-                    if debug: logger.debug('Unmatched line: {0}'.format(line[:-1]))
+                    if debug:
+                        logger.debug('Unmatched line: {0}'.format(line[:-1]))
                     continue
                 pattern_search = False
-            
+
             # Log message parsing (with config app's rules)
             if useapps:
                 result, filter_match, app_thread = app.process(host, datamsg, debug)
                 if not result:
                     # Log message unparsable by app rules
                     if not match_unparsed:
-                        if debug: logger.debug('Unparsable line: {0}'.format(line[:-1]))
+                        if pattern_search and debug:
+                            logger.debug('Unparsable line: {0}'.format(line[:-1]))
                         continue
                 elif match_unparsed:
                     # Log message parsed but match_unparsed option
@@ -897,11 +858,12 @@ class Lograptor:
                 elif app_thread is not None:
                     app.cache.add_line(line, app_thread, pattern_search, filter_match, event_time)
                 elif not filter_match and app.has_filters:
-                    if debug: print('Filtered line: {0}'.format(line[:-1]))
+                    if pattern_search and debug:
+                        print('Filtered line: {0}'.format(line[:-1]))
                     continue
                 
                 # Handle timestamps for report
-                if report:
+                if make_report:
                     if first_event is None:
                         first_event = event_time
                         last_event = event_time
@@ -923,8 +885,10 @@ class Lograptor:
                         counter += apps[app].cache.flush_old_cache(output, prefout, event_time)                        
             else:
                 counter += 1
-                if debug: logger.debug('Matched line: {0}'.format(line[:-1]))
-                if output: print('{0}{1}'.format(prefout, line), end='')
+                if debug:
+                    logger.debug('Matched line: {0}'.format(line[:-1]))
+                if output:
+                    print('{0}{1}'.format(prefout, line), end='')
 
             # Write line to raw file if provided by option
             if rawfh is not None:
@@ -945,11 +909,11 @@ class Lograptor:
 
         # Save modificable class variables
         self._header = header
-        self._counter = counter
-        if report:
+        if make_report:
             self._first_event = first_event
             self._last_event = last_event
-            
+        return num_files, counter
+
     def make_report(self):
         """
         Create the report based on the result of Lograptor run
@@ -964,7 +928,7 @@ class Lograptor:
                 
     def publish_report(self):
         """
-        Publish the report.
+        Publish the report
         """
         self.report.publish(self.rawfh)
 
@@ -976,8 +940,8 @@ class Lograptor:
 
         tmpdir = self.config['tmpdir']
         logger.debug('tmpdir={0}'.format(tmpdir))
-        if tmpdir != "": tempfile.tempdir = tmpdir
-
+        if tmpdir != "":
+            tempfile.tempdir = tmpdir
         logger.info('Creating a safe temporary directory')
         tmpprefix = tempfile.mkdtemp('.LOGRAPTOR')
         

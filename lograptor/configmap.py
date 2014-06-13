@@ -1,5 +1,7 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
-This module contains classes and methods to handle Lograptor environment variables.
+This module contains classes and methods to handle Lograptor configurations.
 """
 ##
 # Copyright (C) 2012-2014 by SISSA and Davide Brunato
@@ -44,7 +46,7 @@ except ImportError:
     # Backport for Python 2.4-2.6 (from PyPI)
     from lograptor.backports.ordereddict import OrderedDict
 
-from lograptor.__init__ import ConfigError, OptionError
+from lograptor.exceptions import ConfigError, FileMissingError, FormatError
 
 
 logger = logging.getLogger('lograptor')
@@ -75,11 +77,10 @@ class ConfigMap(UserDict):
         try:
             if not os.path.isfile(cfgfile):
                 msg = "Configuration file {0} not found!".format(cfgfile)
-                raise OptionError('cfgfile', msg)
+                raise FileMissingError(msg)
             self.parser.read(cfgfile)
         except configparser.ParsingError:
-            raise FormatError('Could not parse configuration file {0}'
-                              .format(self.data['cfgfile']))
+            raise FormatError('Could not parse configuration file %s!' % cfgfile)
 
         # Read configuration from file
         logger.debug('Reading other entries from configuration file')
@@ -184,7 +185,7 @@ class ConfigMap(UserDict):
         else:
             raise KeyError('Option "{0}" is not in defaults'.format(option))
 
-    def get(self, section, option):
+    def getstr(self, section, option):
         """
         Get an option from a section of configuration file
         """

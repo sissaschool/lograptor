@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 This module is used to publish the report produced by a run of
 Lograptor instance.
@@ -26,14 +28,15 @@ Lograptor instance.
 
 import os
 import re
-import socket
 import time
 import shutil
 import logging
 
 from string import Template
 
-import lograptor
+from lograptor import __version__
+from lograptor.exceptions import ConfigError
+from lograptor.utils import mail_sendmail, mail_smtp, do_chunked_gzip
 
 logger = logging.getLogger('lograptor')
 
@@ -46,9 +49,9 @@ class MailPublisher:
     name = 'Mail Publisher'
     
     def __init__(self, sec, config):
-        self.section   = sec
-        self.fromaddr  = config['fromaddr']
-        self.smtpserv  = config['smtpserv']
+        self.section = sec
+        self.fromaddr = config['fromaddr']
+        self.smtpserv = config['smtpserv']
         
         self.mailto = list(set(re.split('\s*,\s*', config.get(sec,'mailto'))))
         logger.debug('Recipients list ={0}'.format(self.mailto))
@@ -122,7 +125,7 @@ class MailPublisher:
                 import io
                 out = io.StringIO()  
             
-            lograptor.utils.do_chunked_gzip(rawfh, out, filename='raw.log.gz')
+            do_chunked_gzip(rawfh, out, filename='raw.log.gz')
             out.seek(0, os.SEEK_END)
             size = out.tell()
             
@@ -239,7 +242,7 @@ class MailPublisher:
 
         root_part['Subject'] = title
         root_part['To'] = ', '.join(self.mailto)
-        root_part['X-Mailer'] = lograptor.__version__
+        root_part['X-Mailer'] = __version__
         
         logger.debug('Creating the message as string')
         msg = root_part.as_string()
@@ -251,9 +254,9 @@ class MailPublisher:
         logger.info('Figuring out if we are using sendmail or smtplib')
 
         if re.compile('^/').search(self.smtpserv):
-            lograptor.utils.mail_sendmail(self.smtpserv, msg)
+            mail_sendmail(self.smtpserv, msg)
         else:   
-            lograptor.utils.mail_smtp(self.smtpserv, self.fromaddr, self.mailto, msg)
+            mail_smtp(self.smtpserv, self.fromaddr, self.mailto, msg)
 
         print('Mailed the report to: {0}'.format(','.join(self.mailto)))
 
@@ -276,12 +279,12 @@ class FilePublisher:
         try: 
             self.dirname = time.strftime(dirmask, time.localtime())
         except: 
-            raise lograptor.ConfigError(maskmsg.format('dirmask', dirmask))
+            raise ConfigError(maskmsg.format('dirmask', dirmask))
 
         try: 
             self.filename = time.strftime(filemask, time.localtime())
         except: 
-            lograptor.ConfigError(maskmsg.format('filemask', filemask))
+            ConfigError(maskmsg.format('filemask', filemask))
 
         self._prune_old(self.pubdir, dirmask, expire)
         self.pubdir = os.path.join(self.pubdir, self.dirname)
@@ -311,7 +314,7 @@ class FilePublisher:
                 logger.debug('pubroot={0}'.format(self.pubroot))
             except:
                 msg = 'File publisher requires a pubroot when notify is set'
-                raise lograptor.ConfigError(msg)
+                raise ConfigError(msg)
         
         logger.debug('path={0}'.format(self.pubdir))
         logger.debug('filename={0}'.format(self.filename))
@@ -395,15 +398,15 @@ class FilePublisher:
 
             eml['Subject'] = '{0} (report notification)'.format(title)
             eml['To'] = ', '.join(self.notify)
-            eml['X-Mailer'] = lograptor.__version__
+            eml['X-Mailer'] = __version__
 
             msg = eml.as_string()
 
             logger.info('Figuring out if we are using sendmail or smtplib')
             if self.smtpserv[0] == '/':
-                lograptor.utils.mail_sendmail(self.smtpserv, msg)
+                mail_sendmail(self.smtpserv, msg)
             else:
-                lograptor.utils.mail_smtp(self.smtpserv, self.fromaddr, self.notify, msg)
+                mail_smtp(self.smtpserv, self.fromaddr, self.notify, msg)
 
             print('Notification mailed to: {0}'.format(','.join(self.notify)))
 
@@ -413,7 +416,7 @@ class FilePublisher:
 
             logger.info('Gzipping logs and writing them to {0}'.format(logfilen))
             outfh = open(logfile, 'w+b')
-            lograptor.utils.do_chunked_gzip(rawfh, outfh, logfilen)
+            do_chunked_gzip(rawfh, outfh, logfilen)
             outfh.close()
             print('Gzipped logs saved in: {0}'.format(self.pubdir))
         

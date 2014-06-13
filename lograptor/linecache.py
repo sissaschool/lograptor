@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 This module contains class to handle log line caching for Lograptor's
 application class instances.
@@ -49,7 +50,7 @@ class CacheEntry:
         self.start_time = self.end_time = event_time
 
 
-class LineCache(UserDict):
+class LineCache:
     """
     A class to manage line caching
     """
@@ -92,8 +93,8 @@ class LineCache(UserDict):
                             print('{0}{1}'.format(prefix, line), end='')
                         print('--')
                     cache[thread].buffer = []
-            if (abs(event_time - cache[thread].end_time) > 3600):
-                del self[thread]
+            if abs(event_time - cache[thread].end_time) > 3600:
+                del cache[thread]
         return counter
     
     def flush_old_cache(self, output, prefix, event_time=None):
@@ -117,5 +118,5 @@ class LineCache(UserDict):
                         for line in cache[thread].buffer:
                             print('{0}{1}'.format(prefix, line), end='')
                         print('--')
-                del self[thread]
+                del cache[thread]
         return counter

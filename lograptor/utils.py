@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 This module contains various utility functions for Lograptor.
 """
@@ -68,8 +69,8 @@ def cron_lock(pidfile, mode=0o777):
             msg = "Another Epylog process seems to be running, PID {0}."
             sys.exit(msg.format(pid))
     else:
-        os.write(fd, mypid)
-        os.close(fd)
+        os.write(fd.fileno(), mypid)
+        os.close(fd.fileno())
 
 
 def cron_unlock(pidfile):

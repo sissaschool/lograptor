@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 Module to manage Lograptor applications
 """
@@ -45,7 +47,7 @@ except ImportError:
 try:
     import pwd
 except ImportError:
-    pass
+    pwd = None
 
 import lograptor.report
 import lograptor.linecache
@@ -77,7 +79,7 @@ class AppRule:
     _known_hosts = {}
     _known_uids = {}
 
-    def __init__(self, name, pattern, is_filter, thread_matching):
+    def __init__(self, name, pattern, is_filter):
         """
         Initialize AppRule. Arguments passed include:
 
@@ -98,11 +100,11 @@ class AppRule:
         self.is_filter = is_filter
         self.used_by_report = False
         
-        self.key_gids = [ 'hostname' ]
+        key_gids = ['hostname']
         for gid in self.regexp.groupindex:
             if gid != 'hostname':
-                self.key_gids.append(gid)
-        self.key_gids = tuple(self.key_gids)
+                key_gids.append(gid)
+        self.key_gids = tuple(key_gids)
 
         if not self.key_gids:
             raise lograptor.ConfigError("Rule gids set empty!")
@@ -132,7 +134,7 @@ class AppRule:
         for gid in self.key_gids[1:]:
             if ip_lookup and (gid == 'client' or gid == 'ipaddr'):
                 idx.append(self.gethost(match.group(gid)))
-            elif uid_lookup and (gid == 'user' or gid== 'uid'):
+            elif uid_lookup and (gid == 'user' or gid == 'uid'):
                 idx.append(self.getuname(match.group(gid)))
             else:
                 idx.append(match.group(gid))
@@ -154,8 +156,9 @@ class AppRule:
         """
         # Handle silly fake ipv6 addresses
         try:
-            if ip_addr[:7] == '::ffff:': ip_addr = ip_addr[7:]
-        except:
+            if ip_addr[:7] == '::ffff:':
+                ip_addr = ip_addr[7:]
+        except TypeError:
             pass
 
         if ip_addr[0] in string.letters:
@@ -186,7 +189,7 @@ class AppRule:
 
         try:
             name = pwd.getpwuid(uid)[0]
-        except KeyError:
+        except (KeyError, AttributeError):
             name = "uid=%d" % uid
 
         self._known_uids[uid] = name
@@ -209,10 +212,8 @@ class AppRule:
 
         if cond == "*" and valfld is None:
             return sum(results.values())
+        val = self.key_gids.index(valfld) if valfld is not None else None
 
-        if valfld is not None:
-            val = self.key_gids.index(valfld)
-        
         if cond == "*":
             tot = 0
             for key in results:
@@ -247,22 +248,22 @@ class AppRule:
             if value is None:
                 return
 
-            for i in range(num):
-                if top[i] is None:
-                    top[i] = [tot, [value]]
+            for j in range(num):
+                if top[j] is None:
+                    top[j] = [tot, [value]]
                     break
-                elif tot == top[i][0]:
-                    top[i][1].append(value)
+                elif tot == top[j][0]:
+                    top[j][1].append(value)
                     break
-                elif tot > top[i][0]:
-                    top.insert(i,[tot, [value]])
+                elif tot > top[j][0]:
+                    top.insert(j, [tot, [value]])
                     break
 
         if not self.results:
             return []
 
         results = self.results        
-        top = [None for i in range(num)]
+        top = [None] * num
         pos = self.key_gids.index(gid)
 
         # Compute top(max) if a value fld is provided
@@ -270,20 +271,20 @@ class AppRule:
             val = self.key_gids.index(valfld)
             if usemax:
                 i = 0 
-                for key in sorted(results.keys(), key=lambda x:(int(x[val]),x[pos]),\
+                for key in sorted(results.keys(), key=lambda x: (int(x[val]), x[pos]),
                                   reverse=True)[:num]:
-                    top[i] = [int(key[val]),[key[pos]]]
+                    top[i] = [int(key[val]), [key[pos]]]
                     i += 1
                 return [res for res in top if res is not None]
                 
         value = None
-        for key in sorted(results.keys(), key=lambda x:(x[pos])):
+        tot = 0
+        for key in sorted(results.keys(), key=lambda x: (x[pos])):
             if value is None or value != key[pos]:
                 classify()
                 value = key[pos]
                 tot = results[key] if valfld is None else results[key] * int(key[val])
                 continue
-            
             tot += results[key] if valfld is None else results[key] * int(key[val])
         else:
             classify()
@@ -303,12 +304,12 @@ class AppRule:
             row = list(def_row)
             
             j = 0
-            for i in range(cols):
-                if row[i] is None:
+            for n in range(cols):
+                if row[n] is None:
                     if j == kl:                        
-                        row[i] = tabvalues
+                        row[n] = tabvalues
                     else:
-                        row[i] = tabkey[j]
+                        row[n] = tabkey[j]
                     j += 1
             events.append(row)
             
@@ -318,13 +319,16 @@ class AppRule:
         results = self.results
         events = []
         pos = [self.key_gids.index(gid) for gid in fields if gid[0] != '"']
+        has_cond = cond != "*"
 
-        if cond != "*":
+        if has_cond:
             match = re.search("(\w+)(!=|==)\"([^\"]*)\"", cond)
             condpos = self.key_gids.index(match.group(1))
             invert = (match.group(2) == '!=')
             recond = re.compile(match.group(3))
-                        
+        else:
+            recond = condpos = None
+
         kl = len(pos) - (len(fields) - cols) - 1
         
         def_row = []
@@ -335,9 +339,9 @@ class AppRule:
                 def_row.append(None)
 
         tabkey = None
-        
-        for key in sorted(results, key=lambda x:x[pos[0]]):
-            if cond != "*":
+        tabvalues = []
+        for key in sorted(results, key=lambda x: x[pos[0]]):
+            if has_cond:
                 match = recond.search(key[condpos])
                 if ((match is None) and not invert) or ((match is not None) and invert):
                     continue
@@ -346,7 +350,6 @@ class AppRule:
                 if tabkey is not None:
                     insert_row()
                 tabkey = [key[pos[i]] for i in range(kl)]
-                tabvalues = []
 
             value = [key[k] for k in pos[kl:]]
             value.append(results[key])
@@ -403,7 +406,7 @@ class AppLogParser:
         AppLogParser._no_filter_keys = tuple([
             key for key in config.options('filters')
             if key not in AppLogParser._filter_keys
-            ])
+        ])
         AppLogParser._report = config['report']
         AppLogParser._thread = config['thread']
         AppLogParser._unparsed = config['unparsed']
@@ -431,10 +434,10 @@ class AppLogParser:
         # Setting other instance internal variables for process phase
         self._last_rule = self._last_idx = None
 
-        extra_options={ 'appname': self.name, 'logdir' : config['logdir'] }
+        extra_options = {'appname': self.name, 'logdir': config['logdir']}
         hostnames = list(set(re.split('\s*,\s*', config['hosts'].strip())))
         if len(hostnames) == 1:
-            extra_options.update({'hostname' : hostnames[0]})
+            extra_options.update({'hostname': hostnames[0]})
 
         appconfig = lograptor.configmap.ConfigMap(appcfgfile, self.default_config, extra_options)
 
@@ -460,7 +463,7 @@ class AppLogParser:
             for filename in self.files:
                 for host in hostnames:
                     filelist.add(string.Template(filename)
-                                 .safe_substitute({'hostname' : host}))
+                                 .safe_substitute({'hostname': host}))
             self.files = list(filelist)
 
         logger.info('App "{0}" run fileset: {1}'.format(self.name, self.files))
@@ -470,7 +473,7 @@ class AppLogParser:
         logger.debug('Load rules for app "{0}"'.format(self.name))
         try:
             rules = appconfig.parser.items('rules')
-        except configparser.NoSectionError as err:
+        except configparser.NoSectionError:
             raise lograptor.ConfigError('No section [rules] in config file of app "{0}"'.format(self.name))
         if not rules:
             msg = 'No rules for app "{0}": application must have at least a rule!'
@@ -503,12 +506,12 @@ class AppLogParser:
             self.rules = [
                 rule for rule in self.rules
                 if rule.is_filter or rule.used_by_report or
-                   (self._thread and 'thread' in rule.regexp.groupindex)
-                ]
+                (self._thread and 'thread' in rule.regexp.groupindex)
+            ]
         
         # If the app has filters, reorder rules putting filters first.
         if self.has_filters:
-            self.rules = sorted(self.rules, key=lambda x:not x.is_filter)
+            self.rules = sorted(self.rules, key=lambda x: not x.is_filter)
 
         logger.info('Valid filters for app "{0}": {1}'
                     .format(self.name, len([rule.name for rule in self.rules if rule.is_filter])))
@@ -525,8 +528,8 @@ class AppLogParser:
         """
         for option, pattern in rules:
             # Check the rule's pattern
-            if ((pattern[0] == '"' and pattern[-1] == '"') or
-                (pattern[0] == '\'' and pattern[-1] == '\'')):
+            if (pattern[0] == '"' and pattern[-1] == '"') or \
+                    (pattern[0] == '\'' and pattern[-1] == '\''):
                 pattern = pattern[1:-1]
                 
             if len(pattern) == 0:
@@ -536,7 +539,6 @@ class AppLogParser:
 
             # Iterate over filter list. Each item is a set of filtering rules
             # to be applied with AND logical operator.
-            rule_added = False
             for filter_group in self._filters:
                 new_pattern = pattern
                 filter_keys = list()
@@ -556,7 +558,7 @@ class AppLogParser:
                         new_pattern = string.Template(new_pattern).safe_substitute({opt: config[opt]})
 
                 # Adding to app rules
-                self.rules.append(AppRule(option, new_pattern, True, config['thread']))
+                self.rules.append(AppRule(option, new_pattern, True))
                 self.has_filters = True
                 logger.debug('Add filter rule "{0}" ({1}): {2}'
                              .format(option, u', '.join(filter_keys), new_pattern))
@@ -565,7 +567,7 @@ class AppLogParser:
             # Add once the no filtering rule
             for opt in self._filter_keys:
                 pattern = string.Template(pattern).safe_substitute({opt: config[opt]})
-            self.rules.append(AppRule(option, pattern, False, config['thread']))            
+            self.rules.append(AppRule(option, pattern, False))
             logger.debug('Add rule "{0}": {1}'.format(option, pattern))
             logger.debug('Rule "{0}" gids : {1}'.format(option, self.rules[-1].key_gids))
         
@@ -585,9 +587,8 @@ class AppLogParser:
             for idx in rule.results:
                 thread = idx[pos]
                 if thread in cache:
-                    if (not (cache[thread].pattern_match and cache[thread].filter_match) and
-                        (abs(event_time - cache[thread].end_time) > 3600)):
-                        
+                    if not (cache[thread].pattern_match and cache[thread].filter_match) and \
+                            (abs(event_time - cache[thread].end_time) > 3600):
                         purge_list.append(idx)
                 
             for idx in purge_list:
@@ -625,20 +626,20 @@ class AppLogParser:
             counter += 1
             match = rule.regexp.search(datamsg)
             if match is not None:
-                if debug: logger.debug('Rule "{0}" match'.format(rule.name))
+                if debug:
+                    logger.debug('Rule "{0}" match'.format(rule.name))
                 self._last_rule = rule
                 if self._thread and 'thread' in rule.regexp.groupindex:
                     thread = match.group('thread')
                     if self._report:
                         self._last_idx = rule.add_result(hostname, match)
-                    return (True, rule.is_filter, thread)
+                    return True, rule.is_filter, thread
                 else:
                     if rule.is_filter and self._report:
                         self._last_idx = rule.add_result(hostname, match)                                            
-                    return (True, rule.is_filter, None)            
+                    return True, rule.is_filter, None
 
         # No rule match: the application log message is unparsable
         # by enabled rules.
         self._last_rule = self._last_idx = None
-        return (False, None, None)
-        
+        return False, None, None

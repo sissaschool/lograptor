@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 This module classes and methods for parsing log headers.
 """

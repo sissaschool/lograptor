@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 This module contains additional class and functions to handle time
 and date values for Lograptor package.

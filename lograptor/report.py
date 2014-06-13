@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 This module is used to build and publish the report produced by a run
 of Lograptor instance.
@@ -637,7 +639,7 @@ class Report:
             for sec in config['publish'].split(','):
                 sec = u'{0}_publisher'.format(sec.strip())
                 try:
-                    method = config.get(sec, 'method')
+                    method = config.getstr(sec, 'method')
                 except configparser.NoSectionError:
                     msg = 'section for "{0}" not found'.format(sec[:-10])
                     if config['publish'] is not None:
