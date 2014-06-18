@@ -22,7 +22,7 @@ This module contain core classes and methods for Lograptor package.
 # @Author Davide Brunato <brunato@sissa.it>
 ##
 from __future__ import print_function
-  
+
 import os
 import time
 import datetime
@@ -46,20 +46,7 @@ from lograptor.timedate import get_interval, parse_date, parse_last, TimeRange
 from lograptor.tui import ProgressBar
 from lograptor.utils import cron_lock, set_logger
 
-__author__ = "Davide Brunato"
-__copyright__ = "Copyright 2011-2014, SISSA"
-__credits__ = ["Davide Brunato"]
-__license__ = "GPLv2+"
-__version__ = """Lograptor-1.0"""
-__maintainer__ = "Davide Brunato"
-__email__ = "brunato@sissa.it"
-__status__ = "Production"
-__description__ = """Command-line utility for searching into 
-log files. Produces matching outputs and reports.
-"""
-
 logger = logging.getLogger('lograptor')
-
 
 class Lograptor:
     """
@@ -68,7 +55,7 @@ class Lograptor:
         or with a dictionary. Absent options are overrided by defaults, with
         the exception of option 'loglevel' that is required for debugging;
       - args: List with almost one search path and filename paths.
-    """            
+    """
 
     # Lograptor default configuration
     default_config = {
@@ -171,7 +158,7 @@ class Lograptor:
             logger.critical('Configuration file {0} missing or not accessible!'.format(cfgfile))
             logger.critical(e)
             raise FileMissingError('Abort "{0}" for previous errors'.format(__name__))
-        
+
         # Instance attributes:
         #  headers: cycle iterator of defined header classes
         #  filters: list with passed filter options
@@ -190,7 +177,7 @@ class Lograptor:
         self.rawfh = None
         self.tmpprefix = None
         self.cron = not os.isatty(sys.stdin.fileno())
-        
+
         # Check and initialize the logger if not already defined. If the program is run
         # by cron and is not a debug loglevel set the logging level to 0 (log only critical messages).
         if self.config['loglevel'] < 0 or self.config['loglevel'] > 4:
@@ -259,12 +246,12 @@ class Lograptor:
             logger.info('No file list by arguments')
 
         # Check and initialize date interval to consider. Try first to parse option value
-        # as previous time period. If it fails then try to parse as a date. 
+        # as previous time period. If it fails then try to parse as a date.
         period = self.config['period']
         if period is None or period.strip() == '':
             if len(args) > 0 and period is None:
                 diff = int(time.time())
-                logger.info("No --date/--last provided with args: use Epoch as initial datetime.")             
+                logger.info("No --date/--last provided with args: use Epoch as initial datetime.")
             else:
                 diff = 86400    # 24h = 86400 seconds
             self.fin_datetime, self.ini_datetime = \
@@ -272,7 +259,7 @@ class Lograptor:
         else:
             try:
                 diff = parse_last(period)
-                logger.debug('Option --last: {0}'.format(period))    
+                logger.debug('Option --last: {0}'.format(period))
                 self.fin_datetime, self.ini_datetime = \
                     get_interval(int(time.time()), diff, 3600)
             except TypeError:
@@ -283,28 +270,28 @@ class Lograptor:
                     raise OptionError('--date/--last')
                 except ValueError as msg:
                     raise OptionError('--date', msg)
-        logger.info('Datetime interval to process: ({0}, {1})'.format(self.ini_datetime, self.fin_datetime))    
+        logger.info('Datetime interval to process: ({0}, {1})'.format(self.ini_datetime, self.fin_datetime))
 
-        # Check the -T/--time-range option 
+        # Check the -T/--time-range option
         if self.config['timerange'] is not None:
-            logger.debug('Option --tr/--time-range: {0}'.format(self.config['timerange']))    
-            try:                
+            logger.debug('Option --tr/--time-range: {0}'.format(self.config['timerange']))
+            try:
                 self.config['timerange'] = TimeRange(self.config['timerange'])
             except ValueError:
                 msg = "format error!! Use: --tr=HH:MM,HH:MM"
                 raise OptionError('--tr/--time-range', msg)
 
-        # Check --count and --quiet options 
+        # Check --count and --quiet options
         if self.config['count'] and self.config['quiet']:
             msg = "mutually exclusive options!"
             raise OptionError('-c/--count, -q/--quiet', msg)
 
-        # Check -m/--max-count option 
+        # Check -m/--max-count option
         if self.config['max_count'] is not None and self.config['max_count'] <= 0:
             msg = "must be a positive integer!"
             raise OptionError('-m/--max-count', msg)
 
-        # Translate config filter list (-F options) 
+        # Translate config filter list (-F options)
         if self.config['filters'] is not None:
             for item in self.config['filters']:
                 self.filters.append(dict())
@@ -316,10 +303,10 @@ class Lograptor:
                         key = key.lower()
                         self.filters[-1][key] = value.strip('\'"')
                     except ValueError:
-                        raise OptionError('-F', 'filter \'%s\': wrong format!' % flt)            
+                        raise OptionError('-F', 'filter \'%s\': wrong format!' % flt)
                 continue
             logger.debug("Provided filters: {0}".format(self.filters))
-                
+
         # Setting self.output and self.outstatus options for processing.
         # If the process is a cron-batch the output and the progress status are disabled.
         # The output is disabled also if --quiet is specified: in this case an output of
@@ -339,7 +326,7 @@ class Lograptor:
         elif self.config['quiet']:
             logger.info('Quiet option provided: disabling output and status')
             self._output = False
-            self._outstatus = False 
+            self._outstatus = False
         elif self.config['count']:
             logger.info('Count option provided: disabling output and status')
             self._output = False
@@ -350,26 +337,26 @@ class Lograptor:
         else:
             self._output = True
             self._outstatus = False
-        
+
         # Setting the output for filenames:
         #   out_filenames == None --> print only as header
         #   out_filenames == True --> print at each line (no header)
         #   out_filenames == False --> no filename printing
-        # 
+        #
         # If no specific options is provided (options.out_filenames==None)
         # set to self._out_filenames=False if only one CLI file by argument is
         # provided (remember that wildcard name expansion is applied on
         # filenames passed by CLI args).
-        if self.config['out_filenames'] is not None:        
+        if self.config['out_filenames'] is not None:
             self._out_filenames = bool(self.config['out_filenames'])
         elif len(args) == 1:
             self._out_filenames = False
         else:
             self._out_filenames = None
-            
+
         logger.debug('Set the output of filenames to: {0}'.format(self._out_filenames))
 
-        # Check incompatibilities of -A option 
+        # Check incompatibilities of -A option
         if self.config['apps'] is None:
             if self.config['report']:
                 raise OptionError('-A', 'incompatible with report')
@@ -386,7 +373,7 @@ class Lograptor:
         # TODO: extend with modules for other formats
         headers = [RFC3164_Header(self.config['rfc3164_pattern']),
                    RFC5424_Header(self.config['rfc5424_pattern'])]
-        self.headers = itertools.cycle(headers)    
+        self.headers = itertools.cycle(headers)
         self._num_headers = len(headers)
         self._header = next(self.headers)
 
@@ -396,7 +383,7 @@ class Lograptor:
             self.hosts.append(re.compile(fnmatch.translate(host)))
         if hostset:
             logger.debug('Process hosts: {0}'.format(hostset))
-            
+
         # Initalize app parser class and load applications. After applications
         # reassign configuration parameter with the effecti
         if self.config['apps'] is not None:
@@ -413,7 +400,7 @@ class Lograptor:
                 self.config['apps'] = u', '.join([appname for appname in self.apps])
 
         # Partially disable (enable=None) apps that have no rules or filters,
-        # in order to skip app processing and reporting. 
+        # in order to skip app processing and reporting.
 
         # Initialize the report object if the option is enabled
         if self.config['report'] is not None:
@@ -536,14 +523,14 @@ class Lograptor:
 
         # Exit if no app-name is provided
         if len(self.tagmap) == 0:
-            raise ConfigError('No tags for enabled apps! Exiting ...')        
+            raise ConfigError('No tags for enabled apps! Exiting ...')
 
         logger.info('Use the applist: {0}'.format(self.apps.keys()))
 
     def display_configuration(self):
         """
         Display the instance configuration to stdout.
-        """        
+        """
         print("---------------------------\n"
               "| {0} configuration |\n"
               "---------------------------".format(self.__class__.__name__))
@@ -562,7 +549,7 @@ class Lograptor:
         print("Report publishers: {0}".format(', '.join([
             pub[:-10] for pub in self.config.parser.sections()
             if pub.endswith('_publisher')])))
-        
+
     def process(self):
         """
         Log processing main routine. Iterate over the defined LogBase instance,
@@ -587,17 +574,17 @@ class Lograptor:
             self.mktempdir()
             self.rawfh = tempfile.NamedTemporaryFile(mode='w+', delete=False)
             logger.info('RAW strings file created in "{0}"'.format(self.rawfh.name))
-        
+
         # Iter between log files. The iteration use the log files modified between the
         # initial and the final date, skipping the other files.
         for (logfile, applist) in self.logmap:
             logger.info('Process log {0} for apps {1}.'.format(logfile, applist))
-            
+
             if _outstatus or (_output and _out_filenames is None):
                 print('\n*** Filename: {0} ***'.format(logfile))
             if self.rawfh is not None and _out_filenames is None:
                 self.rawfh.write('\n*** Filename: {0} ***\n'.format(logfile))
-            
+
             # When process CLI paths use the ordered list of apps instead of "*"
             if applist[0] == "*" and self._useapps:
                 applist = self.applist
@@ -624,7 +611,7 @@ class Lograptor:
                 if self._count:
                     print('{0}: {1}'.format(logfile.filename(), counter))
 
-            except IOError as msg:    
+            except IOError as msg:
                 if not config['no_messages']:
                     logger.error(msg)
 
@@ -644,7 +631,7 @@ class Lograptor:
                 endtime = datetime.datetime.fromtimestamp(self._last_event)
             except TypeError:
                 starttime = endtime = "None"
-                
+
             self.report.set_stats(
                 {
                     'starttime': starttime,
@@ -655,7 +642,7 @@ class Lograptor:
                 })
             if self.rawfh is not None:
                 self.rawfh.close()
-        
+
         return tot_counter > 0
 
     def process_logfile(self, logfile, applist):
@@ -668,10 +655,10 @@ class Lograptor:
         """
 
         # Load names to local variables to speed-up the run
-        header = self._header        
+        header = self._header
         parser = header.parser
         extract = header.extract
-        datagid = header.datagid                
+        datagid = header.datagid
         headers = self.headers
         num_headers = self._num_headers
         outstatus = self._outstatus
@@ -712,9 +699,9 @@ class Lograptor:
 
         all_hosts_flag = config.is_default('hosts')
         prefout = ''
-        
+
         for line in logfile:
-            
+
             # Counters and status
             filelineno = logfile.filelineno()
             if filelineno == 1:
@@ -723,16 +710,16 @@ class Lograptor:
 
                 fstat = os.fstat(logfile.fileno())
                 self._header.set_file_mtime(fstat.st_mtime)
-                
+
                 if outstatus and not debug:
                     progressbar = ProgressBar(sys.stdout, fstat.st_size, "lines parsed")
                     readsize = len(line)
                     progressbar.redraw(readsize, filelineno)
-            else:    
+            else:
                 if outstatus and not debug:
                     readsize += len(line)
                     progressbar.redraw(readsize, filelineno)
-                        
+
             ###
             # Header matching
             match = parser.search(line)
@@ -754,7 +741,7 @@ class Lograptor:
                     logger.warning('Unparsable log header: {0}'.format(line))
                     break
 
-            # Extract values from matching object            
+            # Extract values from matching object
             pri, ver, year, month, day, ltime, offset, secfrac, repeat, host, tag = extract(match)
             if debug:
                 logger.debug(debug_fmt.format(year, month, day, ltime, repeat, host, tag))
@@ -768,7 +755,7 @@ class Lograptor:
                                       0, 0, -1))
 
             # Process first 'last message repeated N times' log line only
-            # according to the previous match, to avoid oversights. 
+            # according to the previous match, to avoid oversights.
             if repeat is not None:
                 if prev_match is not None:
                     if debug:
@@ -799,7 +786,7 @@ class Lograptor:
                 if debug:
                     logger.debug('Skip line not in timerange: {0}'.format(line[:-1]))
                 continue
-            
+
             # Skip lines not related to examined hosts
             if not all_hosts_flag and not host in hostlist:
                 for regex in regex_hosts:
@@ -821,7 +808,7 @@ class Lograptor:
                 app = tagmap[tag]
 
             datamsg = match.group(datagid)
-            
+
             # Search for provided pattern(s)
             pattern_search = True
             if patterns:
@@ -829,7 +816,7 @@ class Lograptor:
                     pattern_match = regexp.search(datamsg)
                     if (pattern_match is not None and not invert) or \
                        (pattern_match is None and invert):
-                        break                 
+                        break
                 else:
                     if not thread:
                         if debug:
@@ -861,7 +848,7 @@ class Lograptor:
                     if pattern_search and debug:
                         print('Filtered line: {0}'.format(line[:-1]))
                     continue
-                
+
                 # Handle timestamps for report
                 if make_report:
                     if first_event is None:
@@ -882,7 +869,7 @@ class Lograptor:
                 if (filelineno % 1000) == 0:
                     for app in applist:
                         apps[app].purge_unmatched_threads(event_time)
-                        counter += apps[app].cache.flush_old_cache(output, prefout, event_time)                        
+                        counter += apps[app].cache.flush_old_cache(output, prefout, event_time)
             else:
                 counter += 1
                 if debug:
@@ -925,7 +912,7 @@ class Lograptor:
             self.report.make_format(self.config['format'])
             return True
         return False
-                
+
     def publish_report(self):
         """
         Publish the report
@@ -944,7 +931,7 @@ class Lograptor:
             tempfile.tempdir = tmpdir
         logger.info('Creating a safe temporary directory')
         tmpprefix = tempfile.mkdtemp('.LOGRAPTOR')
-        
+
         try:
             pass
         except:
@@ -965,9 +952,9 @@ class Lograptor:
         if self.rawfh is not None:
             print("Close rawlogs file ...")
             self.rawfh.close()
-        
+
         if self.tmpprefix is not None:
             from shutil import rmtree
-            
+
             logger.info('Removing the temp dir "{0}"'.format(self.tmpprefix))
             rmtree(self.tmpprefix)

@@ -626,6 +626,7 @@ class AppLogParser:
             counter += 1
             match = rule.regexp.search(datamsg)
             if match is not None:
+                print(match.groups())
                 if debug:
                     logger.debug('Rule "{0}" match'.format(rule.name))
                 self._last_rule = rule

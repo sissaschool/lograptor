@@ -28,7 +28,8 @@ import optparse
 import os
 import sys
 
-from lograptor import __version__, __description__, Lograptor
+from lograptor import Lograptor
+from lograptor.info import __version__, __description__
 from lograptor.exceptions import (ConfigError, OptionError, FormatError, FileMissingError, FileAccessError)
 
 CFGFILE_DEFAULT = '/etc/lograptor/lograptor.conf'
@@ -163,8 +164,9 @@ def parse_args(cli_parser):
                           "system authentication, used for lookups, needs to correctly "
                           "resolve the UIDs of the log files.")
     group.add_option("--anonymize", action="store_true", dest="anonymize", default=False,
-                     help="Anonymize UIDs, hostnames and IPs for output. A translation "
-                          "table is built in volatile memory for each run and is not saved.")
+                     help="Anonymize output for values connected to provided filters. "
+                          "A translation table is built in volatile memory for each run "
+                          "and is not saved. The anonymous tokens have the format FILTER_NN.")
     cli_parser.add_option_group(group)
 
     ### Define the options for the group "Report Control"

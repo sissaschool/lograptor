@@ -34,8 +34,8 @@ import logging
 
 from string import Template
 
-from lograptor import __version__
 from lograptor.exceptions import ConfigError
+from lograptor.info import __version__
 from lograptor.utils import mail_sendmail, mail_smtp, do_chunked_gzip
 
 logger = logging.getLogger('lograptor')

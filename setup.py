@@ -16,20 +16,15 @@ import distutils.command.bdist_rpm
 import distutils.command.install
 from distutils.core import setup
 
+import lograptor.info
 
-LONG_DESCRIPTION =\
-"""Lograptor is a syslog parser and searching tool which provides a
-command-line interface for manually or automated logs processing.
-Instant pattern matchings are joinable with a set of common filters
-and date/time range scope delimitation. Each search can also produce
-a report that can be easily e-mailed or saved in a file system directory.
-"""
 
 distro_tags = {
     'centos' : 'el',
     'redhat' : 'el',
     'Ubuntu' : 'ubuntu1'
     }
+
 
 class my_sdist(distutils.command.sdist.sdist):
     """
@@ -129,23 +124,23 @@ class my_install(distutils.command.install.install):
 
         
 setup(name='lograptor',
-      version='0.8.1',
-      author='Davide Brunato',
-      author_email='brunato@sissa.it',
-      description='Command-line utility for searching into log files.',
-      license='GPLv2+',
-      maintainer='Davide Brunato',
-      long_description=LONG_DESCRIPTION,
+      version=lograptor.info.__version__,
+      author=lograptor.info.__author__,
+      author_email=lograptor.info.__email__,
+      description=lograptor.info.__description__,
+      license=lograptor.info.__license__,
+      maintainer=lograptor.info.__maintainer__,
+      long_description=lograptor.info.LONG_DESCRIPTION,
       url='https://github.com/brunato/Lograptor',
-      packages=['lograptor','lograptor.backports'],
+      packages=['lograptor', 'lograptor.backports'],
       scripts=['scripts/lograptor'],
-      data_files=[('/usr/share/man/man8',['man/lograptor.8.gz']),
-                  ('/usr/share/man/man5',['man/lograptor.conf.5.gz']),
-                  ('/usr/share/man/man5',['man/lograptor-apps.5.gz']),
-                  ('/etc/lograptor',['etc/lograptor/lograptor.conf',
+      data_files=[('/usr/share/man/man8', ['man/lograptor.8.gz']),
+                  ('/usr/share/man/man5', ['man/lograptor.conf.5.gz']),
+                  ('/usr/share/man/man5', ['man/lograptor-apps.5.gz']),
+                  ('/etc/lograptor', ['etc/lograptor/lograptor.conf',
                                      'etc/lograptor/report_template.html',
                                      'etc/lograptor/report_template.txt']),
-                  ('/etc/lograptor/conf.d',glob.glob('etc/lograptor/conf.d/*.conf'))],
+                  ('/etc/lograptor/conf.d', glob.glob('etc/lograptor/conf.d/*.conf'))],
       requires = ['python (>=2.6)'],
       cmdclass = {"sdist": my_sdist,
                   "build_scripts": my_build_scripts,
