@@ -501,7 +501,7 @@ class AppLogParser:
 
         # If 'unparsed' matching is disabled then restrict the set of rules to
         # the minimal set useful for processing.
-        if config['unparsed']:
+        if not config['unparsed']:
             logger.debug('Purge unused rules for "{0}" app.'.format(self.name))
             self.rules = [
                 rule for rule in self.rules
@@ -564,13 +564,13 @@ class AppLogParser:
                              .format(option, u', '.join(filter_keys), new_pattern))
                 logger.debug('Rule "{0}" gids : {1}'.format(option, self.rules[-1].key_gids))
 
-            # Add once the no filtering rule
-            for opt in self._filter_keys:
+            # Add once at the end the no filtering version of the rule
+            for opt in self._no_filter_keys:
                 pattern = string.Template(pattern).safe_substitute({opt: config[opt]})
             self.rules.append(AppRule(option, pattern, False))
             logger.debug('Add rule "{0}": {1}'.format(option, pattern))
             logger.debug('Rule "{0}" gids : {1}'.format(option, self.rules[-1].key_gids))
-        
+
     def purge_unmatched_threads(self, event_time=0):
         """
         Purge the old unmatched threads from application's results.

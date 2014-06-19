@@ -256,7 +256,7 @@ if __name__ == '__main__':
         sys.stderr.write("You need python 2.6 or later to run this program\n")
         sys.exit(1)
 
-    if os.isatty(sys.stdout.fileno()):
+    if os.isatty(sys.stdin.fileno()):
         main()
     else:
         with nostdout():

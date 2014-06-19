@@ -78,16 +78,16 @@ class Lograptor:
                                r'(?P<time>[0-9]{2}:[0-9]{2}:[0-9]{2})(?:|\.(?P<secfrac>[0-9]{1,6}))'
                                r'(?:Z |(?P<offset>(?:\+|-)[0-9]{2}:[0-9]{2}) )'
                                r'(?:-|(?P<host>\S{1,255})) (?P<datamsg>(?:-|(?P<tag>\S{1,48})) .*)',
-            'dnsname_pattern': r'((\b[a-zA-Z]\b|\b[a-zA-Z][a-zA-Z0-9\-]*[a-zA-Z0-9]\b)\.)'
-                               r'*(\b[A-Za-z]\b|\b[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9]\b)',
+            'dnsname_pattern': r'((\b[a-zA-Z0-9]\b|\b[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]\b)\.)'
+                               r'*(\b[A-Za-z0-9]\b|\b[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9]\b)',
             'ipaddr_pattern': r'(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.'
                               r'(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.'
                               r'((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.'
                               r'(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))',
-            'email_pattern': r'\b([\=A-Za-z0-9!$%&*+_~-]+'
+            'email_pattern': r'(|\b([\=A-Za-z0-9!$%&*+_~-]+'
                              r'(?:\.[\=A-Za-z0-9!$%&*+_~-]+)*)(@(?:[A-Za-z0-9]'
                              r'(?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*'
-                             r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)?\b',
+                             r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)?\b|)',
             'username_pattern': r'\b([A-Za-z0-9!$%&*+_~-]+(?:\.[A-Za-z0-9!$%&*+_~-]+)*)'
                                 r'(@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*'
                                 r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)?\b',
@@ -97,7 +97,8 @@ class Lograptor:
             'user': r'${username_pattern}',
             'from': r'${email_pattern}',
             'rcpt': r'${email_pattern}',
-            'client': r'(${dnsname_pattern}|${ipaddr_pattern})',
+            'client': r'(${dnsname_pattern}|${ipaddr_pattern}|'
+                      r'${dnsname_pattern}\[${ipaddr_pattern}\])',
             'pid': r'${pid_pattern}',
         },
         'report': {
@@ -831,7 +832,7 @@ class Lograptor:
                 pattern_search = False
 
             # Log message parsing (with config app's rules)
-            if useapps:
+            if useapps and pattern_search:
                 result, filter_match, app_thread, groupdict = app.process(host, datamsg, debug)
                 if not result:
                     # Log message unparsable by app rules
@@ -875,6 +876,7 @@ class Lograptor:
                 if debug:
                     logger.debug('Matched line: {0}'.format(line[:-1]))
                 if output:
+                    print(result, match_unparsed)
                     print('{0}{1}'.format(prefout, line), end='')
 
             # Write line to raw file if provided by option
