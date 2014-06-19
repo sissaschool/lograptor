@@ -626,7 +626,6 @@ class AppLogParser:
             counter += 1
             match = rule.regexp.search(datamsg)
             if match is not None:
-                print(match.groups())
                 if debug:
                     logger.debug('Rule "{0}" match'.format(rule.name))
                 self._last_rule = rule
@@ -634,13 +633,13 @@ class AppLogParser:
                     thread = match.group('thread')
                     if self._report:
                         self._last_idx = rule.add_result(hostname, match)
-                    return True, rule.is_filter, thread
+                    return True, rule.is_filter, thread, match.groupdict()
                 else:
                     if rule.is_filter and self._report:
                         self._last_idx = rule.add_result(hostname, match)                                            
-                    return True, rule.is_filter, None
+                    return True, rule.is_filter, None, match.groupdict()
 
         # No rule match: the application log message is unparsable
         # by enabled rules.
         self._last_rule = self._last_idx = None
-        return False, None, None
+        return False, None, None, None

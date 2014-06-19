@@ -832,7 +832,7 @@ class Lograptor:
 
             # Log message parsing (with config app's rules)
             if useapps:
-                result, filter_match, app_thread = app.process(host, datamsg, debug)
+                result, filter_match, app_thread, groupdict = app.process(host, datamsg, debug)
                 if not result:
                     # Log message unparsable by app rules
                     if not match_unparsed:
