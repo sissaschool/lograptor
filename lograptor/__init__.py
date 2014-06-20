@@ -78,27 +78,28 @@ class Lograptor:
                                r'(?P<time>[0-9]{2}:[0-9]{2}:[0-9]{2})(?:|\.(?P<secfrac>[0-9]{1,6}))'
                                r'(?:Z |(?P<offset>(?:\+|-)[0-9]{2}:[0-9]{2}) )'
                                r'(?:-|(?P<host>\S{1,255})) (?P<datamsg>(?:-|(?P<tag>\S{1,48})) .*)',
-            'dnsname_pattern': r'((\b[a-zA-Z0-9]\b|\b[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]\b)\.)'
-                               r'*(\b[A-Za-z0-9]\b|\b[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9]\b)',
-            'ipaddr_pattern': r'(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.'
-                              r'(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.'
-                              r'((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.'
-                              r'(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))',
-            'email_pattern': r'(|\b([\=A-Za-z0-9!$%&*+_~-]+'
-                             r'(?:\.[\=A-Za-z0-9!$%&*+_~-]+)*)(@(?:[A-Za-z0-9]'
-                             r'(?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*'
-                             r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)?\b|)',
-            'username_pattern': r'\b([A-Za-z0-9!$%&*+_~-]+(?:\.[A-Za-z0-9!$%&*+_~-]+)*)'
-                                r'(@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*'
-                                r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)?\b',
+            'ascii_pattern': r'(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|'
+                             r'\\[\x01-\x09\x0b\x0c\x0e-\x7f])*',
+            'dnsname_pattern': r'\b(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*'
+                               r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\b',
+            'ipv4_pattern': r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}'
+                            r'(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b',
+            'ipv6_pattern': r'(?!.*::.*::)(?:(?!:)|:(?=:))(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)){6}'
+                            r'(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)[0-9a-f]{0,4}'
+                            r'(?: (?<=::)|(?<!:)|(?<=:) (?<!::) :)|'
+                            r'(?:25[0-4]|2[0-4]\d|1\d\d|[1-9]?\d)'
+                            r'(?: \.(?:25[0-4]|2[0-4]\d|1\d\d|[1-9]?\d)){3})',
+            'username_pattern': r'[A-Za-z0-9!#$%&\'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&\'*+/=?^_`{|}~-]+)*',
+            'email_pattern': r'(?:|${username_pattern}|"${ascii_pattern}")'
+                             r'(?:|@(?:${dnsname_pattern}|\[(?:${ipv4_pattern}|${ipv6_pattern})\]))+',
             'pid_pattern': r'[0-9]+',
         },
         'filters': {
             'user': r'${username_pattern}',
             'from': r'${email_pattern}',
             'rcpt': r'${email_pattern}',
-            'client': r'(${dnsname_pattern}|${ipaddr_pattern}|'
-                      r'${dnsname_pattern}\[${ipaddr_pattern}\])',
+            'client': r'(${dnsname_pattern}|${ipv4_pattern}|'
+                      r'${dnsname_pattern}\[${ipv4_pattern}\])',
             'pid': r'${pid_pattern}',
         },
         'report': {
@@ -428,6 +429,7 @@ class Lograptor:
         self._debug = (self.config['loglevel'] == 4)
         self._thread = self.config['thread']
         self._useapps = self.config['apps'] is not None
+        self._has_args = len(args) > 0
 
     def get_applist(self):
         """
@@ -778,6 +780,9 @@ class Lograptor:
 
             # Break the cycle if event is newer than final datetime of the range
             if event_time > fin_datetime:
+                if fstat.st_mtime < event_time:
+                    logger.error('Date-time inconsistency in comparison to the last modification '
+                          'of the file: {0}'.format(line[:-1]))
                 if debug:
                     logger.debug('Newer line, skip the rest of the file: {0}'.format(line[:-1]))
                 break

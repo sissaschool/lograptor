@@ -131,9 +131,16 @@ class ConfigMap(UserDict):
 
         # Interpolation for all strings. Also the default strings
         # are interpolated to mantain the equality comparisons.
-        for opt in self.data:
-            if isinstance(self.data[opt], str):
-                self.data[opt] = self._interpolate(self.data[opt])
+        while True:
+            changed = False
+            for opt in self.data:
+                if isinstance(self.data[opt], str):
+                    new = self._interpolate(self.data[opt])
+                    if new != self.data[opt]:
+                        self.data[opt] = new
+                        changed = True
+            if not changed:
+                break
 
         for opt, value in self.defaults.items():
             if isinstance(value, str):
