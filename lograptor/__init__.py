@@ -82,8 +82,8 @@ class Lograptor:
                              r'\\[\x01-\x09\x0b\x0c\x0e-\x7f])*',
             'dnsname_pattern': r'\b(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*'
                                r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\b',
-            'ipv4_pattern': r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}'
-                            r'(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b',
+            'ipv4_pattern': r'(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}'
+                            r'(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)',
             'ipv6_pattern': r'(?!.*::.*::)(?:(?!:)|:(?=:))(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)){6}'
                             r'(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)[0-9a-f]{0,4}'
                             r'(?: (?<=::)|(?<!:)|(?<=:) (?<!::) :)|'
@@ -92,15 +92,17 @@ class Lograptor:
             'username_pattern': r'[A-Za-z0-9!#$%&\'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&\'*+/=?^_`{|}~-]+)*',
             'email_pattern': r'(?:|${username_pattern}|"${ascii_pattern}")'
                              r'(?:|@(?:${dnsname_pattern}|\[(?:${ipv4_pattern}|${ipv6_pattern})\]))+',
-            'pid_pattern': r'[0-9]+',
+            'id_pattern': r'[0-9]+',
         },
         'filters': {
             'user': r'${username_pattern}',
+            'mail': r'${email_pattern}',
             'from': r'${email_pattern}',
             'rcpt': r'${email_pattern}',
             'client': r'(${dnsname_pattern}|${ipv4_pattern}|'
                       r'${dnsname_pattern}\[${ipv4_pattern}\])',
-            'pid': r'${pid_pattern}',
+            'pid': r'${id_pattern}',
+            'uid': r'${id_pattern}',
         },
         'report': {
             'title': '$hostname system events: $localtime',
