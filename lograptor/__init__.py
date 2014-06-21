@@ -684,6 +684,7 @@ class Lograptor:
         timerange = config['timerange']
 
         # Other local variables for the file lines iteration
+        fstat = None
         prev_match = None
         app_thread = None
         debug_fmt = "date,time,repeat,host,tag : {0}-{1}-{2},{3},{4},{5},{6}"
@@ -783,8 +784,8 @@ class Lograptor:
             # Break the cycle if event is newer than final datetime of the range
             if event_time > fin_datetime:
                 if fstat.st_mtime < event_time:
-                    logger.error('Date-time inconsistency in comparison to the last modification '
-                          'of the file: {0}'.format(line[:-1]))
+                    logger.error('Date-time inconsistency in comparison to the last '
+                                 'modification of the file: {0}'.format(line[:-1]))
                 if debug:
                     logger.debug('Newer line, skip the rest of the file: {0}'.format(line[:-1]))
                 break
@@ -883,7 +884,6 @@ class Lograptor:
                 if debug:
                     logger.debug('Matched line: {0}'.format(line[:-1]))
                 if output:
-                    print(result, match_unparsed)
                     print('{0}{1}'.format(prefout, line), end='')
 
             # Write line to raw file if provided by option

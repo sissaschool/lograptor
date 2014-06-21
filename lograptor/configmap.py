@@ -99,7 +99,7 @@ class ConfigMap(UserDict):
                     elif isinstance(value, float):
                         self.data[opt] = self.parser.getfloat(sect, opt)
                     else:
-                        self.data[opt] = self.parser.get(sect, opt).strip('\'"')
+                        self.data[opt] = self.parser.get(sect, opt).strip('\'"').replace('\n', '')
                 except (configparser.NoSectionError, configparser.NoOptionError):
                     # If missing section/option then use default value
                     if not self.parser.has_section(sect):
@@ -114,7 +114,7 @@ class ConfigMap(UserDict):
                         continue
                     if opt not in self.data:
                         logger.debug("Add option '%s' from section '%s'" % (opt, sect))
-                        self.data[opt] = self.parser.get(sect, opt).strip('\'"')
+                        self.data[opt] = self.parser.get(sect, opt).strip('\'"').replace('\n', '')
                     else:
                         # Don't allows duplicates in configuration file to avoid errors
                         msg = "Duplicate option '{0}' in configuration file!".format(opt)
@@ -197,7 +197,7 @@ class ConfigMap(UserDict):
         Get an option from a section of configuration file
         """
         try:
-            return self.parser.get(section, option)
+            return self.parser.get(section, option).strip('\'"').replace('\n', '')
         except configparser.NoOptionError:
             default = self.get_default(option) 
             if default is None:
@@ -219,7 +219,6 @@ class ConfigMap(UserDict):
                 raise configparser.NoOptionError(option, section)
             return default
 
-
     def getint(self, section, option):
         """
         Get an integer option from a section of configuration file 
@@ -234,7 +233,6 @@ class ConfigMap(UserDict):
             if default is None:
                 raise configparser.NoOptionError(option, section)
             return default
-        
 
     def getfloat(self, section, option):
         """
