@@ -78,8 +78,7 @@ class Lograptor:
                                r'(?P<time>[0-9]{2}:[0-9]{2}:[0-9]{2})(?:|\.(?P<secfrac>[0-9]{1,6}))'
                                r'(?:Z |(?P<offset>(?:\+|-)[0-9]{2}:[0-9]{2}) )'
                                r'(?:-|(?P<host>\S{1,255})) (?P<datamsg>(?:-|(?P<tag>\S{1,48})) .*)',
-            'ascii_pattern': r'(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|'
-                             r'\\[\x01-\x09\x0b\x0c\x0e-\x7f])*',
+            'ascii_pattern': r'[\x01-\x7f]*',
             'dnsname_pattern': r'\b(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*'
                                r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\b',
             'ipv4_pattern': r'(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}'
@@ -103,6 +102,7 @@ class Lograptor:
                       r'${dnsname_pattern}\[${ipv4_pattern}\])',
             'pid': r'${id_pattern}',
             'uid': r'${id_pattern}',
+            'msgid': r'${ascii_pattern}',
         },
         'report': {
             'title': '$hostname system events: $localtime',
@@ -176,6 +176,7 @@ class Lograptor:
         self.filters = []
         self.hosts = list()
         self.apps = dict()
+        self.extra_tags = set()
         self.tagmap = dict()
         self._search_flags = re.IGNORECASE if self.config['case'] else 0
         self.rawfh = None
@@ -403,9 +404,6 @@ class Lograptor:
             else:
                 self.config['apps'] = u', '.join([appname for appname in self.apps])
 
-        # Partially disable (enable=None) apps that have no rules or filters,
-        # in order to skip app processing and reporting.
-
         # Initialize the report object if the option is enabled
         if self.config['report'] is not None:
             self.report = Report(self.apps, self.config)
@@ -571,7 +569,7 @@ class Lograptor:
         _out_filenames = self._out_filenames
         _outstatus = self._outstatus
         process_logfile = self.process_logfile
-        tot_files = tot_lines = tot_counter = 0
+        tot_files = tot_lines = tot_counter = tot_unparsed = 0
         logfiles = []
 
         # Create temporary file for matches rawlog
@@ -596,13 +594,15 @@ class Lograptor:
 
             try:
                 logfile = fileinput.input(logfile, openhook=fileinput.hook_compressed)
-                num_files, counter = process_logfile(logfile, applist)
+                num_files, counter, unparsed_counter, extra_tags = process_logfile(logfile, applist)
 
                 logfiles.append(logfile.filename())
 
                 tot_files += num_files
                 tot_lines += logfile.lineno()
                 tot_counter += counter
+                tot_unparsed += unparsed_counter
+                self.extra_tags = self.extra_tags.union(extra_tags)
 
                 if self._thread:
                     for app in applist:
@@ -629,7 +629,8 @@ class Lograptor:
         logger.info('Total files processed: {0}'.format(tot_files))
         logger.info('Total log lines processed: {0}'.format(tot_lines))
 
-        # Final report processing: purge all unmatched threads and set time stamps
+        # If final report is requested then purge all unmatched threads and set time stamps.
+        # Otherwise print a final run summary if messages are not disabled.
         if make_report:
             try:
                 starttime = datetime.datetime.fromtimestamp(self._first_event)
@@ -647,6 +648,28 @@ class Lograptor:
                 })
             if self.rawfh is not None:
                 self.rawfh.close()
+
+        elif not config['no_messages']:
+            print('\n--- {0} run summary ---'.format(self.__class__.__name__))
+            if not self._has_args:
+                print('Number of processed files: {0}'.format(tot_files))
+            print('Total lines read: {0}'.format(tot_lines))
+            if not self._debug and tot_unparsed > 0:
+                print('WARNING: Found {0} unparsed log header lines'.format(tot_unparsed))
+            if self._useapps:
+                if any([ app.counter > 0 for app in self.apps.values() ]):
+                    print('Found log lines for apps: {0}'.format(u', '.join([
+                        u'%s(%d)' % (app.name, app.counter)
+                        for app in self.apps.values() if app.counter > 0
+                    ])))
+                if any([ app.unparsed_counter > 0 for app in self.apps.values() ]):
+                    print('Found unparsed log lines for apps: {0}'.format(u', '.join([
+                        u'%s(%d)' % (app.name, app.unparsed_counter)
+                        for app in self.apps.values() if app.unparsed_counter > 0
+                    ])))
+                if self.extra_tags:
+                    print('Found extra application\'s tags: {0}'.format(u', '.join(self.extra_tags)))
+
 
         return tot_counter > 0
 
@@ -691,12 +714,14 @@ class Lograptor:
 
         hostlist = []
         counter = 0
+        unparsed_counter = 0
         num_files = 0
 
         readsize = 0
         progressbar = None
         pattern_search = False
         filter_match = False
+        extra_tags = set()
 
         ini_datetime = time.mktime(self.ini_datetime.timetuple())
         fin_datetime = time.mktime(self.fin_datetime.timetuple())
@@ -707,7 +732,6 @@ class Lograptor:
         prefout = ''
 
         for line in logfile:
-
             # Counters and status
             filelineno = logfile.filelineno()
             if filelineno == 1:
@@ -744,8 +768,11 @@ class Lograptor:
                             datagid = nextheader.datagid
                             break
                 else:
-                    logger.warning('Unparsable log header: {0}'.format(line))
-                    break
+                    unparsed_counter += 1
+                    if debug:
+                        logger.debug('Unparsable log header: {0}'.format(line))
+                        break
+                    continue
 
             # Extract values from matching object
             pri, ver, year, month, day, ltime, offset, secfrac, repeat, host, tag = extract(match)
@@ -769,17 +796,29 @@ class Lograptor:
                     tag = prev_match.group('tag')
                     app = tagmap[tag]
                     app.increase_last(repeat)
+                    app.counter += 1
                     if app_thread is not None:
                         app.cache.add_line(line, app_thread, pattern_search, filter_match, event_time)
                     prev_match = None
                 continue
             prev_match = None
 
+            # Get the app related to log line. Skip lines not related to selected apps.
+            if useapps:
+                if tag not in tagmap:
+                    if debug:
+                        logger.debug('Skip line of another application ({0})'.format(tag))
+                    extra_tags.add(tag)
+                    continue
+                app = tagmap[tag]
+                app.counter += 1
+
             # Skip line if the event is older than the initial datetime of the range
             if event_time < ini_datetime:
                 if debug:
                     logger.debug('Skip older line: {0}'.format(line[:-1]))
                 continue
+
 
             # Break the cycle if event is newer than final datetime of the range
             if event_time > fin_datetime:
@@ -806,15 +845,6 @@ class Lograptor:
                     if debug:
                         logger.debug('Skip the line of not selected hosts'.format(line[:-1]))
                     continue
-
-            # Skip lines not related to enabled apps, provided by option
-            # or by configuration
-            if useapps:
-                if tag not in tagmap:
-                    if debug:
-                        logger.debug('Skip line of another application ({0})'.format(tag))
-                    continue
-                app = tagmap[tag]
 
             datamsg = match.group(datagid)
 
@@ -908,7 +938,7 @@ class Lograptor:
         if make_report:
             self._first_event = first_event
             self._last_event = last_event
-        return num_files, counter
+        return num_files, counter, unparsed_counter, extra_tags
 
     def make_report(self):
         """

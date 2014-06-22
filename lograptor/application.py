@@ -372,7 +372,6 @@ class AppLogParser:
     _no_filter_keys = None  # Filter options not passed
     _report = None          # Report flag
     _thread = None          # Thread flag
-    _unparsed = None        # Unparsed flag
 
     # Default values for application config files
     default_config = {
@@ -409,7 +408,6 @@ class AppLogParser:
         ])
         AppLogParser._report = config['report']
         AppLogParser._thread = config['thread']
-        AppLogParser._unparsed = config['unparsed']
         AppRule.set_ip_lookup(config['ip_lookup'])
         AppRule.set_uid_lookup(config['uid_lookup'])
 
@@ -429,7 +427,9 @@ class AppLogParser:
         self.cfgfile = appcfgfile   # Complete path to app config file
         self.rules = []             # Regexp rules for the app
         self.has_filters = False    # True if the app has filters 
-        self.repitems = []
+        self.repitems = []          # Report items read from configuration
+        self.counter = 0            # Parsed lines counter
+        self.unparsed_counter = 0   # Unparsed lines counter
 
         # Setting other instance internal variables for process phase
         self._last_rule = self._last_idx = None
@@ -501,7 +501,7 @@ class AppLogParser:
 
         # If 'unparsed' matching is disabled then restrict the set of rules to
         # the minimal set useful for processing.
-        if not config['unparsed']:
+        if False: #not config['unparsed']:
             logger.debug('Purge unused rules for "{0}" app.'.format(self.name))
             self.rules = [
                 rule for rule in self.rules
@@ -527,11 +527,9 @@ class AppLogParser:
         Add a set of rules to the app, dividing between filter and other rule set
         """
         for option, pattern in rules:
-            # Check the rule's pattern
-            if (pattern[0] == '"' and pattern[-1] == '"') or \
-                    (pattern[0] == '\'' and pattern[-1] == '\''):
-                pattern = pattern[1:-1]
-                
+            # Strip optional string quotes and remove newlines
+            pattern = pattern.strip('\'"').replace('\n', '')
+
             if len(pattern) == 0:
                 logger.debug('Rule "{0}" is empty'.format(option))
                 raise lograptor.ConfigError('Error in app "{0}" configuration: '
@@ -621,9 +619,7 @@ class AppLogParser:
         The appthread is returned with the value of thread named group of
         the rule. If the rule doesn't have a thread group, a None is returned.
         """
-        counter = 0
         for rule in self.rules:
-            counter += 1
             match = rule.regexp.search(datamsg)
             if match is not None:
                 if debug:
@@ -636,10 +632,11 @@ class AppLogParser:
                     return True, rule.is_filter, thread, match.groupdict()
                 else:
                     if rule.is_filter and self._report:
-                        self._last_idx = rule.add_result(hostname, match)                                            
+                        self._last_idx = rule.add_result(hostname, match)
                     return True, rule.is_filter, None, match.groupdict()
 
         # No rule match: the application log message is unparsable
         # by enabled rules.
         self._last_rule = self._last_idx = None
+        self.unparsed_counter += 1
         return False, None, None, None

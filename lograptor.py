@@ -148,7 +148,8 @@ def parse_args(cli_parser):
                           "immediately with zero status if any match  is found, even "
                           "if an error was detected. Also see the -s or --no-messages option.")
     group.add_option("-s", "--no-messages", action="store_true", default=False,
-                     help="Suppress error messages about nonexistent or unreadable files.")
+                     help="Suppress final run summary and error messages about nonexistent "
+                          "or unreadable files.")
     group.add_option("-o", "--with-filename", action="store_true", dest="out_filenames",
                      default=None, help="Print the filename for each matching line.")
     group.add_option("-O", "--no-filename", action="store_false", dest="out_filenames",
