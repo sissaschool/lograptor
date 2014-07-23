@@ -379,6 +379,7 @@ class AppLogParser:
         'desc': u'${appname}',
         'tags': u'${appname}',
         'files': u'${logdir}/messages',
+        'pattern': u'',
         'enabled': True,
         'priority': 1,
         }
@@ -444,6 +445,7 @@ class AppLogParser:
         self.desc = appconfig['desc']
         self.tags = appconfig['tags']
         self.files = list(set(re.split('\s*,\s*', appconfig['files'])))
+        self.pattern = appconfig['pattern']
         self.enabled = appconfig['enabled']
         self.priority = appconfig['priority']
 
@@ -598,7 +600,7 @@ class AppLogParser:
         """
         idx = self._last_idx
         if idx is not None:
-            self._last_rule.results[idx] += int(k)
+            self._last_rule.results[idx] += k
         
     def process(self, hostname, datamsg, debug):
         """

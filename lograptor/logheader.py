@@ -27,168 +27,92 @@ import time
 import datetime
 import re
 import logging
+from collections import namedtuple
+
+from lograptor.exceptions import ConfigError
 
 logger = logging.getLogger('lograptor')
 
+# Map for month field from any admitted representation to numeric.
+MONTHMAP = { 'Jan':'01', 'Feb':'02', 'Mar':'03',
+             'Apr':'04', 'May':'05', 'Jun':'06',
+             'Jul':'07', 'Aug':'08', 'Sep':'09',
+             'Oct':'10', 'Nov':'11', 'Dec':'12'
+             '01':'01', '02':'02', '03':'03',
+             '04':'04', '05':'05', '06':'06',
+             '07':'07', '08':'08', '09':'09',
+             '10':'10', '11':'11', '12':'12' }
 
-class LogHeader:
-    """
-    Class to parse and translate log line headers.
-    """
 
-    def __init__(self, pattern):
+class LogParser:
+    """
+    Base class to parse log lines.
+    """
+    # Map to transform month log values
+
+    # Admitted grouping ids for log files
+    _fields = ('pri', 'year', 'month', 'day', 'ltime', 'offset',
+               'secfrac', 'repeat', 'host', 'tag', 'datamsg')
+    
+    def __init__(self, pattern, appname=None):
         """
-        Compile the pattern and define common mandatory attributes.
+        Compile the pattern and record group fields. Check if pattern
+        include mandatory named groups.
         """
         self.parser = re.compile(pattern)
-        self.gids = self.parser.groupindex.keys()
-        
+        LogData = namedtuple('LogData', self.parser.groupindex.keys())
+        self.appname = appname
+        self.fields = tuple(self.parser.groupindex.keys())
+                                    
         try:
-            self.datagid = self.parser.groupindex['datamsg']
+            for field in ['month', 'day', 'ltime', 'datamsg']:
+                idx = self.parser.groupindex[field]
         except KeyError:
-            self.datagid = self.parser.groups
-        
-    def extract(self, match):
-        """ 
-        Extract or derive values from matching object. 
-        """
-        return [match.group(idx) for idx in range(1, self.parser.groups)]
+            msg = 'missing mandatory named group "%s"' % field
+            raise ConfigError(msg)
 
-    def set_file_mtime(self, mtime):
-        """
-        Use file mtime (file modification time) to set reference
-        modification date, that is necessary for partial date header
-        formats like RFC3164.
-        """
-        file_mtime = datetime.datetime.fromtimestamp(mtime)
-        self.file_year = file_mtime.year
-        self.file_month = file_mtime.month
-        self.file_day = file_mtime.day
-        
+    def extract(self, line):
+        """Extract result tuple from named matching groups."""
+        match = self.pattern.match(line)
+        result = map(match.group, self.fields)
+        result['month'] = MONTHMAP(result['month'])
+        return LogFields(*result)
+
     
-class RFC3164_Header(LogHeader):
+class RFC3164_Parser(LogParser):
     """
     Parser and extraction methods for BSD Syslog headers (RFC 3164).
     """
 
     def __init__(self, pattern):
-        LogHeader.__init__(self, pattern)
-        self._year = str(datetime.datetime.now().year)
-        self._prev_year = str(datetime.datetime.now().year - 1)
-        self._monthmap = { 'Jan':'01', 'Feb':'02', 'Mar':'03',
-                           'Apr':'04', 'May':'05', 'Jun':'06',
-                           'Jul':'07', 'Aug':'08', 'Sep':'09',
-                           'Oct':'10', 'Nov':'11', 'Dec':'12' }
-        
-        self.gids = ['pri', 'month', 'day', 'time', 'repeat', 'host', 'tag']    
-        try:
-            for gid in self.gids:
-                idx = self.parser.groupindex[gid]
-        except KeyError:
-            msg = "RFC3164 header: missing a named group, use fixed extraction."
-            logger.info(msg)
-            self.extract = self._fixed_extract
-
-    def set_file_mtime(self, mtime):
-        """
-        Set the a reference mtime, ie the mtime of the processed file,
-        that is necessary for partial header formats (RFC3164).
-        """
-        LogHeader.set_file_mtime(self, mtime)
-        self._year = str(self.file_year)
-        self._prev_year = str(self.file_year - 1) 
+        LogParser.__init__(self, pattern)
+        rfc3164_fields = tuple([
+            'pri', 'month', 'day', 'ltime', 'repeat', 'host', 'tag', 'datamsg'
+            ])
+        extra = set(self.fields) - set(rfc3164_fields)
+        if extra:
+            msg = u'no RFC 3164 fields in pattern: {0}'.format(field)
+            raise ConfigError(msg)
             
-    def extract(self, match):
-        """
-        Extract result tuple from named matching groups. 
-        """
-        pri = match.group('pri')
-        month = self._monthmap[match.group('month')]
-        day = match.group('day')
-        ltime = match.group('time')
-        repeat = match.group('repeat')
-        host = match.group('host')
-        tag = match.group('tag')
 
-        if month != '01' and self.file_month == 1:
-            year = self._prev_year
-        else:
-            year = self._year
-        
-        return(pri, None, year, month, day, ltime, None, None, repeat, host, tag)
-
-    def _fixed_extract(self, match):
-        """
-        Extract result tuple using fixed indexes for matching groups. 
-        """
-        pri = match.group(1)
-        month = self._monthmap[match.group('month')]
-        day = match.group(3)
-        ltime = match.group(4)
-        repeat = match.group(5)
-        host = match.group(6)
-        tag = match.group(7)
-
-        if month != '01' and self.file_month == 1:
-            year = self._prev_year
-        else:
-            year = self._year
-        
-        return(pri, None, year, month, day, ltime, None, None, repeat, host, tag)
-        
-
-class RFC5424_Header(LogHeader):
+class RFC5424_Parser(LogParser):
     """
-    Parser and extraction methods for IETF-syslog headers (RFC 5424).
+    Parser for IETF-syslog logs (RFC 5424) .
     """
 
     def __init__(self, pattern):
-        LogHeader.__init__(self, pattern)
+        LogParser.__init__(self, pattern)
+        rfc5424_fields = tuple([
+            'pri', 'ver', 'year', 'month', 'day', 'ltime',
+            'secfrac', 'offset', 'host', 'tag', 'datamsg'
+            ])
+        extra = set(self.fields) - set(rfc5424_fields)
+        if extra:
+            msg = u'no RFC 5424 fields in pattern: {0}'.format(field)
+            raise ConfigError(msg)
+                                
+    def extract(self, line):
+        """Extract result tuple from named matching groups."""
+        match = self.pattern.match(line) 
+        return LogFields(*map(match.group, self.fields))
 
-        self.gids = ['pri', 'ver', 'date', 'time', 'secfrac',
-                     'offset', 'host', 'tag']    
-        try:
-            for gid in self.gids:
-                idx = self.parser.groupindex[gid]
-        except KeyError:
-            msg = "RFC5424 header: missing a named group, use fixed extraction."
-            logger.info(msg)
-            self.extract = self._fixed_extract
-
-    def extract(self, match):
-        """
-        Extract result tuple from named matching groups. 
-        """
-        pri = match.group('pri')
-        ver = match.group('ver')
-        ldate = match.group('date')
-        ltime = match.group('time')
-        secfrac = match.group('secfrac')
-        offset = match.group('offset')
-        host = match.group('host')
-        tag = match.group('tag')
-
-        year = ldate[0:4]
-        month = ldate[5:7]
-        day = ldate[8:]
-        
-        return(pri, ver, year, month, day, ltime, secfrac, offset, None, host, tag)
-
-    def _fixed_extract(self, match):
-        """
-        Extract result tuple using fixed indexes for matching groups. 
-        """
-        pri = match.group(1)
-        ver = match.group(2)
-        ldate = match.group(3)
-        ltime = match.group(4)
-        secfrac = match.group(5)
-        offset = match.group(6)
-        host = match.group(7)
-        tag = match.group(8)
-        
-        year = ldate[0:4]
-        month = ldate[5:7]
-        day = ldate[8:]
-        
-        return(pri, ver, year, month, day, ltime, secfrac, offset, None, host, tag)
