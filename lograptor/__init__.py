@@ -39,7 +39,7 @@ import fnmatch
 from lograptor.application import AppLogParser
 from lograptor.configmap import ConfigMap
 from lograptor.exceptions import ConfigError, FileMissingError, FormatError, OptionError
-from lograptor.logheader import RFC3164_Header, RFC5424_Header
+from lograptor.logparser import RFC3164_Parser, RFC5424_Parser
 from lograptor.logmap import LogMap
 from lograptor.report import Report
 from lograptor.timedate import get_interval, parse_date, parse_last, TimeRange
@@ -70,12 +70,12 @@ class Lograptor:
         'patterns': {
             'rfc3164_pattern': r'^(?:<(?P<pri>[0-9]{1,3})>|)'
                                r'(?P<month>[A-Z,a-z]{3}) (?P<day>(?:[1-3]| )[0-9]) '
-                               r'(?P<time>[0-9]{2}:[0-9]{2}:[0-9]{2}) '
+                               r'(?P<ltime>[0-9]{2}:[0-9]{2}:[0-9]{2}) '
                                r'(?:last message repeated (?P<repeat>[0-9]{1,3}) times|'
-                               r'(?P<host>\S{1,255}) (?P<datamsg>(?P<tag>[^ \[\(\:]{1,32}).*))',
-            'rfc5424_pattern': r'^(?:<(?P<prix>[0-9]{1,3})>(?P<ver>[0-9]{0,2}) |)'
-                               r'(?:-|(?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})T)'
-                               r'(?P<time>[0-9]{2}:[0-9]{2}:[0-9]{2})(?:|\.(?P<secfrac>[0-9]{1,6}))'
+                               r'(?P<host>\S{1,255}) (?P<datamsg>(?:(?P<tag>[^ \[\(\:]{1,32})[\[\(\:])?.*))',
+            'rfc5424_pattern': r'^(?:<(?P<pri>[0-9]{1,3})>(?P<ver>[0-9]{0,2}) |)'
+                               r'(?:-|(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})T)'
+                               r'(?P<ltime>[0-9]{2}:[0-9]{2}:[0-9]{2})(?:|\.(?P<secfrac>[0-9]{1,6}))'
                                r'(?:Z |(?P<offset>(?:\+|-)[0-9]{2}:[0-9]{2}) )'
                                r'(?:-|(?P<host>\S{1,255})) (?P<datamsg>(?:-|(?P<tag>\S{1,48})) .*)',
             'ascii_pattern': r'[\x01-\x7f]*',
@@ -164,7 +164,7 @@ class Lograptor:
             raise FileMissingError('Abort "{0}" for previous errors'.format(__name__))
 
         # Instance attributes:
-        #  headers: cycle iterator of defined header classes
+        #  parsers: cycle iterator of defined LogParser classes
         #  filters: list with passed filter options
         #  hosts: list with host names passed with the option
         #  apps: dictionary with enabled applications
@@ -172,7 +172,7 @@ class Lograptor:
         #  _search_flags: flags for re.compile of patterns
         #  rawfh: raw file handler
         #  tmpprefix: location for temporary files
-        self.headers = None
+        self.parsers = None
         self.filters = []
         self.hosts = list()
         self.apps = dict()
@@ -374,14 +374,6 @@ class Lograptor:
             if not args:
                 raise OptionError('-A', 'missing file arguments! (Nothing to process ...)')
 
-        # Set the headers iterator.
-        # TODO: extend with modules for other formats
-        headers = [RFC3164_Header(self.config['rfc3164_pattern']),
-                   RFC5424_Header(self.config['rfc5424_pattern'])]
-        self.headers = itertools.cycle(headers)
-        self._num_headers = len(headers)
-        self._header = next(self.headers)
-
         # Set the host re objects
         hostset = set(re.split('\s*,\s*', self.config['hosts'].strip()))
         for host in hostset:
@@ -421,6 +413,22 @@ class Lograptor:
             for key in self.apps:
                 app = self.apps[key]
                 self.logmap.add(app.name, app.files, app.priority)
+
+        # Set the parsers iterator. Set the base with standard log
+        # format log parsers, and eventually insert application
+        # specific log formats.
+        parsers = [RFC3164_Parser(self.config['rfc3164_pattern']),
+                   RFC5424_Parser(self.config['rfc5424_pattern'])]
+        if self.config['apps'] is not None:
+            for app in self.apps.values():
+                if app.log_pattern != u'':
+                    try:
+                        parsers.append(LogParser(app.log_pattern, app.name))
+                    except ConfigError as msg:
+                        raise ConfigError
+        self.parsers = itertools.cycle(parsers)
+        self._num_parsers = len(parsers)
+        self._parser = next(self.parsers)
 
         # Set class instance variables for processing
         self._count = self.config['count']
@@ -650,26 +658,26 @@ class Lograptor:
                 self.rawfh.close()
 
         elif not config['no_messages']:
-            print('\n--- {0} run summary ---'.format(self.__class__.__name__))
+            print(u'\n--- {0} run summary ---'.format(self.__class__.__name__))
             if not self._has_args:
                 print('Number of processed files: {0}'.format(tot_files))
-            print('Total lines read: {0}'.format(tot_lines))
+            print(u'Total lines read: {0}'.format(tot_lines))
             if not self._debug and tot_unparsed > 0:
-                print('WARNING: Found {0} unparsed log header lines'.format(tot_unparsed))
+                print(u'WARNING: Found {0} unparsed log header lines'.format(tot_unparsed))
             if self._useapps:
                 if any([ app.counter > 0 for app in self.apps.values() ]):
-                    print('Found log lines for apps: {0}'.format(u', '.join([
+                    print(u'Total log lines per apps: {0}'.format(u', '.join([
                         u'%s(%d)' % (app.name, app.counter)
                         for app in self.apps.values() if app.counter > 0
                     ])))
                 if any([ app.unparsed_counter > 0 for app in self.apps.values() ]):
-                    print('Found unparsed log lines for apps: {0}'.format(u', '.join([
+                    print(u'Found unparsed log lines for apps: {0}'.format(u', '.join([
                         u'%s(%d)' % (app.name, app.unparsed_counter)
                         for app in self.apps.values() if app.unparsed_counter > 0
                     ])))
                 if self.extra_tags:
-                    print('Found extra application\'s tags: {0}'.format(u', '.join(self.extra_tags)))
-
+                    print(self.extra_tags)
+                    print(u'Found extra application\'s tags: {0}'.format(u', '.join(self.extra_tags)))
 
         return tot_counter > 0
 
@@ -678,17 +686,14 @@ class Lograptor:
         Process a single log file.
 
         Variables:
-          prev_match: Record previous match to process "last message
-                      repeat N times" lines;
+          prev_result: Record previous line result to process "last message
+                       repeat N times" lines;
         """
 
         # Load names to local variables to speed-up the run
-        header = self._header
-        parser = header.parser
-        extract = header.extract
-        datagid = header.datagid
-        headers = self.headers
-        num_headers = self._num_headers
+        logparser = self._parser
+        parsers = self.parsers
+        num_parsers = self._num_parsers
         outstatus = self._outstatus
         debug = self._debug
         tagmap = self.tagmap
@@ -708,7 +713,8 @@ class Lograptor:
 
         # Other local variables for the file lines iteration
         fstat = None
-        prev_match = None
+        prev_result = None
+        app = None
         app_thread = None
         debug_fmt = "date,time,repeat,host,tag : {0}-{1}-{2},{3},{4},{5},{6}"
 
@@ -739,8 +745,11 @@ class Lograptor:
                 prefout = '{0}: '.format(logfile.filename()) if self._out_filenames else ''
 
                 fstat = os.fstat(logfile.fileno())
-                self._header.set_file_mtime(fstat.st_mtime)
-
+                file_mtime = datetime.datetime.fromtimestamp(fstat.st_mtime)
+                file_year = file_mtime.year
+                file_month = file_mtime.month
+                prev_year = file_year - 1 
+            
                 if outstatus and not debug:
                     progressbar = ProgressBar(sys.stdout, fstat.st_size, "lines parsed")
                     readsize = len(line)
@@ -751,57 +760,61 @@ class Lograptor:
                     progressbar.redraw(readsize, filelineno)
 
             ###
-            # Header matching
-            match = parser.search(line)
+            # Parse and extract values from log line
+            result = logparser.extract(line)
 
-            if match is None:
+            # No result: change log parser
+            if result is None:
                 if debug:
-                    logger.debug("Change header parser")
-                for i in range(num_headers):
-                    nextheader = headers.next()
-                    if i != num_headers:
-                        match = nextheader.parser.search(line)
-                        if match is not None:
-                            header = nextheader
-                            parser = nextheader.parser
-                            extract = nextheader.extract
-                            datagid = nextheader.datagid
+                    logger.debug("Change log parser")
+                for i in range(num_parsers):
+                    nextparser = logparsers.next()
+                    if i != num_parsers:
+                        result = nextparser.extract(line)
+                        if result is not None:
+                            logparser = nextparser
                             break
                 else:
                     unparsed_counter += 1
                     if debug:
-                        logger.debug('Unparsable log header: {0}'.format(line))
+                        logger.debug('Unparsable log line: {0}'.format(line))
                         break
                     continue
 
-            # Extract values from matching object
-            pri, ver, year, month, day, ltime, offset, secfrac, repeat, host, tag = extract(match)
             if debug:
-                logger.debug(debug_fmt.format(year, month, day, ltime, repeat, host, tag))
+                logger.debug(debug_fmt.format(result))
 
             # Converts event time into a timestamp from Epoch to speed-up comparisons
-            hour = ltime[:2]
-            minute = ltime[3:5]
-            second = ltime[6:]
-            event_time = time.mktime((int(year), int(month), int(day),
-                                      int(hour), int(minute), int(second),
-                                      0, 0, -1))
+            month = int(result.month)
+            day = int(result.day)
+            hour = int(ltime[:2])
+            minute = int(ltime[3:5])
+            second = int(ltime[6:])
+            year = int(getattr(
+                result, 'year',
+                year = prev_year if month != 1 and file_month == 1 else file_year
+                ))
+            event_time = time.mktime((year, month, day, hour, minute, second, 0, 0, -1))
 
             # Process first 'last message repeated N times' log line only
-            # according to the previous match, to avoid oversights.
+            # according to the previous result, to avoid oversights.
             if repeat is not None:
-                if prev_match is not None:
+                repeat = int(repeat)
+                if prev_result is not None:
                     if debug:
                         logger.debug('Repetition: {0}'.format(line[:-1]))
-                    tag = prev_match.group('tag')
+                    tag = prev_result.tag
                     app = tagmap[tag]
+                    counter += repeat
                     app.increase_last(repeat)
                     app.counter += 1
                     if app_thread is not None:
                         app.cache.add_line(line, app_thread, pattern_search, filter_match, event_time)
-                    prev_match = None
+                    prev_result = None
+                elif app is not None:
+                    app.counter += 1
                 continue
-            prev_match = None
+            prev_result = result
 
             # Get the app related to log line. Skip lines not related to selected apps.
             if useapps:
@@ -809,6 +822,9 @@ class Lograptor:
                     if debug:
                         logger.debug('Skip line of another application ({0})'.format(tag))
                     extra_tags.add(tag)
+                    print("TAG", tag, line[:-1])
+                    break
+                    prev_result = None
                     continue
                 app = tagmap[tag]
                 app.counter += 1
@@ -817,8 +833,8 @@ class Lograptor:
             if event_time < ini_datetime:
                 if debug:
                     logger.debug('Skip older line: {0}'.format(line[:-1]))
+                prev_result = None
                 continue
-
 
             # Break the cycle if event is newer than final datetime of the range
             if event_time > fin_datetime:
@@ -827,16 +843,19 @@ class Lograptor:
                                  'modification of the file: {0}'.format(line[:-1]))
                 if debug:
                     logger.debug('Newer line, skip the rest of the file: {0}'.format(line[:-1]))
+                prev_result = None
                 break
 
             # Skip line not in timerange, when option is provided.
             if timerange is not None and not timerange.between(ltime):
                 if debug:
                     logger.debug('Skip line not in timerange: {0}'.format(line[:-1]))
+                prev_result = None
                 continue
 
-            # Skip lines not related to examined hosts
-            if not all_hosts_flag and not host in hostlist:
+            # Skip lines not related to examined hosts. If log line format don't
+            # include host information, the host is None and consider the line as matched.
+            if not all_hosts_flag and host is not None and not host in hostlist:
                 for regex in regex_hosts:
                     if regex.search(host) is not None:
                         hostlist.append(host)
@@ -844,9 +863,10 @@ class Lograptor:
                 else:
                     if debug:
                         logger.debug('Skip the line of not selected hosts'.format(line[:-1]))
+                    prev_result = None
                     continue
 
-            datamsg = match.group(datagid)
+            datamsg = result.datamsg
 
             # Search for provided pattern(s)
             pattern_search = True
@@ -860,12 +880,14 @@ class Lograptor:
                     if not thread:
                         if debug:
                             logger.debug('Unmatched line: {0}'.format(line[:-1]))
+                        prev_result = None
                         continue
                     pattern_search = False
             elif invert:
                 if not thread:
                     if debug:
                         logger.debug('Unmatched line: {0}'.format(line[:-1]))
+                    prev_result = None
                     continue
                 pattern_search = False
 
@@ -877,15 +899,18 @@ class Lograptor:
                     if not match_unparsed:
                         if pattern_search and debug:
                             logger.debug('Unparsable line: {0}'.format(line[:-1]))
+                        prev_result = None
                         continue
                 elif match_unparsed:
                     # Log message parsed but match_unparsed option
+                    prev_result = None
                     continue
                 elif app_thread is not None:
                     app.cache.add_line(line, app_thread, pattern_search, filter_match, event_time)
                 elif not filter_match and app.has_filters:
                     if pattern_search and debug:
                         print('Filtered line: {0}'.format(line[:-1]))
+                    prev_result = None
                     continue
 
                 # Handle timestamps for report
@@ -898,10 +923,6 @@ class Lograptor:
                             first_event = event_time
                         if last_event < event_time:
                             last_event = event_time
-
-            # Record current matching in case the next line is "last message repeat..."
-            if pattern_search:
-                prev_match = match
 
             # Increment counters and no threaded output
             if thread:
@@ -934,7 +955,7 @@ class Lograptor:
                 counter += apps[app].cache.flush_cache(output, prefout, event_time)
 
         # Save modificable class variables
-        self._header = header
+        self._parser = logparser
         if make_report:
             self._first_event = first_event
             self._last_event = last_event
