@@ -39,7 +39,7 @@ import fnmatch
 from lograptor.application import AppLogParser
 from lograptor.configmap import ConfigMap
 from lograptor.exceptions import ConfigError, FileMissingError, FormatError, OptionError
-from lograptor.logparser import RFC3164_Parser, RFC5424_Parser
+from lograptor.logparser import LogParser, RFC3164_Parser, RFC5424_Parser
 from lograptor.logmap import LogMap
 from lograptor.report import Report
 from lograptor.timedate import get_interval, parse_date, parse_last, TimeRange
@@ -47,6 +47,18 @@ from lograptor.tui import ProgressBar
 from lograptor.utils import cron_lock, set_logger
 
 logger = logging.getLogger('lograptor')
+
+
+# Map for month field from any admitted representation to numeric.
+MONTHMAP = { 'Jan':'01', 'Feb':'02', 'Mar':'03',
+             'Apr':'04', 'May':'05', 'Jun':'06',
+             'Jul':'07', 'Aug':'08', 'Sep':'09',
+             'Oct':'10', 'Nov':'11', 'Dec':'12',
+             '01':'01', '02':'02', '03':'03',
+             '04':'04', '05':'05', '06':'06',
+             '07':'07', '08':'08', '09':'09',
+             '10':'10', '11':'11', '12':'12' }
+
 
 class Lograptor:
     """
@@ -768,7 +780,7 @@ class Lograptor:
                 if debug:
                     logger.debug("Change log parser")
                 for i in range(num_parsers):
-                    nextparser = logparsers.next()
+                    nextparser = parsers.next()
                     if i != num_parsers:
                         result = nextparser.extract(line)
                         if result is not None:
@@ -785,21 +797,21 @@ class Lograptor:
                 logger.debug(debug_fmt.format(result))
 
             # Converts event time into a timestamp from Epoch to speed-up comparisons
-            month = int(result.month)
+            month = int(MONTHMAP[result.month])
             day = int(result.day)
+            ltime = result.ltime
             hour = int(ltime[:2])
             minute = int(ltime[3:5])
             second = int(ltime[6:])
             year = int(getattr(
-                result, 'year',
-                year = prev_year if month != 1 and file_month == 1 else file_year
+                result, 'year', prev_year if month != 1 and file_month == 1 else file_year
                 ))
             event_time = time.mktime((year, month, day, hour, minute, second, 0, 0, -1))
 
             # Process first 'last message repeated N times' log line only
             # according to the previous result, to avoid oversights.
-            if repeat is not None:
-                repeat = int(repeat)
+            if getattr(result, 'repeat', None) is not None:
+                repeat = int(result.repeat)
                 if prev_result is not None:
                     if debug:
                         logger.debug('Repetition: {0}'.format(line[:-1]))
@@ -818,15 +830,19 @@ class Lograptor:
 
             # Get the app related to log line. Skip lines not related to selected apps.
             if useapps:
-                if tag not in tagmap:
-                    if debug:
-                        logger.debug('Skip line of another application ({0})'.format(tag))
-                    extra_tags.add(tag)
-                    print("TAG", tag, line[:-1])
-                    break
-                    prev_result = None
-                    continue
-                app = tagmap[tag]
+                tag = getattr(result, 'tag', None)
+                if tag is not None:
+                    if tag not in tagmap:
+                        if debug:
+                            logger.debug('Skip line of another application ({0})'.format(tag))
+                        extra_tags.add(tag)
+                        print("TAG", tag, line[:-1])
+                        break
+                        prev_result = None
+                        continue
+                    app = tagmap[tag]
+                else:
+                    app = logparser.app
                 app.counter += 1
 
             # Skip line if the event is older than the initial datetime of the range
@@ -891,6 +907,7 @@ class Lograptor:
                     continue
                 pattern_search = False
 
+            host = result.host
             # Log message parsing (with config app's rules)
             if useapps and pattern_search:
                 result, filter_match, app_thread, groupdict = app.process(host, datamsg, debug)

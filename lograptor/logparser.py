@@ -22,9 +22,6 @@ This module classes and methods for parsing log headers.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 ##  
-import os
-import time
-import datetime
 import re
 import logging
 from collections import namedtuple
@@ -33,29 +30,19 @@ from lograptor.exceptions import ConfigError
 
 logger = logging.getLogger('lograptor')
 
-# Map for month field from any admitted representation to numeric.
-MONTHMAP = { 'Jan':'01', 'Feb':'02', 'Mar':'03',
-             'Apr':'04', 'May':'05', 'Jun':'06',
-             'Jul':'07', 'Aug':'08', 'Sep':'09',
-             'Oct':'10', 'Nov':'11', 'Dec':'12',
-             '01':'01', '02':'02', '03':'03',
-             '04':'04', '05':'05', '06':'06',
-             '07':'07', '08':'08', '09':'09',
-             '10':'10', '11':'11', '12':'12' }
-
 
 class LogParser:
     """
     Base class to parse log lines.
     """
-    def __init__(self, pattern, appname=None):
+    def __init__(self, pattern, app=None):
         """
         Compile the pattern and record group fields. Check if pattern
         include mandatory named groups.
         """
         self.parser = re.compile(pattern)
         self.LogData = namedtuple('LogData', self.parser.groupindex.keys())
-        self.appname = appname
+        self.app = app
         self.fields = tuple(self.parser.groupindex.keys())
                                     
         try:
@@ -68,10 +55,7 @@ class LogParser:
     def extract(self, line):
         """Extract result tuple from named matching groups."""
         match = self.parser.match(line)
-        result = map(match.group, self.fields)
-        print(self.LogData(*result))
-        match.group('month') = MONTHMAP(match.group('month'))
-        return LogData(*result)
+        return self.LogData(*map(match.group, self.fields)) if match is not None else None
 
     
 class RFC3164_Parser(LogParser):
@@ -86,7 +70,7 @@ class RFC3164_Parser(LogParser):
             ])
         extra = set(self.fields) - set(rfc3164_fields)
         if extra:
-            msg = u'no RFC 3164 fields in pattern: {0}'.format(field)
+            msg = u'no RFC 3164 fields in pattern: {0}'.format(extra)
             raise ConfigError(msg)
             
 
@@ -103,11 +87,6 @@ class RFC5424_Parser(LogParser):
             ])
         extra = set(self.fields) - set(rfc5424_fields)
         if extra:
-            msg = u'no RFC 5424 fields in pattern: {0}'.format(field)
+            msg = u'no RFC 5424 fields in pattern: {0}'.format(extra)
             raise ConfigError(msg)
-                                
-    def extract(self, line):
-        """Extract result tuple from named matching groups."""
-        match = self.parser.match(line) 
-        return LogFields(*map(match.group, self.fields))
 
