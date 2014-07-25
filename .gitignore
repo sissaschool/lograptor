@@ -5,6 +5,7 @@
 *~
 MANIFEST
 lograptor.conf
+logmarker.py
 etc/lograptor/conf.d/testapp.conf
 !etc/lograptor/lograptor.conf
 exclude-list.txt

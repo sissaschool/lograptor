@@ -146,12 +146,6 @@ class ConfigMap(UserDict):
             if isinstance(value, str):
                 self.defaults[opt] = self._interpolate(value)
 
-        #self.paths = {
-        #    'cfgdir' : self.data['cfgdir'],
-        #    'logdir' : self.data['logdir'],
-        #    'tmpdir' : self.data['tmpdir'],
-        #    }
-
     def _interpolate(self, option):
         """
         Make an option interpolation using UserDict data dictionary

@@ -46,7 +46,7 @@ class LogParser:
         self.fields = tuple(self.parser.groupindex.keys())
                                     
         try:
-            for field in ['month', 'day', 'ltime', 'datamsg']:
+            for field in ['month', 'day', 'ltime', 'message']:
                 idx = self.parser.groupindex[field]
         except KeyError:
             msg = '%s: missing mandatory named group "%s"' % (self.__class__.__name__, field)
@@ -66,7 +66,7 @@ class RFC3164_Parser(LogParser):
     def __init__(self, pattern):
         LogParser.__init__(self, pattern)
         rfc3164_fields = tuple([
-            'pri', 'month', 'day', 'ltime', 'repeat', 'host', 'tag', 'datamsg'
+            'pri', 'month', 'day', 'ltime', 'repeat', 'hostname', 'apptag', 'message'
             ])
         extra = set(self.fields) - set(rfc3164_fields)
         if extra:
@@ -82,8 +82,8 @@ class RFC5424_Parser(LogParser):
     def __init__(self, pattern):
         LogParser.__init__(self, pattern)
         rfc5424_fields = tuple([
-            'pri', 'ver', 'year', 'month', 'day', 'ltime',
-            'secfrac', 'offset', 'host', 'tag', 'datamsg'
+            'pri', 'ver', 'year', 'month', 'day', 'ltime', 'secfrac', 'offset',
+            'hostname', 'apptag', 'procid', 'msgid', 'message'
             ])
         extra = set(self.fields) - set(rfc5424_fields)
         if extra:

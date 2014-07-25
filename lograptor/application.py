@@ -379,7 +379,6 @@ class AppLogParser:
         'desc': u'${appname}',
         'tags': u'${appname}',
         'files': u'${logdir}/messages',
-        'log_pattern': u'',
         'enabled': True,
         'priority': 1,
         }
@@ -445,7 +444,6 @@ class AppLogParser:
         self.desc = appconfig['desc']
         self.tags = appconfig['tags']
         self.files = list(set(re.split('\s*,\s*', appconfig['files'])))
-        self.log_pattern = appconfig['log_pattern']
         self.enabled = appconfig['enabled']
         self.priority = appconfig['priority']
 

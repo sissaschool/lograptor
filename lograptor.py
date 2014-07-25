@@ -164,10 +164,11 @@ def parse_args(cli_parser):
                      help="Translate numeric UIDs into corresponding names. The local "
                           "system authentication, used for lookups, needs to correctly "
                           "resolve the UIDs of the log files.")
-    group.add_option("--anonymize", action="store_true", dest="anonymize", default=False,
-                     help="Anonymize output for values connected to provided filters. "
-                          "A translation table is built in volatile memory for each run "
-                          "and is not saved. The anonymous tokens have the format FILTER_NN.")
+    # TODO: anonymize output
+    #group.add_option("--anonymize", action="store_true", dest="anonymize", default=False,
+    #                 help="Anonymize output for values connected to provided filters. "
+    #                      "A translation table is built in volatile memory for each run "
+    #                      "and is not saved. The anonymous tokens have the format FILTER_NN.")
     cli_parser.add_option_group(group)
 
     ### Define the options for the group "Report Control"
