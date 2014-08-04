@@ -689,7 +689,7 @@ class Lograptor:
                     ])))
                 if self.extra_tags:
                     print(self.extra_tags)
-                    print(u'Found extra application\'s tags: {0}'.format(u', '.join(self.extra_tags)))
+                    print(u'Found unmatched application\'s tags: {0}'.format(u', '.join(self.extra_tags)))
 
         return tot_counter > 0
 
@@ -879,15 +879,22 @@ class Lograptor:
             if useapps:
                 apptag = getattr(result, 'apptag', None)
                 if apptag is not None:
+                    # Try the exact match
                     if apptag not in tagmap:
-                        if debug:
-                            logger.debug('Skip line of another application ({0})'.format(apptag))
-                        extra_tags.add(apptag)
-                        #print("TAG", apptag, line[:-1])
-                        #break
-                        prev_result = None
-                        continue
-                    app = tagmap[apptag]
+                        # Try the partial match
+                        for tag in tagmap:
+                            if apptag.startswith(tag):
+                                app = tagmap[tag]
+                                break
+                        else:
+                            #Tag unmatched, skip the line
+                            extra_tags.add(apptag)
+                            prev_result = None
+                            if debug:
+                                logger.debug('Skip line of another application ({0})'.format(apptag))
+                            continue
+                    else:
+                        app = tagmap[apptag]
                 else:
                     app = logparser.app
                 app.counter += 1
