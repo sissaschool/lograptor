@@ -1,0 +1,194 @@
+Content-Type: text/x-zim-wiki
+Wiki-Format: zim 0.4
+Creation-Date: 2014-08-07T16:58:06+02:00
+
+====== Lograptor Command ======
+
+===== NAME =====
+lograptor - Search tool for syslog files.
+
+===== SYNOPSIS =====
+'''
+lograptor [options] [PATTERN] [FILE ...]
+lograptor [options] [ -e PATTERN | -f FILE ] [FILE ...]
+'''
+
+
+===== DESCRIPTION =====
+Lograptor is a search tool for system logs saved with legacy BSD syslog format (RFC 3164) or IETF syslog format (RFC 5424).
+It is developed as a compact and configurable CLI tool, usable for raw or refined searches and to create specific or periodic reports on system logs. 
+The application mix classical pattern matching features with scope parameters and a configurable set of filters. You can define application filtering rule using the classical regexp syntax. Lograptor can also produce and publish reports in various formats. Reporting could be automated using cron.
+
+===== OPTIONS =====
+'''
+--version 	
+'''
+show program's version number and exit
+''-h, --help	''show this help message and exit
+
+==== General Options ====
+
+'''
+--conf=<CONFIG_FILE>	
+'''
+		Provide a different configuration to Lograptor (default is [[/etc/lograptor/lograptor.conf).]]
+'''
+-d [0-4]
+'''
+		Logging level. The default is 1. Level 0 log only critical errors, higher levels show more informations..
+
+
+==== Scope Options: ====
+
+'''
+-H HOST/IP[,HOST/IP...], --hosts=HOST/IP[,HOST/IP...]
+'''
+		Restrict the analysis to log lines related to comma separated list of hostnames and/or IP addresses. File path wildcards can be used for hostnames.
+'''
+-a APP[,APP...], --apps=APP[,APP...]
+'''
+		Analyze only log lines related to a comma separate list of applications. 
+		An app is valid when a configuration file is defined. 
+		As default all apps defined and enabled are processed.
+'''
+-A
+'''
+		Skip application processing and works only with pattern(s) matching. 
+		This option is incompatible with report and filtering options.
+'''
+--last=[hour|day|week|month|Nh|Nd|Nw|Nm]
+'''
+		''Restrict search scope to a previous date/time period.''
+'''
+--date=[YYYY]MMDD[,[YYYY]MMDD]
+'''
+		''Restrict search scope to a date or an interval of dates''.
+''--time=HH:MM,HH:MM''
+		''Restrict search scope to a time range.''
+
+
+==== Matching Control: ====
+'''
+-e PATTERN, --regexp=PATTERN
+'''
+		The search pattern. Useful to specify multiple search patterns or to protect a pattern beginning with a hypen (-).
+''-f FILE, --file=FILE''
+		Obtain patterns from FILE, one per line.
+'''
+-i, --ignore-case
+'''
+''Ignore case distinctions in matching.''
+''-v, --invert-match  ''
+''Invert the sense of matching, to select non-matching lines.''
+''-F FILTER=PATTERN[,FILTER=PATTERN...]''
+''                        Refine the search with a comma separated list of app's''
+''                        filters. The filter list are applied with logical''
+''                        disjunction (OR). Providing more --filter options''
+''                        perform logical conjunction (AND).''
+''-t, --thread        Perform matching at application's thread level. The''
+''                        thread rules are defined in app's configuration file.''
+''-u, --unparsed   ''
+	'''
+	Match lines that are unparsable by app's rules. Useful
+	                        for finding anomalies and for application's rules
+	                        debugging.
+	'''
+  Output Control:
+    -c, --count         Suppress normal output; instead print a count of
+                        matching lines for each input file.  With  the  -v,
+                        --invert-match option, count non-matching lines.
+    -m NUM, --max-count=NUM
+                        Stop reading a file after NUM matching lines. When
+                        -c/--count option is also used, lograptor does not
+                        output a count greater than NUM.
+    -q, --quiet         Quiet; do not write anything  to standard output. Exit
+                        immediately with zero status if any match  is found,
+                        even if an error was detected. Also see the -s or
+                        --no-messages option.
+    -s, --no-messages   Suppress final run summary and error messages about
+                        nonexistent or unreadable files.
+    -o, --with-filename
+                        Print the filename for each matching line.
+    -O, --no-filename   Suppress the default headers with filenames on output.
+                        This is the default behaviour for output also when
+                        searching in a single file.
+    --ip                Do a reverse lookup translation for the IP addresses.
+                        The lookups use the DNS resolve facility of the
+                        running host.
+    --uid               Translate numeric UIDs into corresponding names. The
+                        local system authentication, used for lookups, needs
+                        to correctly resolve the UIDs of the log files.
+
+  Report Control:
+    -r, --report        Make a formatted text report at the end of processing
+                        and display on console.
+    --publish=PUBLISHER[,PUBLISHER...]
+                        Make a report and publish it using a comma separated
+                        list of publishers, choosed from the ones defined in
+                        the configuration file. You have to define your
+                        publishers in the main configuration file.
+
+===== FEATURES =====
+Lograptor is written in python. It is compahandles things like
+timestamp lookups, unwrapping of "last message repeated" lines,
+handling of rotated files, preparing and publishing the reports, etc.
+
+Lograptor is derived from the ideas and the code of Epylog package and
+from a small search utility for email servers logfiles. It was developed 
+ with python 2.6+ and python 3, in order to be projected for future improvements.  
+
+The application are simply a configuration files added in a specific
+configuration directory. Application's configuration files containg rules
+for log parsing and for composing reports. For more info see
+\fBlograptor-apps(5)\fR.
+
+.SH "FILES"
+.LP 
+.I /etc/lograptor/lograptor.conf
+.br
+.I /etc/lograptor/conf.d/*.conf
+.br
+.I /usr/bin/lograptor
+
+.SH "EXAMPLES"
+.LP 
+.SS "Basic pattern search"
+.TP
+Search a pattern in specific log file:
+
+lograptor "hello" /var/log/messages
+
+.TP
+Same search but ignoring characters case:
+
+lograptor -i "hello" /var/log/messages
+
+.TP
+Search a string in postfix's log files of the last 3 days: 
+
+lograptor --last=3d -a postfix "example.com" 
+
+.TP
+Search of mail sent by an address, with match at connection thread level:
+
+lograptor -t --from=user@example.com "" /var/log/maillog
+
+.LP
+.SS "Making reports"
+.TP
+Produce a report on console for application "crond": 
+
+lograptor -ra crond "" /var/log/cron
+
+.TP
+The same but produce an HTML report and publish it with default publishers, including unparsed logs:
+
+lograptor -R html -ua crond "" /var/log/cron
+
+.SH "AUTHORS"
+.LP 
+Davide Brunato <brunato@sissa.it>
+
+.SH "SEE ALSO"
+.LP 
+lograptor.conf(5), lograptor-apps(5)
