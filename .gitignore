@@ -15,6 +15,9 @@ usb-sync
 build/
 deb_dist/
 dist/
+doc/*.zim
+doc/.zim/
+doc/_*/
 man/*.html
 man/*.gz
 packages/
