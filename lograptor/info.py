@@ -32,9 +32,8 @@ __version__ = "1.0a"
 __maintainer__ = "Davide Brunato"
 __email__ = "brunato@sissa.it"
 __status__ = "alpha"
-__description__ = """Command-line utility for searching into
-log files. Produces matching outputs and reports.
-"""
+__description__ = ("Command-line utility for searching into log files. "
+                   "Produces matching outputs and reports.")
 LONG_DESCRIPTION =\
 """Lograptor is a syslog parser and searching tool which provides a
 command-line interface for manually or automated logs processing.
