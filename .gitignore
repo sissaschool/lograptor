@@ -16,6 +16,7 @@ build/
 deb_dist/
 dist/
 doc/*.zim
+doc/*.swp
 doc/.zim/
 doc/_*/
 man/*.html
