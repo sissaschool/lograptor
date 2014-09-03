@@ -41,31 +41,45 @@ from lograptor.utils import mail_sendmail, mail_smtp, do_chunked_gzip
 logger = logging.getLogger('lograptor')
 
 
-class MailPublisher:
+class BasePublisher(object):
+    """
+    Base class for Lograptor's publishers, grouping common attributes and methods.
+    """
+
+    def __init__(self, section, config):
+        self.section = section
+        self.formats = list(set(re.split('\s*,\s*', config.getstr(section,'formats'))))
+        logger.debug('Formats ={0}'.format(self.formats))
+
+    def has_format(self, ext):
+        return (ext == 'txt' and 'plain' in self.formats) or ext in self.formats
+
+
+class MailPublisher(BasePublisher):
     """
     This publisher sends the results of an Lograptor run as an email message.
     """
     
     name = 'Mail Publisher'
     
-    def __init__(self, sec, config):
-        self.section = sec
+    def __init__(self, section, config):
+        super(MailPublisher, self).__init__(section, config)
         self.fromaddr = config['fromaddr']
         self.smtpserv = config['smtpserv']
-        
-        self.mailto = list(set(re.split('\s*,\s*', config.get(sec,'mailto'))))
+
+        self.mailto = list(set(re.split('\s*,\s*', config.getstr(section,'mailto'))))
         logger.debug('Recipients list ={0}'.format(self.mailto))
 
-        self.rawlogs = config.getboolean(sec, 'include_rawlogs')
+        self.rawlogs = config.getboolean(section, 'include_rawlogs')
         if self.rawlogs:
-            self.rawlogs_limit = config.getint(sec, 'rawlogs_limit') * 1024
+            self.rawlogs_limit = config.getint(section, 'rawlogs_limit') * 1024
         else: 
             self.rawlogs_limit = 0
         
         logger.debug('rawlogs={0}'.format(self.rawlogs))
         logger.debug('rawlogs_limit={0}'.format(self.rawlogs_limit))
 
-        self.gpg_encrypt = config.get(sec, 'gpg_encrypt')
+        self.gpg_encrypt = config.getstr(section,'gpg_encrypt')
         if self.gpg_encrypt:
             self.gpg_keyringdir = config.get['gpg_keyringdir']
 
@@ -112,6 +126,11 @@ class MailPublisher:
                              
         logger.debug('Creating the text/"text_type" parts')
         for text_part in report_parts:
+
+            # Skip report formats not related with this publisher
+            if not self.has_format(text_part.ext):
+                continue
+
             attach_part = MIMEText(text_part.text, text_part.ext, 'utf-8')
             attach_part.add_header('Content-Disposition', 'attachment',
                                    filename='{0}.{1}'.format(text_part.title, text_part.ext))
@@ -261,20 +280,21 @@ class MailPublisher:
         print('Mailed the report to: {0}'.format(','.join(self.mailto)))
 
 
-class FilePublisher:
+class FilePublisher(BasePublisher):
     """
     FilePublisher publishes the results of an Lograptor run into a set of files
     and directories on the hard drive.
     """
     name = 'File Publisher'
-    def __init__(self, section, config):
-        expire = config.getint(section, 'expire_in')
-        dirmask = config.get(section, 'dirmask')
-        filemask = config.get(section, 'filemask')
-        self.pubdir = config.get(section, 'pubdir')
-        self.pubdir = Template(self.pubdir).safe_substitute(config.paths)
 
+    def __init__(self, section, config):
+        super(FilePublisher, self).__init__(section, config)
+        expire = config.getint(section, 'expire_in')
+        dirmask = config.getstr(section,'dirmask')
+        filemask = config.getstr(section,'filemask')
         maskmsg = 'Invalid mask for {0}: {1}'
+
+        self.pubdir = config.getstr(section,'pubdir')
 
         try: 
             self.dirname = time.strftime(dirmask, time.localtime())
@@ -296,7 +316,7 @@ class FilePublisher:
         self.notify = []
 
         try:
-            notify = config.get(section, 'notify')
+            notify = config.getstr(section,'notify')
             if len(notify) > 0:
                 for addy in notify.split(','):
                     addy = addy.strip()
@@ -310,7 +330,7 @@ class FilePublisher:
 
         if self.notify:
             try:
-                self.pubroot = config.get(section, 'pubroot')
+                self.pubroot = config.getstr(section,'pubroot')
                 logger.debug('pubroot={0}'.format(self.pubroot))
             except:
                 msg = 'File publisher requires a pubroot when notify is set'
@@ -374,10 +394,15 @@ class FilePublisher:
                 return
 
         fmtname = '{0}-{1}-{2}.{3}' if len(report_parts) > 1 else '{0}.{3}'
-        
+
         for i in range(len(report_parts)):
-            filename = fmtname.format(self.filename, i, report_parts[i].title,
-                                      report_parts[i].ext)            
+            ext = report_parts[i].ext
+
+            # Skip report formats not related with this publisher
+            if not self.has_format(ext):
+                continue
+
+            filename = fmtname.format(self.filename, i, report_parts[i].title, ext)
             repfile = os.path.join(self.pubdir, filename)
             
             logger.info('Dumping the report part {1} into {0}'.format(repfile, i))
@@ -385,8 +410,7 @@ class FilePublisher:
             fh = open(repfile, 'w')
             fh.write(report_parts[i].text)
             fh.close()
-
-        print('Report saved in: {0}'.format(self.pubdir))
+            print('Report {0}saved in: {1}'.format('part ' if ext == 'csv' else '', repfile))
 
         if self.notify:
             logger.info('Creating an email message')
@@ -418,5 +442,5 @@ class FilePublisher:
             outfh = open(logfile, 'w+b')
             do_chunked_gzip(rawfh, outfh, logfilen)
             outfh.close()
-            print('Gzipped logs saved in: {0}'.format(self.pubdir))
+            print('Gzipped logs saved in: {0}'.format(logfile))
         

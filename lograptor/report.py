@@ -47,6 +47,7 @@ except ImportError:
     import ConfigParser as configparser
 
 import lograptor
+import lograptor.info
 import lograptor.publishers
 import lograptor.tui
 
@@ -637,11 +638,11 @@ class Report:
             logger.info('Initializing publishers')
 
             for sec in config['publish'].split(','):
-                sec = u'{0}_publisher'.format(sec.strip())
+                sec = sec.strip()
                 try:
                     method = config.getstr(sec, 'method')
                 except configparser.NoSectionError:
-                    msg = 'section for "{0}" not found'.format(sec[:-10])
+                    msg = 'section for "{0}" not found'.format(sec)
                     if config['publish'] is not None:
                         raise lograptor.OptionError('--publish', msg)
                     else:                        
@@ -656,7 +657,7 @@ class Report:
                 else:
                     raise lograptor.ConfigError('Publishing method "{0}" not supported'
                                                 .format(method))
-                logger.debug('Add {0} publisher \'{1}\''.format(method, sec[:-10]))
+                logger.debug('Add {0} publisher \'{1}\''.format(method, sec))
                 self.publishers.append(publisher)
 
     def need_rawlogs(self):
@@ -678,14 +679,15 @@ class Report:
             subreport.compact_tables()
         return not self.is_empty()
 
-    def make_format(self, fmt):
+    def make_formats(self, formats):
         """
         Make report item texts in a specified format
         """
-        width = 100 if fmt is not None else lograptor.tui.getTerminalSize()[0]
-        self.fmt = fmt
-        for subrep in self.subreports:
-            subrep.make_format(self.fmt, width)        
+        self.formats = formats
+        for fmt in formats:
+            width = 100 if fmt is not None else lograptor.tui.getTerminalSize()[0]
+            for subrep in self.subreports:
+                subrep.make_format(fmt, width)
 
     def is_empty(self):
         """
@@ -718,7 +720,7 @@ class Report:
             'pattern_file'  : self.config['pattern_file'],
             'hosts'         : self.config['hosts'],
             'apps'          : self.config['apps'],
-            'version'       : lograptor.__version__
+            'version'       : lograptor.info.__version__
             }
 
         logger.debug('Provide filtering informations')
@@ -740,22 +742,23 @@ class Report:
             valumap[key] = self.stats[key]            
 
         report_parts = []
-        if self.fmt == 'plain' or self.fmt is None:
-            logger.info('Creating a plain text page report')
-            report_parts.append(self.make_text_page(valumap))
-        elif self.fmt == 'html':
-            logger.info('Creating a standard html page report')
-            report_parts.append(self.make_html_page(valumap))
-        else:
-            logger.info('Creating a list of csv files')
-            report_parts.extend(self.make_csv_tables(valumap))
-            pass
+        for fmt in self.formats:
+            if fmt == 'plain':
+                logger.info('Creating a plain text page report')
+                report_parts.append(self.make_text_page(valumap))
+            elif fmt == 'html':
+                logger.info('Creating a standard html page report')
+                report_parts.append(self.make_html_page(valumap))
+            elif fmt == 'csv':
+                logger.info('Creating a list of csv files')
+                report_parts.extend(self.make_csv_tables(valumap))
         
         if self.publishers:
+            print(u'\n--- Publishing report ---')
             for publisher in self.publishers:
                 logger.info('Invoking publisher "{0}"'.format(publisher.name))
                 publisher.publish(self.title, report_parts, rawfh)
-        elif self.fmt == 'plain':
+        elif self.formats[0] == 'plain':
             print('\n{0}'.format(report_parts[0].text))
 
     def make_html_page(self, valumap):
@@ -844,7 +847,7 @@ class Report:
         logger.info('Create the parameter and statistic page')
         statpage = Template(template).safe_substitute(valumap)
 
-        report_parts = [TextPart("Report stats and parameters", statpage, 'txt')]
+        report_parts = []
 
         for subrep in self.subreports:
             if subrep.repitems:

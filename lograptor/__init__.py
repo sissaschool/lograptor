@@ -44,7 +44,7 @@ from lograptor.logmap import LogMap
 from lograptor.report import Report
 from lograptor.timedate import get_interval, parse_date, parse_last, TimeRange
 from lograptor.tui import ProgressBar
-from lograptor.utils import cron_lock, set_logger
+from lograptor.utils import set_logger
 
 logger = logging.getLogger('lograptor')
 
@@ -80,7 +80,6 @@ class Lograptor:
             'cfgdir': '/etc/lograptor/',
             'logdir': '/var/log',
             'tmpdir': '/var/tmp',
-            'pidfile': "/var/run/lograptor.pid",
             'fromaddr': 'root@{0}'.format(socket.gethostname()),
             'smtpserv': '/usr/sbin/sendmail -t',
         },
@@ -137,8 +136,7 @@ class Lograptor:
         },
         None: {
             'method': None,
-            'notify': '',
-            'format': 'plain',
+            'formats': 'plain',
             # options for mail publisher sections
             'mailto': 'root',
             'include_rawlogs': False,
@@ -147,6 +145,7 @@ class Lograptor:
             'gpg_keyringdir': None,
             'gpg_recipients': None,
             # options for file publisher sections
+            'notify': '',
             'pubdir': '/var/www/lograptor',
             'dirmask': '%Y-%b-%d_%a',
             'filemask': '%H%M',
@@ -201,17 +200,17 @@ class Lograptor:
         self._search_flags = re.IGNORECASE if self.config['case'] else 0
         self.rawfh = None
         self.tmpprefix = None
-        self.cron = not os.isatty(sys.stdin.fileno())
+        self.batch = not os.isatty(sys.stdin.fileno())
 
-        # Check and initialize the logger if not already defined. If the program is run
-        # by cron and is not a debug loglevel set the logging level to 0 (log only critical messages).
+        # Check and initialize the logger if not already defined. If the program is run by cron-batch
+        # and is not a debug loglevel set the logging level to 0 (log only critical messages).
         if self.config['loglevel'] < 0 or self.config['loglevel'] > 4:
             msg = "wrong logging level! (the value of -d parameter must be in [0..4])"
             raise OptionError('-d', msg)
 
         # Set the logger only if no handler is already defined (from caller method
         # when cfgfile is 4).
-        if self.cron and self.config['loglevel'] < 4:
+        if self.batch and self.config['loglevel'] < 4:
             set_logger(0)
         else:
             set_logger(self.config['loglevel'])
@@ -234,19 +233,10 @@ class Lograptor:
                 fileinput.close()
             except IOError:
                 raise FileMissingError("Pattern input file \"" + self.config['pattern_file'] + "\" not found!!")
+        elif self.config['pattern'] is None or len(self.config['pattern']) == 0:
+            self.patterns = []
         else:
-            if self.config['pattern'] is None:
-                try:
-                    self.config['pattern'] = args.pop(0)
-                    logger.info('No option -e or -f provided, use the first argument: "{0}"'
-                                .format(self.config['pattern']))
-                except IndexError:
-                    self.config['pattern'] = ''
-
-            if self.config['pattern'] is None or len(self.config['pattern']) == 0:
-                self.patterns = []
-            else:
-                self.patterns = [re.compile(self.config['pattern'], self._search_flags)]
+            self.patterns = [re.compile(self.config['pattern'], self._search_flags)]
 
         if len(self.patterns) > 0:
             for i in range(len(self.patterns)):
@@ -340,9 +330,8 @@ class Lograptor:
         # The last case is a configuration error (the application is called
         # without a scope). The fourth case is the classical grep output (
         # output of matching lines).
-        if self.cron:
-            cron_lock(self.config['pidfile'])
-            logger.info('Cron mode: disabling output and status')
+        if self.batch:
+            logger.info('Batch mode: disabling output and status')
             self._output = self._outstatus = False
         elif self.config['quiet'] and self.config['report']:
             logger.info('Quiet option provided: disabling output')
@@ -435,7 +424,7 @@ class Lograptor:
                 self.logmap.add(app.name, app.files, app.priority)
 
         # Set the parsers iterator with admitted formats.
-        # TODO: Extend with other formats using base LogParser class
+        # TODO: Extend with other syslog formats using base LogParser class
         parsers = [RFC3164_Parser(self.config['rfc3164_pattern']),
                    RFC5424_Parser(self.config['rfc5424_pattern'])]
         self.parsers = itertools.cycle(parsers)
@@ -1005,7 +994,15 @@ class Lograptor:
             return False
 
         if self.report.make():
-            self.report.make_format(self.config['format'])
+
+            if self.config['publish'] is None:
+                formats = ['plain']
+            else:
+                formats = set()
+                for publisher in self.report.publishers:
+                    formats = formats.union(publisher.formats)
+            logger.debug('Creating report formats: {0}'.format(formats))
+            self.report.make_formats(formats)
             return True
         return False
 

@@ -33,52 +33,6 @@ import lograptor.tui
 
 logger = logging.getLogger('lograptor')
 
-def cron_lock(pidfile, mode=0o777):
-    """
-    Locking when running in cron/batch mode, so is admitted only one
-    batch job at a time.
-    """
-
-    mypid = str(os.getpid())
-    try:
-        fd = os.open(pidfile, os.O_EXCL|os.O_CREAT|os.O_WRONLY, mode)
-    except OSError as msg:
-        if not msg.strerror == "File exists": raise msg
-        try:
-            pid = int(open(pidfile).read())
-        except ValueError:
-            msg = 'Pidfile {0} contains non numeric value'
-            sys.exit(msg.format(pidfile))
-
-        try:
-            # Check the existence of the process
-            os.kill(pid, 0)
-        except OSError as errmsg:
-            if errmsg[0] == errno.ESRCH:
-                # The pid doesn't exists: remove the lock file and continue
-                os.unlink(pidfile)
-            elif errmsg[0] == errno.EPERM:
-                # errno.EPERM case: don't have permissions to check the status of the process PID
-                msg = "Can't check status of PID {0} from pidfile {1}: {2}"
-                sys.exit(msg.format(pid, pidfile, errmsg[1]))
-            else:
-                # Unknown error:
-                msg = "Unknown error in checking status of PID {0} from pidfile {1}: {2}"
-                sys.exit(msg.format(pid, pidfile, errmsg[1]))
-        else:
-            msg = "Another Epylog process seems to be running, PID {0}."
-            sys.exit(msg.format(pid))
-    else:
-        os.write(fd.fileno(), mypid)
-        os.close(fd.fileno())
-
-
-def cron_unlock(pidfile):
-    """
-    Remove the lock for cron batch.
-    """
-    os.unlink(pidfile)
-
 
 def set_logger(loglevel):
     """

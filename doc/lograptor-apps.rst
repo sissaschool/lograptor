@@ -1,80 +1,88 @@
-Configuring applications for lograptor
-======================================
+==================================
+Configure Lograptor's applications
+==================================
 
-NAME
-----
-lograptor-apps \- Application configuration for Lograptor.
-
-SYNOPSIS
---------
-*Lograptor* uses rules for searching and producing
-analysis reports on strings in syslog format. The rules are
-defined in a configuration file for each application.
-This manual explains what is the format of these configuration files.
 
 CONFIGURATION FILES
 -------------------
-The configuration files of the applications are placed in the subdirectory
-\fBconf.d\fR of cfgdir specified in lograptor.conf. The name of a configuration
-file matches the name of the application to configure, with the addition of
-the suffix .conf.
-The most common location for the conf.d directory is in /etc/lograptor/conf.d.
 
-The correspondence between the name of the application and the name of the
-configuration file allows an unambiguous correspondence.
-Anyway the configuration file MUST have the suffix .conf to be recognized
-by the program.
+**/etc/lograptor/conf.d/*.conf**
+
+Lograptor uses regexp rules sets, defined in apps configuration files,
+to extract informations from system logs.
+Each application is defined with a configuration file placed in the configuration
+subdirectory ``conf.d``, usually in  ``/etc/lograptor/conf.d``.
+A configuration file name coincides with the name of the application followed by the
+suffix ``.conf``. Files without  ``.conf``  suffix are ignored.
 
 
-The configuration file of an application is divided in two mandatory sections
-, called *[main]* and *[rules]*, and optional sections.
-The optional sections relate to the composition of the report and must have
-distinct names between their and different from those of fixed sections.
+DESCRIPTION
+-----------
 
-[main] - MAIN SECTION
-^^^^^^^^^^^^^^^^^^^^^
-This section include general parameters for the application.
+An application's configuration file use the
+`Python's ConfigParser <https://docs.python.org/2/library/configparser.html>`_
+format which provides a structure similar to Microsoft Windows INI files.
+A configuration file consists of sections and option entries. A section start with a ''[section]'' header.
+Each section can have different ``name=value`` (``name: value`` is also accepted) option entries, with
+continuations in the style of `RFC 822 <https://www.ietf.org/rfc/rfc0822.txt>`_
+(see section 3.1.1, “LONG HEADER FIELDS”).
+Note that leading whitespace is removed from values.
+
+The configuration file must contain two sections:
+
+    **main**
+        This section include general parameters for the application.
+
+    **rules**
+        This section contains rules for application's logs analisys.
+        Those rules are called *report rules* for our scope.
+
+Other sections can be defined to describe rules for report composition.
+Those sections will be referred hereafter as “report sections”.
+
+
+[main] SECTION
+^^^^^^^^^^^^^^
+
 **desc**
-    The description of the application. Currently, however, is not used in the report
-    and has a purpose of simple reference in the configuration.
+    Put here a fully comprehensive description of the application.
 
 **files**
-    List of log files for the application. You can specify
-    multiple entries separated by commas. Lograptor manages the replacement
-    of environment variables of the program, using those regarding
-    the main configuration file.
-    Typically, you specify the configuration variable $ logdir (or
-    $ {logdir}) to shorten the paths that have the same common root.
-    You can also use other variables related to
-    program options, such as $ hostname, linked to the option
-    -H/--hosts.
+    Log files for the application. You can specify multiple entries separated by commas.
+    Lograptor use configuration variable string interpolation to obtain the effective list
+    of files to be included in the run.
+    Typically use the string ``$logdir`` (or ``${logdir}``) to shorten the paths that have
+    the same common root.
+    You can also use other variables related to program options, such as ``$hostname``, that
+    is linked to `option -H/--hosts <lograptor.html#cmdoption-H>`_.
 
     On filenames, you can use wildcard characters typical of
-    command line, in order to include also the log file
-    rotated periodically. You can also use variable strings related
-    to dates:
+    command line (eg. ?, \*, +), in order to include also the log file
+    rotated periodically.
 
-    **%Y**
+    You can also use variable strings related to dates:
+
+     **%Y**
         specifies the year
 
-    **%m**
+     **%m** 
         specifies the month as a number with 2 digits (01..12)
 
-    **%d**
+     **%d** 
         specifies the day with 2 digits (01..)
 
-    Currently, only these formats are supported to specify the dates,
-    but others will be included in future versions.
+    At now, only these formats are supported to specify the dates,
+    but others ought to be included in future versions.
     Filenames that include variables related to dates are expanded by
-    the program according to the date range required (options --last or --date).
+    the program according to the date range required
+    (options `--last <lograptor.html#cmdoption-last>`_ or `--date <lograptor.html#cmdoption-date>`_).
 
 **enabled**
-    It can be either "yes" or "no." If "no", the program ignores the log.
+    It can be either "yes" or "no." If "no", the program ignores the app.
     If the application is invoked explicitly using the option -a/--app
     then the value of this parameter is ignored.
     This allows you to schedule reports with a favorite set of applications
-    and still be able to use the program for analyze logs of an application
-    normally off.
+    and still be able to use the program for analyze logs of all the applications defined.
 
 **priority**
     It's an unsigned integer that indicates the priority of the application. commonly
@@ -84,379 +92,327 @@ This section include general parameters for the application.
     The priority also relates to the processing order of log files.
 
 
-[rules] - PATTERN RULES
-^^^^^^^^^^^^^^^^^^^^^^^
-This section contains regular expressions, written according to the syntax
-module \fBre\fR of Python, that are used by the program to perform the
-analysis of log lines.
-Each option defined in this section must have value as a regular expression
-contained in double quotes.
-The rules can contain substitution variables for filters of Lograptor.
+[rules] SECTION
+^^^^^^^^^^^^^^^
 
-.TP
-.B Using of symbolic groups
-Addition to complying with the regular expression syntax, rules are
-required to use symbolic groups symbolic for the analysis of log lines.
-In the following example of a rule:
-
-   SMTPD_Warning = ": warning: (?P<reason>.+)"
-
-"SMTPD_Warning" is the name of the rule. The name is just an internal reference
-in the configuration of the application and so you can choose it as you want.
-
-The string enclosed in double quotes is the search pattern
-and "reason" is the symbolic group of the rule.
-The pattern must contain at least one symbol (? P <name> ...) to be accepted
-by the program.
-You can specify multiple symbolic groups:
-
-   Mail_Client = ": (?P<thread>[A-Z,0-9]{9,14}): client=(?P<client>${client})"
-
-The symbolic groups defined for each rule are used to create tuples from the
-dictionary index which contains the results.
-The symbolic group "\ fBthread \ fR" is reserved for the management of
-multi-line matching.
-For this reason, this group is not used in the tuples of the results and
-is not considered in the syntax check of rules.
+This section contains rules written as regular expressions, according to the syntax of
+`Python's re module <https://docs.python.org/2/library/re.html>`_, and so will be called
+*"pattern rules"*.
+Those rules are used by the program to analyze application's log lines and to extract
+information  from matched events.
+For clarity each regular expression must be written between double quotes.
+Each rule is identified with the option name, so must be unique within application.
+You should not use names already used by other options of the program for naming a rule,
+in order to avoid ambiguity or incompatibility.
 
 
-Variable substitution for filters
-When the the program is executed, before proceeding with the compilation of
-patterns of rules, a substitution of environment variables is performed,
-but only for variables related to Lograptor's filters.
-The groups symbolic connected to the filters of Lograptor are characterized by
-following variables:
+Symbolic groups
+...............
 
-.RS
-.TP
-.B user
-filter that specifies a pattern for the username
-.TP
-.B from
-filter that specifies a pattern for the sender address
-.TP
-.B rcpt
-filter that specifies a pattern for the recipient address
-.TP
-.B client
-filter that specifies a pattern for the name or the ip address of the client host
-.RE
+Lograptor makes use of symbolic groups to extract informations from logs.
+A pattern rule must contain at least one symbolic group to be accepted by the program.
+For example if a rule is::
 
-.RS
-The variables related to the filters, which are always inserted using
-the syntax $VARNAME/${VARNAME}, must have regular expressions as values.
-However, if a filter is not specified in the options, it will use a
-default pattern.
-The default pattern is designed to analyze all the syntax compatible
-to the type of filter.
-For example, the filter "from" for default has a default pattern that
-matches  RFC 822 addresses.
-If necessary, you can change these defaults with options of the section
-\fB[patterns]\fR of the main configuration file.
+    SMTPD_Warning = ": warning: (?P<reason>.+)"
 
-Generally, the variables related to filters are included within
-a symbolic group to permit the extraction of results.
-.RE
+The program extract information about group *"reason"* and is able to use those informations
+during reporting stage. Of course you are free to use more symbolic groups within a rule::
 
-.TP
-.B Dictionary of results
-Each rule produces a table of results. This table is a
-Python dictionary. The keys of the dictionary are tuples, while the values
-are integers that indicate the number of events associated with the tuple.
-For example with the following rule:
-
-   Mail_Received = ": (?P<thread>[A-Z,0-9]{9,14}): from=<(?P<from>${from})>, size=(?P<size>\d+)"
-
-a tuple key will consists of three elements, positionally related to
-fields <hostname>, <from> and <size>.
-A tuple may be, for example:
-
-   (smtp-server.example.com, postmaster@example.com, 4827)
-
-In this case it is likely that the dictionary built with these tuples has
-a number of elements slightly less than the total number of e-mails
-received in the period, since the last value will almost always be different.
-Anyway, if you don't need informations about size of email messages, you
-can reduce the complexity with a cut of the rule:
-
-   Mail_Received = ": (?P<thread>[A-Z,0-9]{9,14}): from=<(?P<from>${from})>"
-
-or with the elimination of unused symbolic groups:
-
-   Mail_Received = ": (?P<thread>[A-Z,0-9]{9,14}): from=<(?P<from>${from})>, size=(\d+)"
-
-Conversely, the rule can also be expanded to include additional symbolic groups:
-
-   Mail_Received = ": (?P<thread>[A-Z,0-9]{9,14}): from=<(?P<from>${from})>, size=(?P<size>\d+), nrcpt=(?P<mult>\d+)"
-
-.TP
-.B Order of pattern rules
-The sequence of the rules in the configuration also determines
-the order of execution during the process of log analysis.
-Anyway are ignored by the program the rules which are not used for the
-report and not containing filters passed with an option.
-The order and the minimization of the rules used by the process
-are important to reduce processing time.
-Generally it is better to put first the rules corresponding to more
-numerous log lines.
-All the rules defined for the application are used when you need
-to build a report that contains the log lines not recognized (unparsed).
-
-.TP
-.B Constraints on pattern rule names
-For the rules you should not use names already used by other options
-of the program, in order to avoid ambiguity or incompatibility.
-In particular, do not use names used by the options belonging to
-sections defining the elements of the report, that are "subreport",
-"title", "color" and "function".
-Finally, it is good practice to avoid calling application rules
-with similar names, differentiating with sequential numbers, as
-this may cause ambiguity in the definition of report data items.
+    Mail_Resent = ": (?P<thread>[A-Z,0-9]{9,14}): resent-message-id=<(?P<reason>.+)>"
 
 
-.SH "SECTIONS RELATED TO REPORT BUILDING"
-These optional sections defines the elements for composing the report.
+The "thread" symbolic group is used to extract thread information from log lines, in
+order to perform thread matching (see `option -t/--thread <lograptor.html#cmdoption-t>`_).
+
+
+Variables related to filters
+............................
+
+An app pattern rule can also contain variables ($VARNAME or ${VARNAME}) related to a
+`Lograptor's filter <lograptor.html#cmdoption-F>`_.
+At the run each variable is substituted with the corresponding filter's pattern.
+This makes sense when you pair a variable with a symbolic group, as in this example:
+
+    Mail_Client = ": (?P<thread>[A-Z,0-9]{9,14}): client=(?P<client>${client})"
+
+If you use `filter options <lograptor.html#cmdoption-F>`_ the program discard the
+rules logically excluded by filters.
+
+
+Dictionary of results
+.....................
+
+Each rule produces a table of results as a Python dictionary.
+This dictionary have tuples as keys and integers as values.
+The values record the number of events associated with each tuple.
+For example with the following rule::
+
+        Mail_Received = ": (?P<thread>[A-Z,0-9]{9,14}): from=<(?P<from>${from})>, size=(?P<size>\d+)"
+
+a tuple key will consists of three elements, positionally related to fields <hostname>, <from> and <size>.
+In this example a tuple maybe::
+
+        ('smtp.example.com', 'postmaster@example.com', '4827')
+
+Of course inserting more symbolic groups increase the complexity of the results and the
+number of elements of the dictionary. So if you don't need details you could semplify
+default pattern rules.
+
+
+Order of pattern rules
+......................
+
+The sequence of the rules in the configuration also determines the order of execution
+during the process of log analysis.
+The order are important to reduce execution total time.
+Generally is better to put first the rules corresponding to more numerous log lines.
+
+
+REPORT SECTIONS
+^^^^^^^^^^^^^^^
+
+These optional sections defines elements for composing the report.
 For brevity we will refer to these sections as "report sections".
-These sections have some fixed options and one or more
-options related to the pattern rules
-(ie the options defined in section [rules]).
-The options related to the rules will be referred  as "report rules".
+These sections have some fixed options and one or more options that
+describe the usage of application's pattern rules, hereafter referred
+as "report rules".
 
-.TP
-.B Fixed options
-The fixed options are four, three of which are mandatory:
 
-.RS
-.TP
-.B subreport
-Indicates in which subreport insert the element. It must be the name of one
-of the subreports specified in the main configuration file.
-.TP
-.B title
-Header to be included in the report.
-.TP
-.B color
-Alternative color for the header (names defined in the specifications of HTML and CSS).
-It's the only fixed option not mandatory.
-.TP
-.B function
-Function to be applied on results extracted from the pattern rules of the application.
-There are 3 different functions definable, each one for a different representation of results:
+Fixed options
+.............
 
-.RS
-.TP
-.B total(), total
-A function that allows you to create lists with total values from the results.
+**subreport**
+    Indicates in which subreport insert the element. It must be the name of one
+    of the subreports specified in the main configuration file.
 
-.TP
-.B top(<num>, <header>)
-A function that allows you to create a ranking of maximum values.
-The <num> parameter is a positive integer that indicating how many maximum values
-to be taken into account.
-The third parameter is a description for the field, which will appear
-in the report on the right column of the table.
+**title**
+    Header to be included in the report.
 
-.TP
-.B table(<header 1>, .. <header K>)
-A function that allows you to create a table from a result set.
-The parameters are the descriptions that have to be included in the
-headers of the table.
-The number of descriptions determines the number of columns of the table.
-Report tables, also when generated from logs of different applications,
-can be compacted into a single table under specific conditions.
-See for this the section \fICOMPACTING TABLES\fR.
-.RE
+**color**
+    Optional alternative color for the header (names or codes defined in the
+    specifications of HTML and CSS).
 
-.RE
+**function**
+    Function to be applied on results extracted from the pattern rules of the application.
+    There are 3 different functions definable, each one for a different representation of results:
 
-.TP
-.B Report rules
+    ``total(), total``
+        A function that allows you to create lists with total values from the results.
 
-The remaining options of a report section must all be report rules.
+    ``top(<num>, <header>)``
+        A function that allows you to create a ranking of maximum values.
+        The <num> parameter is a positive integer that indicating how many maximum values
+        to be taken into account.
+        The third parameter is a description for the field, which will appear
+        in the report on the right column of the table.
+
+    ``table(<header 1>, .. <header K>)``
+        A function that allows you to create a table from a result set.
+        The parameters are the descriptions that have to be included in the
+        headers of the table.
+        The number of descriptions determines the number of columns of the table.
+        Report tables, also when generated from logs of different applications,
+        can be compacted into a single table under specific conditions.
+        For this topic read `REPORT OPTIMIZATION <lograptor-apps.html#report-optimization>`_
+        paragraph.
+
+
+Report rules
+............
+
+A report section must include at least a rule to The remaining options of a report section must all be report rules.
 These options must be named identical to one of the pattern rules defined in
 the  section [rules] of the configuration.
 If you need to refer twice to a pattern rule in the same section you can use
 a numeric suffix for differentiate the options names.
 The order of options is important because it is maintained in composition
 of the report.
-The syntax of the value of a report rule depends by the function type
-specified in the "function" option.
 
-.RS
-.B "FUNCTION 'total'"
-.RS
+The syntax of a report rule depends by the function type specified in the "function" option.
 
-In case of function \fBtotal\fR the syntax of a report rule is:
+Report rules with function "total"
+..................................
 
-   <report_rule> = (<filter>, "<description>"[:<counter_field>])
+In case of function *total* the syntax of the report rules is::
 
-The parameter <filter> can have the following values:
+    <report_rule> = (<filter>, "<description>"[:[+]<counter_field>[<unit>])
 
-.RS
-.TP
-.B *
-Computes the total on all results.
+Where the parameter <filter> can have the following values:
 
-.TP
-.B <field>=<pattern>
-Considers only the tuples of results for which the specified field satisfies the
-constraint described by the pattern.
-The value <field> must be the name of a symbolic group present in all the
-report rules specified below for the section.
-.TP
-.B <field>!=<pattern>
-Consider only the results that do not satisfy the constraint specified by the pattern.
-The value <field> must be the name of a symbolic group present in all the
-report rules specified below for the section.
-.RE
+    ``*``
+        Computes the total on all results.
 
-The description is associated to the corresponding value in the list, and it will
-joined to it in the report.
+    ``<field>=<pattern>``
+        Considers only the tuples of results for which the specified field satisfies the
+        constraint described by the pattern.
+        The value <field> must be the name of a symbolic group present in all the
+        report rules specified below for the section.
 
-The \fB<counter_field>\fR is optional. This parameter is used to calculate
-the total value not with the event counter but from a numeric field of results.
-By default, the count is done on the value associated with the tuple-key of
+    ``<field>!=<pattern>``
+        Consider only the results that do not satisfy the constraint specified by the pattern.
+        The value <field> must be the name of a symbolic group present in all the
+        report rules specified below for the section.
+
+The description is associated to columns of the results.
+
+The optional *<counter_field>* is used to calculate the total value.
+For default, the count is done on the value associated with the tuple-key of
 the dictionary of results, ie the number of events extracted  for the particular
-combination of values.
-Specifying a <counter_field> the computation can be performed on the values of
-the tuple's component associated with the field.
-You must be sure that <counter_field> component take only numeric values,
-otherwise it will generate a configuration error and consequently
-the termination of the process.
+combination of values. If you specify a <counter_field> the counting is done using
+tuple's values related to the field. The <counter_field> must take only
+numeric values, otherwise it will generate a configuration error.
 
-The name of the numeric field may be preceded by a "+", in which case the total
-sum is calculated with values obtained from product of the field with the number
-of events.
-For example, having the pattern rule:
+If <counter_field> is preceded by a "+" the total sum is calculated using field values
+times the number of events.
+
+<counter_field> should be followed by a measurement unit specification of bits or bytes.
+This specification have to be enclosed between square brackets and could be prefixes by
+K, M, G, T for multiples.
+The value is calculated according to the JEDEC specification, ie 1Kbit = 1024 bits.
+The numerical results in bytes or bits are then normalized to the multiple unit best
+suited for report presentation.
+For example "[Kb]" or "[Kbits]" means kilobits and "[GB]" or "[Gbytes]" means gigabytes.
+
+For example, having the pattern rule::
 
    Mail_Received = ": (?P<thread>[A-Z,0-9]{9,14}): from=<(?P<from>${from})>, size=(?P<size>\d+)"
 
-and defining a report rule:
+and defining the corresponding report rule::
 
    Mail_Received = (*, "Total Messages Processed")
 
 you will produce a report that contains the count of total messages received.
-Instead using the following option:
+Instead, using the following option::
 
    Mail_Received = (*, "Total Transferred Size":+size)
 
 a count of the total number of bytes received will be made.
-Finally, joined with field for the count you may specify a memory measurement
-unit to properly understand the value:
+Adding a memory measurement unit specification::
 
    Mail_Received = (*, "Total Transferred Size":+size[B])
 
-At now the measurement units admitted are only the ones used for the memory:
+you can afford a better understanding of the results.
 
-.RS
-.TP
-\fBb\fR or \fBbits\fR
-.TP
-\fBB\fR or \fBByte\fR
-.RE
 
-with prefixes K, M, G, T for multiples. The value is calculated according to the
-JEDEC specification, ie 1Kbit = 1024 bits. The numerical results in bytes and
-bits are then normalized to the multiple unit best suited for presentation
-in the report.
-.RE
-.RE
+Report rules with function "top"
+................................
 
-.RS
-.B "FUNCTION 'top'"
-.RS
+In case of function *top* the syntax the report rules is::
 
-In case of function \fBtop\fR the syntax of a report rule is:
+   <report_rule> = (<filter>, <field>[:[+]<counter_field>[<unit>])
 
-   <report_rule> = (<filter>, <field>[:<counter_field>])
+All the parameters except <field> have the same syntax and meaning as
+in the case of function "total". The <field> parameter can be *hostname*
+or the name of a symbolic group belonging to the pattern rule associated,
+with the exception of *thread* that is a reserved group.
 
-The <filter> parameter has the same syntax and effect as that of the report rules
-of function "total".
-The <field> parameter can be "hostname" or one of the symbolic groups belonging
-to the pattern rule associated, with the exclusion of value "thread" that is reserved.
-For example, having this pattern rule:
+For example, having this pattern rule::
 
    Mail_Received = ": (?P<thread>[A-Z,0-9]{9,14}): from=<(?P<from>${from})>, size=(?P<size>\d+)"
 
-you can define a report rule to create the list of servers that have sent more mail:
+you can define a report rule to create the list of servers that have sent more mail::
 
    Mail_Received = (*, hostname)
 
-Instead, with the following report rule:
+Instead, with the following report rule::
 
    Mail_Received = (*, from)
 
 you create the ranking of email accounts that have sent more messages.
+
 As in the case of "total", you can specify a <counter_field> for counting
 alternative values.
-For example with this report rule:
+For example with this report rule::
 
    Mail_Received = (*, from:size[B])
 
 you obtain the ranking of the largest e-mails sent during the period:
-Instead, inserting the prefix "+":
+Instead, inserting the prefix "+"::
 
    Mail_Received = (*, from:+size[B])
 
 the program computes the list of senders that have high traffic during
 the period.
-.RE
-.RE
 
-.RS
-.B "FUNCTION 'table'"
-.RS
-In case of function \fBtable\fR the syntax of a report rule is:
+
+Report rules with function "table"
+..................................
+
+In case of function *table* the syntax of a report rule is::
 
    <report_rule> = (<filter>, <field>, ... <field>)
 
 The <filter> parameter has the same syntax and effect as that of the report rules
 of functions "total" and "top".
-The <field> parameters can be strings enclosed in double quotes,
-or "hostname" (without quotes) or the name of a symbolic group
-belonging to the associated pattern rule, always with the exception
-of the symbolic group "thread".
 
-The number of parameters cannot be less than the number of columns
-of the table, as defined by the number of <header> fields in the option
-"function".
+The <field> parameters are strings enclosed in double quotes, or
+*hostname* (without quotes) or in alternative the name of a symbolic group
+belonging to the associated pattern rule (except *thread* that is a reserved).
+
+The number of <field> parameters cannot be less than the number of columns
+of the table, as defined in the section's option "function".
 When the number of parameters of the report rule is greater than
 the number of columns of the table, the program collapses the remaining
 values in the last column of the table, forming a comma-separated list.
 
 If <field> is a string enclosed between double quotes it will be used
-as fixed value in the corresponding column, to decorate the data and
-distinguish results from those extracted by other rules or other
+as fixed value in the corresponding column, in order to decorate the data
+and distinguish results from those extracted by other rules or other
 applications.
-The first <field> parameter is the one used for sorting the table and
-so it ought to be always a reference to a symbolic group and not a string.
+
+The first <field> parameter is used for sorting the table, so is probably
+better if you use a reference to a symbolic group instead of a quoted string.
 
 When multiple report rules are provided the results are merged in a
 single table, so use multiple report rule in the same report section
 only when these have sense.
-.RE
-.RE
 
-.TP
-.B "COMPACTING TABLES"
-It's possible to merge tables produced from logs of different
+
+WRITING PATTERN RULES
+---------------------
+
+A simple method to write new pattern rules is make some Lograptor runs limited
+to extract unparsed strings for a single application, e.g.::
+
+  # lograptor -a dovecot --unparsed -m 1 /var/log/dovecot.log
+  ....
+  ....
+
+Then write down the new rule:
+
+
+Repeat the steps until lograptor doesn't found any unparsed strings in your file. Take
+a significantly long log file as input file.
+
+Whith this tecnique you can easily write down all the report rules for an application
+in some minutes.
+
+
+REPORT OPTIMIZATION
+-------------------
+
+The program automatically merge tables produced from logs of different
 applications when the tables belong to the same subreport.
-The program decides autonomously to merge two tables
-if there is an exact matching between titles and headers.
-The correspondence of the headers is performed on names, number and position.
-
+Table merging is done when if there is an exact matching between titles and headers.
+The correspondence of the headers is performed on names, total number and position.
 This feature is useful for example if you want to produce a single
-table with all user logins. The result is a smaller and readable report.
+table with all user logins. The result is a smaller and more readable reports.
 
 
 COMMENTS
+--------
 
-Lines starting with "#" will be considered commented out.
+Lines starting with "#" or ';' are ignored and may be used to provide comments.
+
 
 AUTHORS
 -------
-Davide Brunato <brunato@sissa.it>
+
+Davide Brunato <`brunato@sissa.it <mailto:brunato@sissa.it>`_>
+
 
 SEE ALSO
 --------
-:ref:`lograptor(8)`, :ref:`lograptor.conf(5)`, :ref:`lograptor-examples(8)`
+`lograptor(8) <lograptor.html>`_,
+`lograptor.conf(5) <lograptor-conf.html>`_,
+`lograptor-examples(5) <lograptor-examples.html>`_,

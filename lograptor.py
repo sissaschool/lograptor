@@ -38,7 +38,6 @@ CFGFILE_DEFAULT = '/etc/lograptor/lograptor.conf'
 # Stdout redirection
 #####################################
 
-
 class DummyFile(object):
     def write(self, x):
         pass

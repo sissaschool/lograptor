@@ -35,10 +35,14 @@ __status__ = "alpha"
 __description__ = ("Command-line utility for searching into log files. "
                    "Produces matching outputs and reports.")
 LONG_DESCRIPTION =\
-"""Lograptor is a syslog parser and searching tool which provides a
-command-line interface for manually or automated logs processing.
-Instant pattern matchings are joinable with a set of common filters
-and date/time range scope delimitation. Each search can also produce
-a report that can be easily e-mailed or saved in a file system directory.
-"""
+"""Lograptor is a tool which provides a command-line interface for system logs processing.
 
+Pattern matching's searches can be performed together with filtering
+rules and scope delimitation options. Each run can produce
+a report that can be easily sent by e-mail or saved in a file system
+directory.
+The program can parse logs written in RFC 3164 and RFC 5424 formats.
+Lograptor require Python >= 2.6, and is provided with a base configuration for a set
+of well known applications. You can easily extend this set adding new applications
+with specific pattern search rules.
+"""
