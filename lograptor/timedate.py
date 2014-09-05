@@ -78,8 +78,7 @@ def get_interval(timestamp, diff, offset=0):
 def parse_date(date):
     """
     Parse the --date value and return a couple of datetime object.
-    The format is [YYYY]MMDD[,[YYYY]MMDD]. If a date is in the
-    future raise a ValueError exception.
+    The format is [YYYY]MMDD[,[YYYY]MMDD].
     """
     import datetime
     
@@ -120,16 +119,7 @@ def parse_date(date):
                          "use --date=[YYYY]MMDD,[YYYY]MMDD")
         
     if date1 > date2:
-        if date_len == 8 or date_len == 17:
-            raise ValueError("Wrong parameter --date: the first date is after the second!")
-        date1 = datetime.datetime(date1.year - 1, date1.month, date1.day)
-        
-    if date2 > datetime.datetime(now.year, now.month, now.day, 23, 59, 59):
-        if date_len == 8 or date_len == 17:
-            raise ValueError("Wrong parameter --date: date of the future!")
-        date1 = datetime.datetime(date1.year - 1, date1.month, date1.day)
-        date2 = datetime.datetime(date2.year - 1, date2.month, date2.day,
-                                  date2.hour, date2.minute, date2.second)
+        raise ValueError("Wrong parameter --date: the first date is after the second!")
 
     return (date1, date2)
 

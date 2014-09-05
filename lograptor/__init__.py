@@ -35,12 +35,14 @@ import string
 import sys
 import itertools
 import fnmatch
+from sre_constants import error as RegexpCompileError
 
 from lograptor.application import AppLogParser
 from lograptor.configmap import ConfigMap
 from lograptor.exceptions import ConfigError, FileMissingError, FormatError, OptionError
 from lograptor.logparser import LogParser, RFC3164_Parser, RFC5424_Parser
 from lograptor.logmap import LogMap
+from lograptor.outmap import OutMap
 from lograptor.report import Report
 from lograptor.timedate import get_interval, parse_date, parse_last, TimeRange
 from lograptor.tui import ProgressBar
@@ -155,7 +157,7 @@ class Lograptor:
         },
     }
 
-    def __init__(self, cfgfile=None, options=None, defaults=None, args=None):
+    def __init__(self, cfgfile=None, options=None, defaults=None, args=None, is_batch=False):
         """
         Initialize parameters for lograptor instance and load apps configurations.
         """
@@ -192,6 +194,7 @@ class Lograptor:
         #  rawfh: raw file handler
         #  tmpprefix: location for temporary files
         self.parsers = None
+        self.patterns = []
         self.filters = []
         self.hosts = list()
         self.apps = dict()
@@ -200,7 +203,7 @@ class Lograptor:
         self._search_flags = re.IGNORECASE if self.config['case'] else 0
         self.rawfh = None
         self.tmpprefix = None
-        self.batch = not os.isatty(sys.stdin.fileno())
+        self.is_batch = is_batch
 
         # Check and initialize the logger if not already defined. If the program is run by cron-batch
         # and is not a debug loglevel set the logging level to 0 (log only critical messages).
@@ -210,39 +213,53 @@ class Lograptor:
 
         # Set the logger only if no handler is already defined (from caller method
         # when cfgfile is 4).
-        if self.batch and self.config['loglevel'] < 4:
+        if self.is_batch and self.config['loglevel'] < 4:
             set_logger(0)
         else:
             set_logger(self.config['loglevel'])
 
         # Check and initialize pattern options. If both options -e and -f options provided
         # exit with error. Try to set the pattern also if neither -e and -f options are provided.
-        if self.config['pattern'] is not None and self.config['pattern_file'] is not None:
+        if self.config['patterns'] is not None and self.config['pattern_file'] is not None:
             msg = "mutually exclusive options!!"
             raise OptionError('-e, -f', msg)
 
         if self.config['pattern_file'] is not None:
             logger.info('Import search patterns from file "{0}"'.format(self.config['pattern_file']))
-            self.patterns = []
             try:
-                for pattern in fileinput.input(self.config['pattern_file']):
+                pattern_file = fileinput.input(self.config['pattern_file'])
+                for pattern in pattern_file:
                     pattern = pattern.rstrip('\n')
-                    logger.info('Import pattern: {0}'.format(pattern))
                     if len(pattern) > 0:
-                        self.patterns.append(re.compile(pattern, self._search_flags))
+                        logger.info('Import search pattern: {0}'.format(pattern))
+                        try:
+                            self.patterns.append(re.compile(pattern, self._search_flags))
+                        except RegexpCompileError:
+                            msg = 'Wrong regex syntax for search pattern!: "%s"'
+                            raise OptionError("-f", msg % pattern)
+                    else:
+                        logger.warning('Skipped an empty search pattern.')
                 fileinput.close()
             except IOError:
                 raise FileMissingError("Pattern input file \"" + self.config['pattern_file'] + "\" not found!!")
-        elif self.config['pattern'] is None or len(self.config['pattern']) == 0:
-            self.patterns = []
-        else:
-            self.patterns = [re.compile(self.config['pattern'], self._search_flags)]
+        elif self.config['patterns'] is not None:
+            for pattern in self.config['patterns']:
+                pattern = pattern.rstrip('\n')
+                if len(pattern) > 0:
+                    logger.info('Import pattern: {0}'.format(pattern))
+                    try:
+                        self.patterns.append(re.compile(pattern, self._search_flags))
+                    except RegexpCompileError:
+                        msg = 'Wrong regex syntax for search pattern!: "%s"'
+                        raise OptionError("-e", msg % pattern)
+                else:
+                    logger.warning('Skipped an empty search pattern.')
 
         if len(self.patterns) > 0:
             for i in range(len(self.patterns)):
                 logger.debug('Search pattern {0}: {1}'.format(i, self.patterns[i].pattern))
-        else:
-            logger.warning('No patterns provided: matching all strings')
+        elif self.config['patterns'] or self.config['pattern_file'] is not None:
+            logger.warning('Only empty patterns provided: matching all strings.')
 
         # Check and clear paths from command line args. Skip the directories, deleting them
         # from input arguments. Exit with an error if a file in the list doesn't exist.
@@ -298,7 +315,7 @@ class Lograptor:
 
         # Check --count and --quiet options
         if self.config['count'] and self.config['quiet']:
-            msg = "mutually exclusive options!"
+            msg = "counting mode is incompatible with quiet option!"
             raise OptionError('-c/--count, -q/--quiet', msg)
 
         # Check -m/--max-count option
@@ -324,19 +341,14 @@ class Lograptor:
 
         # Setting self.output and self.outstatus options for processing.
         # If the process is a cron-batch the output and the progress status are disabled.
-        # The output is disabled also if --quiet is specified: in this case an output of
-        # status is produced olny if report is enabled. If --count is provided the
+        # The output is disabled also if --quiet is specified. If --count is provided the
         # output is only a total of matchings for each file.
         # The last case is a configuration error (the application is called
         # without a scope). The fourth case is the classical grep output (
         # output of matching lines).
-        if self.batch:
+        if self.is_batch:
             logger.info('Batch mode: disabling output and status')
             self._output = self._outstatus = False
-        elif self.config['quiet'] and self.config['report']:
-            logger.info('Quiet option provided: disabling output')
-            self._output = False
-            self._outstatus = True
         elif self.config['quiet']:
             logger.info('Quiet option provided: disabling output and status')
             self._output = False
@@ -351,6 +363,8 @@ class Lograptor:
         else:
             self._output = True
             self._outstatus = False
+
+        self.outmap = OutMap(self.config)
 
         # Setting the output for filenames:
         #   out_filenames == None --> print only as header
@@ -373,15 +387,17 @@ class Lograptor:
         # Check incompatibilities of -A option
         if self.config['apps'] is None:
             if self.config['report']:
-                raise OptionError('-A', 'incompatible with report')
-            if self.config['unparsed'] is not None:
-                raise OptionError('-A', 'incompatible with unparsed matching')
+                raise OptionError('-A, -r/--report', 'applications processing is needed for report making!')
+            if self.config['publish'] is not None:
+                raise OptionError('-A, --publish', 'applications processing is needed for report making!')
+            if self.config['unparsed'] is True:
+                raise OptionError('-A, --unparsed', 'unparsed matching require applications processing!')
             if self.filters:
-                raise OptionError('-A', 'incompatible with filters')
+                raise OptionError('-A, -F', 'filtering require applications processing!')
             if self.config['thread']:
-                raise OptionError('-A', 'incompatible with thread matching')
+                raise OptionError('-A, --thread', 'thread matching require applications processing!')
             if not args:
-                raise OptionError('-A', 'missing file arguments! (Nothing to process ...)')
+                raise OptionError('-A', 'no-application mode require file arguments!')
 
         # Set the host re objects
         hostset = set(re.split('\s*,\s*', self.config['hosts'].strip()))
@@ -393,7 +409,7 @@ class Lograptor:
         # Initalize app parser class and load applications. After applications
         # reassign configuration parameter with the effecti
         if self.config['apps'] is not None:
-            AppLogParser.set_options(self.config, self.filters)
+            AppLogParser.set_options(self.config, self.filters, self.outmap)
             self._load_applications()
             if self.config['filters'] is not None:
                 if all([not app.has_filters for key, app in self.apps.items()]):
@@ -407,7 +423,7 @@ class Lograptor:
 
         # Initialize the report object if the option is enabled
         if self.config['report'] is not None:
-            self.report = Report(self.apps, self.config)
+            self.report = Report(self.patterns, self.apps, self.config)
 
         # Create and configure the log base object, with the list of files to scan.
         # If a list of path is passed as argument, use it and ignore the <files>
@@ -433,7 +449,7 @@ class Lograptor:
 
         # Set class instance variables for processing
         self._count = self.config['count']
-        self._max_count = self.config['max_count']
+        self._max_count = self.config['max_count'] if not self.config['quiet'] else 1
         self._first_event = self._last_event = None
         self._debug = (self.config['loglevel'] == 4)
         self._thread = self.config['thread']
@@ -632,7 +648,7 @@ class Lograptor:
             logfile.close()
 
         if tot_files == 0:
-            raise FileMissingError("\nNo file found in the datetime interval [{0}, {1}]!!"
+            raise FileMissingError("No file found in the date-time interval [{0}, {1}]!!"
                                    .format(self.ini_datetime, self.fin_datetime))
 
         logger.info('Total files processed: {0}'.format(tot_files))
@@ -658,11 +674,12 @@ class Lograptor:
             if self.rawfh is not None:
                 self.rawfh.close()
 
-        elif not config['no_messages']:
+        elif not self._outstatus and not config['quiet']:
             print(u'\n--- {0} run summary ---'.format(self.__class__.__name__))
             if not self._has_args:
                 print('Number of processed files: {0}'.format(tot_files))
             print(u'Total lines read: {0}'.format(tot_lines))
+            print(u'Total lines matched: {0}'.format(tot_counter))
             if not self._debug and tot_unparsed > 0:
                 print(u'WARNING: Found {0} unparsed log header lines'.format(tot_unparsed))
             if self._useapps:
@@ -677,7 +694,6 @@ class Lograptor:
                         for app in self.apps.values() if app.unparsed_counter > 0
                     ])))
                 if self.extra_tags:
-                    print(self.extra_tags)
                     print(u'Found unmatched application\'s tags: {0}'.format(u', '.join(self.extra_tags)))
 
         return tot_counter > 0
@@ -766,7 +782,7 @@ class Lograptor:
             # Parses the log line. If the regular expression of the parser doesn't match
             # the log line (result=None) changes the active log parser, trying the different
             # parsers configured.
-            result = logparser.extract(line)
+            result, header_match = logparser.extract(line)
             if result is None:
                 if debug:
                     logger.debug("Change log parser")
@@ -916,8 +932,8 @@ class Lograptor:
 
             # Log message parsing with app's rules
             if useapps and pattern_search:
-                result, filter_match, app_thread, groupdict = app.process(hostname, result.message, debug)
-                if not result:
+                rule_match, filter_match, app_thread, msgmap = app.process(hostname, result.message, debug)
+                if not rule_match:
                     # Log message unparsable by app rules
                     if not match_unparsed:
                         if pattern_search and debug:
@@ -960,6 +976,7 @@ class Lograptor:
                 if debug:
                     logger.debug('Matched line: {0}'.format(line[:-1]))
                 if output:
+                    print(msgmap, header_match.string)
                     print('{0}{1}'.format(prefout, line), end='')
 
             # Write line to raw file if provided by option

@@ -55,7 +55,7 @@ class LogParser:
     def extract(self, line):
         """Extract result tuple from named matching groups."""
         match = self.parser.match(line)
-        return self.LogData(*map(match.group, self.fields)) if match is not None else None
+        return self.LogData(*map(match.group, self.fields)) if match is not None else None, match
 
     
 class RFC3164_Parser(LogParser):

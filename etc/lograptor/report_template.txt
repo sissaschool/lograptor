@@ -4,8 +4,8 @@
 
 ### Process parameters and statistics ###
 
-Pattern: "$pattern"
-Pattern file: $pattern_file
+Search patterns: $patterns
+Search patterns file: $pattern_file
 Filters: $filters
 Hostnames: $hosts
 Applications: $apps

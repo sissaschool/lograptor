@@ -102,3 +102,12 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  
 02111-1307, USA.
+
+
+TODO
+----
+
+ * Improve output adding the feature that permit to anonymize system
+   logs using app's regex rules;
+ * Try an integration with RFC 3161 timestamp services, in order to
+   mark rotated log files and the produced reports.

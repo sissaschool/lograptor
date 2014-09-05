@@ -46,10 +46,14 @@ General Options
 .. option:: --conf=<CONFIGFILE>
 
     Provide a different configuration to Lograptor (default is /etc/lograptor/lograptor.conf).
+    If you call the program from the command line without options and arguments, or with only
+    this option, a summary of configuration settings is dumped to stdout and then the process
+    exit successfully.
 
 .. option:: -d [0..4]
 
-    Logging level. The default is 1. Level 0 log only critical errors, higher levels show more informations.
+    Logging level. The default is 2 (warning). Level 0 log only critical errors, higher
+    levels show more informations.
 
 Scope Options:
 ^^^^^^^^^^^^^^
@@ -67,7 +71,7 @@ Scope Options:
 
 .. option:: -A
 
-    Skip application processing and works only with pattern(s) matching.
+    Skip applications processing and works only with pattern(s) matching.
     This option is incompatible with report and filtering options.
 
 .. option:: --last=[hour|day|week|month|Nh|Nd|Nw|Nm]
@@ -87,11 +91,12 @@ Matching Control:
 
 .. option:: -e PATTERN, --regexp=PATTERN
 
-    The search pattern. Use many times to specify multiple search patterns.
+    The search pattern. Use the option more times to specify multiple search patterns.
+    Empty patterns are skipped.
 
 .. option:: -f FILE, --file=FILE
 
-    Obtain patterns from FILE, one per line.
+    Obtain patterns from FILE, one per line. Empty patterns are skipped.
 
 .. option:: -i, --ignore-case
 
@@ -136,7 +141,7 @@ Output Control:
 
 .. option:: -s, --no-messages
 
-    Suppress final run summary and error messages about nonexistent or unreadable files.
+    Suppress error messages about nonexistent or unreadable files.
 
 .. option:: -o, --with-filename
 
@@ -149,13 +154,13 @@ Output Control:
 
 .. option:: --ip
 
-    Do a reverse lookup translation for the IP addresses.
-    The lookups use the DNS resolve facility of the running host.
+    Do a reverse lookup translation for the IP addresses. Use a DNS local caching
+    to improve the speed of the lookups and reduce the network service's load.
 
 .. option:: --uid
 
-    Translate numeric UIDs into corresponding names. The local system authentication,
-    used for lookups, needs to correctly resolve the UIDs of the log files.
+    Map numeric UIDs to usernames. The configured local system authentication is
+    used for lookups, so it must be inherent to the UIDs that have to be resolved.
 
 Report Control:
 ^^^^^^^^^^^^^^^

@@ -29,7 +29,6 @@ import os
 import logging
 import re
 import string
-import socket
 from sre_constants import error as RegexpCompileError
 
 try:
@@ -68,18 +67,14 @@ class AppRule:
         - is_filter : True if the rule is connected to a filter option
         - used_by_report : True if is used by a report rule
         - key_gids : map from gid to result key tuple index
-        - _ip_lookup = Address translation
-        - _uid_lookup = UID translation
     """
 
     # Address and username traslation dictionaries
     # Address and username traslation dictionaries
     _ip_lookup = False
     _uid_lookup = False
-    _known_hosts = {}
-    _known_uids = {}
 
-    def __init__(self, name, pattern, is_filter):
+    def __init__(self, name, pattern, is_filter, outmap):
         """
         Initialize AppRule. Arguments passed include:
 
@@ -99,6 +94,7 @@ class AppRule:
         self.results = dict()
         self.is_filter = is_filter
         self.used_by_report = False
+        self.outmap = outmap
         
         key_gids = ['hostname']
         for gid in self.regexp.groupindex:
@@ -122,8 +118,8 @@ class AppRule:
         Set the flag for uid lookup of 'user' and 'uid' gid values
         """
         AppRule._uid_lookup = bool(value)
-                
-    def add_result(self, hostname, match):
+
+    def add_result2(self, hostname, match):
         """
         Add a tuple or increment the value of existing one
         in the rule results dictionary
@@ -150,50 +146,26 @@ class AppRule:
 
         return idx
 
-    def gethost(self, ip_addr):
+    def add_result(self, hostname, match):
         """
-        Do reverse lookup on an ip address
+        Add a tuple or increment the value of existing one
+        in the rule results dictionary
         """
-        # Handle silly fake ipv6 addresses
-        try:
-            if ip_addr[:7] == '::ffff:':
-                ip_addr = ip_addr[7:]
-        except TypeError:
-            pass
+        idx = [self.outmap.map_value('host', hostname)]
+        for gid in self.key_gids[1:]:
+            print("Value: ", gid, match.group(gid))
+            idx.append(self.outmap.map_value(gid, match.group(gid)))
+        idx = tuple(idx)
+        print(idx)
+        results = self.results
 
-        if ip_addr[0] in string.letters:
-            return ip_addr
-        
         try:
-            return self._known_hosts[ip_addr]
+            results[idx] += 1
         except KeyError:
-            pass
+            results[idx] = 1
+        ##Alternative: results[idx] = get(results, 0) + 1
 
-        try:
-            name = socket.gethostbyaddr(ip_addr)[0]
-        except socket.error:
-            name = ip_addr
-
-        self._known_hosts[ip_addr] = name
-        return name
-
-    def getuname(self, uid):
-        """
-        Get username for a given uid
-        """
-        uid = int(uid)
-        try:
-            return self._known_uids[uid]
-        except KeyError:
-            pass
-
-        try:
-            name = pwd.getpwuid(uid)[0]
-        except (KeyError, AttributeError):
-            name = "uid=%d" % uid
-
-        self._known_uids[uid] = name
-        return name
+        return idx
 
     def has_results(self):
         """
@@ -372,6 +344,7 @@ class AppLogParser:
     _no_filter_keys = None  # Filter options not passed
     _report = None          # Report flag
     _thread = None          # Thread flag
+    outmap = None          # Output mapping
 
     # Default values for application config files
     default_config = {
@@ -385,10 +358,10 @@ class AppLogParser:
     }
 
     @staticmethod
-    def set_options(config, filters):
+    def set_options(config, filters, outmap):
         """
         Set class variables with runtime options. First check
-        filters patterns.
+        pattern rules related to provided filter options.
         """
         filter_names = set()
         for filter_group in filters:
@@ -400,6 +373,7 @@ class AppLogParser:
                     raise lograptor.OptionError("-F", msg % (name, pattern))           
                 filter_names.add(name)
 
+        AppLogParser.outmap = outmap
         AppLogParser._filters = copy.deepcopy(filters)
         AppLogParser._filter_keys = tuple(filter_names)         
         AppLogParser._no_filter_keys = tuple([
@@ -556,7 +530,7 @@ class AppLogParser:
                         new_pattern = string.Template(new_pattern).safe_substitute({opt: config[opt]})
 
                 # Adding to app rules
-                self.rules.append(AppRule(option, new_pattern, True))
+                self.rules.append(AppRule(option, new_pattern, True, self.outmap))
                 self.has_filters = True
                 logger.debug('Add filter rule "{0}" ({1}): {2}'
                              .format(option, u', '.join(filter_keys), new_pattern))
@@ -565,7 +539,7 @@ class AppLogParser:
             # Add once at the end the no filtering version of the rule
             for opt in self._no_filter_keys:
                 pattern = string.Template(pattern).safe_substitute({opt: config[opt]})
-            self.rules.append(AppRule(option, pattern, False))
+            self.rules.append(AppRule(option, pattern, False, self.outmap))
             logger.debug('Add rule "{0}": {1}'.format(option, pattern))
             logger.debug('Rule "{0}" gids : {1}'.format(option, self.rules[-1].key_gids))
 
@@ -629,11 +603,13 @@ class AppLogParser:
                     thread = match.group('thread')
                     if self._report:
                         self._last_idx = rule.add_result(hostname, match)
-                    return True, rule.is_filter, thread, match.groupdict()
+                    return (True, rule.is_filter, thread,
+                            None if self.outmap is None else self.outmap.map_message(match))
                 else:
-                    if rule.is_filter and self._report:
+                    if self._report or (rule.is_filter or not self.has_filters):
                         self._last_idx = rule.add_result(hostname, match)
-                    return True, rule.is_filter, None, match.groupdict()
+                    return (True, rule.is_filter, None,
+                            None if self.outmap is None else self.outmap.map_message(match) )
 
         # No rule match: the application log message is unparsable
         # by enabled rules.

@@ -584,7 +584,7 @@ class Report:
     This helper class holds the contents of a report before it is
     published using publisher classes.
     """
-    def __init__(self, apps, config):
+    def __init__(self, patterns, apps, config):
         logger.info('Starting Report object initialization')
 
         ##
@@ -596,6 +596,7 @@ class Report:
         self.stats = dict()
         
         self.runtime = time.localtime()
+        self.patterns = patterns
         self.apps = apps
         self.config = config
 
@@ -716,7 +717,7 @@ class Report:
         valumap = {
             'title'         : self.title,
             'localhost'     : socket.gethostname(),
-            'pattern'       : self.config['pattern'],
+            'patterns'      : [ pattern.pattern for pattern in self.patterns],
             'pattern_file'  : self.config['pattern_file'],
             'hosts'         : self.config['hosts'],
             'apps'          : self.config['apps'],

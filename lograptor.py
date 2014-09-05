@@ -72,10 +72,14 @@ def parse_args(cli_parser):
     group.add_option("--conf", dest="cfgfile", type="string",
                      default=CFGFILE_DEFAULT, metavar="<CONFIG_FILE>",
                      help="Provide a different configuration to Lograptor, "
-                          "alternative to the default file located in {0}."
-                     .format(CFGFILE_DEFAULT))
-    group.add_option("-d", dest="loglevel", default=1, type="int", metavar="[0-4]",
-                     help="Logging level. The default is 1. Level 0 log only "
+                          "alternative to the default file located in {0}. "
+                          "If you call the program from the command line "
+                          "without options and arguments, or with only this "
+                          "option, a summary of configuration settings is "
+                          "dumped to stdout and then the process exit "
+                          "successfully.".format(CFGFILE_DEFAULT))
+    group.add_option("-d", dest="loglevel", default=2, type="int", metavar="[0-4]",
+                     help="Logging level. The default is 2 (warning). Level 0 log only "
                      "critical errors, higher levels show more informations.")
     cli_parser.add_option_group(group)
 
@@ -93,7 +97,7 @@ def parse_args(cli_parser):
                      "An app is valid when a configuration file is defined. For default the program "
                      "process all enabled apps.")
     group.add_option("-A", action="store_const", dest="apps", const=None,
-                     help="Skip application processing. The searches are performed only "
+                     help="Skip applications processing. The searches are performed only "
                      "with pattern(s) matching. This option is incompatible with report and "
                      "matching options related to app's rules.")
     group.add_option("--last", action="store", type="string", dest="period", default=None,
@@ -109,11 +113,11 @@ def parse_args(cli_parser):
 
     ### Define the options for the group "Matching Control"                      
     group = optparse.OptionGroup(cli_parser, "Matching Control")
-    group.add_option("-e", "--regexp", dest="pattern", default=None,
-                     help="The search pattern. Useful to specify multiple search patterns "
-                          "or to protect a pattern beginning with a hypen (-).")
+    group.add_option("-e", "--regexp", dest="patterns", default=None, action="append",
+                     help="The search pattern. Use the option more times to specify multiple "
+                          "search patterns. Empty patterns are skipped.")
     group.add_option("-f", "--file", dest="pattern_file", default=None, metavar="FILE",
-                     help="Obtain patterns from FILE, one per line.")
+                     help="Obtain patterns from FILE, one per line. Empty patterns are skipped.")
     group.add_option("-i", "--ignore-case", action="store_true", dest="case", default=False,
                      help="Ignore case distinctions in matching.")        
     group.add_option("-v", "--invert-match", action="store_true", dest="invert", default=False,
@@ -144,11 +148,10 @@ def parse_args(cli_parser):
                           "a count greater than NUM.")
     group.add_option("-q", "--quiet", action="store_true", default=None,
                      help="Quiet; do not write anything  to standard output. Exit "
-                          "immediately with zero status if any match  is found, even "
+                          "immediately with zero status if any match is found, even "
                           "if an error was detected. Also see the -s or --no-messages option.")
     group.add_option("-s", "--no-messages", action="store_true", default=False,
-                     help="Suppress final run summary and error messages about nonexistent "
-                          "or unreadable files.")
+                     help="Suppress error messages about nonexistent or unreadable files.")
     group.add_option("-o", "--with-filename", action="store_true", dest="out_filenames",
                      default=None, help="Print the filename for each matching line.")
     group.add_option("-O", "--no-filename", action="store_false", dest="out_filenames",
@@ -157,17 +160,18 @@ def parse_args(cli_parser):
                           "This is the default behaviour for output also when "
                           "searching in a single file.")
     group.add_option("--ip", action="store_true", dest="ip_lookup", default=False,
-                     help="Do a reverse lookup translation for the IP addresses. "
-                          "The lookups use the DNS resolve facility of the running host.")
+                     help="Do a reverse lookup translation for the IP addresses for "
+                          "report data. Use a DNS local caching to improve the speed "
+                          "of the lookups and reduce the network service's load.")
     group.add_option("--uid", action="store_true", dest="uid_lookup", default=False,
-                     help="Translate numeric UIDs into corresponding names. The local "
-                          "system authentication, used for lookups, needs to correctly "
-                          "resolve the UIDs of the log files.")
-    # TODO: anonymize output
-    #group.add_option("--anonymize", action="store_true", dest="anonymize", default=False,
-    #                 help="Anonymize output for values connected to provided filters. "
-    #                      "A translation table is built in volatile memory for each run "
-    #                      "and is not saved. The anonymous tokens have the format FILTER_NN.")
+                     help="Map numeric UIDs to usernames for report data. The configured local "
+                          "system authentication is used for lookups, so it must be inherent "
+                          "to the UIDs that have to be resolved.")
+    group.add_option("--anonymize", action="store_true", dest="anonymize", default=False,
+                     help="Anonymize output for values connected to provided filters. "
+                          "A translation table is built in volatile memory for each run "
+                          "and is not saved. The anonymous tokens have the format FILTER_NN."
+                          "This option override --ip, --uid.")
     cli_parser.add_option_group(group)
 
     ### Define the options for the group "Report Control"
@@ -190,7 +194,7 @@ def parse_args(cli_parser):
 # Main function: create the Lograptor instance and manages the phases of
 # processing calling the main methods in sequence.
 ##########################################################################
-def main():
+def main(is_batch):
     """
     Main routine: parse command line, create the Lograptor instance, call
     processing of log files and manage exception errors.
@@ -202,17 +206,20 @@ def main():
     (options, args) = parse_args(cli_parser)
 
     # If a debug level activate logger immediately
-    if options.loglevel == 4:    
+    if options.loglevel == 4:
         import lograptor.utils
         lograptor.utils.set_logger(options.loglevel)
 
     # Create the Lograptor class, exit if there are configuration errors
     try:
-        my_raptor = Lograptor(options.cfgfile, options, cli_parser.defaults, args)
+        my_raptor = Lograptor(options.cfgfile, options, cli_parser.defaults, args, is_batch)
 
-        # Display configuration and exit when the program is called without
-        # options and arguments (at limit with only --conf).
-        if len(sys.argv) == 1 or (len(sys.argv) == 2 and sys.argv[1].startswith('--conf=')):
+        # Dump a configuration summary and exit when the program is called from the
+        # command line without options and arguments or with only the --conf option.
+        if not is_batch and (
+                len(sys.argv) == 1 or
+                (len(sys.argv) == 2 and sys.argv[1].startswith('--conf=')) or
+                (len(sys.argv) == 3 and sys.argv[1] == '--conf') ):
             my_raptor.display_configuration()
             my_raptor.cleanup()
             sys.exit(0)
@@ -258,7 +265,7 @@ if __name__ == '__main__':
         sys.exit(1)
 
     if os.isatty(sys.stdin.fileno()):
-        main()
+        main(False)
     else:
         with nostdout():
-            main()
+            main(True)
