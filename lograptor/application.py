@@ -69,11 +69,6 @@ class AppRule:
         - key_gids : map from gid to result key tuple index
     """
 
-    # Address and username traslation dictionaries
-    # Address and username traslation dictionaries
-    _ip_lookup = False
-    _uid_lookup = False
-
     def __init__(self, name, pattern, is_filter, outmap):
         """
         Initialize AppRule. Arguments passed include:
@@ -96,76 +91,41 @@ class AppRule:
         self.used_by_report = False
         self.outmap = outmap
         
-        key_gids = ['hostname']
+        key_gids = ['host']
         for gid in self.regexp.groupindex:
-            if gid != 'hostname':
+            if gid != 'host':
                 key_gids.append(gid)
         self.key_gids = tuple(key_gids)
 
         if not self.key_gids:
             raise lograptor.ConfigError("Rule gids set empty!")
 
-    @staticmethod
-    def set_ip_lookup(value):
-        """
-        Set the flag for IP addresses lookup of 'client' and 'ipaddr' gid values
-        """
-        AppRule._ip_lookup = bool(value)
+        self._last_idx = None
 
-    @staticmethod
-    def set_uid_lookup(value):
-        """
-        Set the flag for uid lookup of 'user' and 'uid' gid values
-        """
-        AppRule._uid_lookup = bool(value)
-
-    def add_result2(self, hostname, match):
+    def add_result(self, outmap):
         """
         Add a tuple or increment the value of existing one
         in the rule results dictionary
         """
-        idx = [hostname]
-        ip_lookup = self._ip_lookup
-        uid_lookup = self._uid_lookup
+
+        idx = [outmap.values['host']]
         for gid in self.key_gids[1:]:
-            if ip_lookup and (gid == 'client' or gid == 'ipaddr'):
-                idx.append(self.gethost(match.group(gid)))
-            elif uid_lookup and (gid == 'user' or gid == 'uid'):
-                idx.append(self.getuname(match.group(gid)))
-            else:
-                idx.append(match.group(gid))
-            
+            idx.append(outmap.values[gid])
         idx = tuple(idx)
-        results = self.results        
 
         try:
-            results[idx] += 1
+            self.results[idx] += 1
         except KeyError:
-            results[idx] = 1
-        ##Alternative: results[idx] = get(results, 0) + 1
+            self.results[idx] = 1
+        self._last_idx = idx
 
-        return idx
-
-    def add_result(self, hostname, match):
+    def increase_last(self, k):
         """
-        Add a tuple or increment the value of existing one
-        in the rule results dictionary
+        Increase the last result by k.
         """
-        idx = [self.outmap.map_value('host', hostname)]
-        for gid in self.key_gids[1:]:
-            print("Value: ", gid, match.group(gid))
-            idx.append(self.outmap.map_value(gid, match.group(gid)))
-        idx = tuple(idx)
-        print(idx)
-        results = self.results
-
-        try:
-            results[idx] += 1
-        except KeyError:
-            results[idx] = 1
-        ##Alternative: results[idx] = get(results, 0) + 1
-
-        return idx
+        idx = self._last_idx
+        if idx is not None:
+            self.results[idx] += k
 
     def has_results(self):
         """
@@ -344,7 +304,7 @@ class AppLogParser:
     _no_filter_keys = None  # Filter options not passed
     _report = None          # Report flag
     _thread = None          # Thread flag
-    outmap = None          # Output mapping
+    outmap = None           # Output mapping
 
     # Default values for application config files
     default_config = {
@@ -382,8 +342,6 @@ class AppLogParser:
         ])
         AppLogParser._report = config['report']
         AppLogParser._thread = config['thread']
-        AppRule.set_ip_lookup(config['ip_lookup'])
-        AppRule.set_uid_lookup(config['uid_lookup'])
 
     def __init__(self, name, appcfgfile, config):
         """
@@ -411,7 +369,7 @@ class AppLogParser:
         extra_options = {'appname': self.name, 'logdir': config['logdir']}
         hostnames = list(set(re.split('\s*,\s*', config['hosts'].strip())))
         if len(hostnames) == 1:
-            extra_options.update({'hostname': hostnames[0]})
+            extra_options.update({'host': hostnames[0]})
 
         appconfig = lograptor.configmap.ConfigMap(appcfgfile, self.default_config, extra_options)
 
@@ -437,7 +395,7 @@ class AppLogParser:
             for filename in self.files:
                 for host in hostnames:
                     filelist.add(string.Template(filename)
-                                 .safe_substitute({'hostname': host}))
+                                 .safe_substitute({'host': host}))
             self.files = list(filelist)
 
         logger.info('App "{0}" run fileset: {1}'.format(self.name, self.files))
@@ -494,7 +452,7 @@ class AppLogParser:
 
         # Set threads cache using finally rules list
         if self._thread:
-            self.cache = lograptor.linecache.LineCache()
+            self.cache = lograptor.linecache.LineCache(self.outmap)
         
     def add_rules(self, rules, config):
         """
@@ -570,11 +528,11 @@ class AppLogParser:
         """
         Increase the last rule result by k.
         """
-        idx = self._last_idx
-        if idx is not None:
-            self._last_rule.results[idx] += k
+        rule = self._last_rule
+        if rule is not None:
+            rule.increase_last(k)
         
-    def process(self, hostname, datamsg, debug):
+    def process(self, logdata):
         """
         Process a log line data message (or entire line) with filters.
         If requested buffer lines for threads/transactions matching.
@@ -593,26 +551,26 @@ class AppLogParser:
         The appthread is returned with the value of thread named group of
         the rule. If the rule doesn't have a thread group, a None is returned.
         """
+        outmap = self.outmap
         for rule in self.rules:
-            match = rule.regexp.search(datamsg)
+            match = rule.regexp.search(logdata.message)
             if match is not None:
-                if debug:
-                    logger.debug('Rule "{0}" match'.format(rule.name))
+                logger.debug('Rule "{0}" match'.format(rule.name))
+                gids = rule.regexp.groupindex
                 self._last_rule = rule
+                outmap.map_values(logdata, match, rule.key_gids)
                 if self._thread and 'thread' in rule.regexp.groupindex:
                     thread = match.group('thread')
                     if self._report:
-                        self._last_idx = rule.add_result(hostname, match)
-                    return (True, rule.is_filter, thread,
-                            None if self.outmap is None else self.outmap.map_message(match))
+                        rule.add_result(outmap)
+                    return (True, rule.is_filter, thread, outmap.getline(gids, match))
                 else:
                     if self._report or (rule.is_filter or not self.has_filters):
-                        self._last_idx = rule.add_result(hostname, match)
-                    return (True, rule.is_filter, None,
-                            None if self.outmap is None else self.outmap.map_message(match) )
+                        rule.add_result(outmap)
+                    return (True, rule.is_filter, None, outmap.map_string(gids, match))
 
         # No rule match: the application log message is unparsable
         # by enabled rules.
-        self._last_rule = self._last_idx = None
+        self._last_rule = None
         self.unparsed_counter += 1
         return False, None, None, None

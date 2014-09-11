@@ -52,10 +52,9 @@ class LogParser:
             msg = '%s: missing mandatory named group "%s"' % (self.__class__.__name__, field)
             raise ConfigError(msg)
 
-    def extract(self, line):
-        """Extract result tuple from named matching groups."""
-        match = self.parser.match(line)
-        return self.LogData(*map(match.group, self.fields)) if match is not None else None, match
+    def match(self, line):
+        """Perform header pattern matching on log line."""
+        return self.parser.match(line)
 
     
 class RFC3164_Parser(LogParser):

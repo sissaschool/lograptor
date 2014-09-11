@@ -55,8 +55,9 @@ class LineCache:
     A class to manage line caching
     """
     
-    def __init__(self):
+    def __init__(self, outmap):
         self.data = OrderedDict()
+        self.outmap = outmap
 
     def add_line(self, line, thread, pattern_match, filter_match, event_time):
         try:
@@ -71,7 +72,7 @@ class LineCache:
         cache_entry.buffer.append(line)
         cache_entry.end_time = event_time
         
-    def flush_cache(self, output, prefix, event_time=None):
+    def flush_cache(self, event_time=None, quiet=False):
         """
         Flush the cache to output. Only matched threads are printed.
         Delete cache entries older (last updated) than 1 hour. Return
@@ -79,6 +80,7 @@ class LineCache:
         """
 
         cache = self.data
+        outmap = self.outmap
         counter = 0
         
         for thread in cache.keys():
@@ -88,16 +90,16 @@ class LineCache:
                     cache[thread].counted = True
 
                 if cache[thread].buffer:
-                    if output:
+                    if not quiet:
                         for line in cache[thread].buffer:
-                            print('{0}{1}'.format(prefix, line), end='')
+                            print(outmap.getline(line), end='')
                         print('--')
                     cache[thread].buffer = []
             if abs(event_time - cache[thread].end_time) > 3600:
                 del cache[thread]
         return counter
     
-    def flush_old_cache(self, output, prefix, event_time=None):
+    def flush_old_cache(self, event_time=None, quiet=False):
         """
         Flush the older cache to output. Only matched threads are printed.
         Delete cache entries older (last updated) than 1 hour. Return the
@@ -105,6 +107,7 @@ class LineCache:
         """
 
         cache = self.data
+        outmap = self.outmap
         counter = 0
         
         for thread in cache.keys():
@@ -114,9 +117,9 @@ class LineCache:
                         counter += 1
                         cache[thread].counted = True
 
-                    if output and cache[thread].buffer:
+                    if not quiet and cache[thread].buffer:
                         for line in cache[thread].buffer:
-                            print('{0}{1}'.format(prefix, line), end='')
+                            print(outmap.getline(line), end='')
                         print('--')
                 del cache[thread]
         return counter

@@ -23,7 +23,9 @@ internal caching for Lograptor's application class instances.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 ##
+from __future__ import print_function
 
+import re
 import socket
 import string
 
@@ -36,13 +38,17 @@ class OutMap(object):
     """
     Output mapping class: translate matching group for output
     """
+    base_gid_pattern = re.compile('^([a-zA-Z_]+)')
 
     def __init__(self, config):
+
         self.ip_lookup = config['ip_lookup']
         self.uid_lookup = config['uid_lookup']
         self.anonymyze = config['anonymize']
+        self.mapping = self.anonymyze or self.uid_lookup or self.ip_lookup
         self.hostsmap = {}
         self.uidsmap = {}
+        self.values = {}
         if self.anonymyze:
             self.anonymaps = {
                 'host': {},
@@ -51,53 +57,59 @@ class OutMap(object):
             for flt in config.options('filters'):
                 self.anonymaps[flt] = {}
 
+    def map_values(self, logdata, match, gids):
+        """
+        Map log data and match to a dictionary of values.
+        """
+        for gid in gids:
+            try:
+                value = match.group(gid)
+                self.values[gid] = self.map_value(gid, value)
+            except IndexError:
+                self.values[gid] = self.map_value(gid, getattr(logdata, gid))
+
     def map_value(self, gid, value):
         """
         Return the value for a group id, applying translation
-        maps if requested by options.
+        maps if requested by options. Map only named groups related
+        to a filter, that seems to contains personal informations.
         """
+        if not self.mapping:
+            return value
+        base_gid = self.base_gid_pattern.search(gid).group(1)
         if self.anonymyze:
             try:
-                if value in self.anonymaps[gid]:
-                    return self.anonymaps[gid][value]
+                if value in self.anonymaps[base_gid]:
+                    return self.anonymaps[base_gid][value]
                 else:
-                    k = (len(self.anonymaps[gid]) + 1) % 100000
-                    new_item = u'{0}_{1:0{2}d}'.format(gid, k, 5)
-                    self.anonymaps[gid][value] = new_item
+                    k = (len(self.anonymaps[base_gid]) + 1) % 100000
+                    new_item = u'{0}_{1:0{2}d}'.format(base_gid.upper(), k, 5)
+                    self.anonymaps[base_gid][value] = new_item
                     return new_item
             except KeyError:
                 return value
-        elif (gid == 'client' or gid == 'ipaddr') and self.ip_lookup:
+        elif (base_gid == 'client' or base_gid == 'ipaddr') and self.ip_lookup:
             return self.gethost(value)
-        elif (gid == 'user' or gid == 'uid') and self.uid_lookup:
+        elif (base_gid == 'user' or base_gid == 'uid') and self.uid_lookup:
             return self.getuname(value)
         else:
             return value
 
-    def map_message(self, match):
+    def map_string(self, gids, match):
         """
-        Return the value for a group id, applying translation
-        maps if requested by options.
+        Return the mapped string from match object.
         """
-        return match.string
-        if self.anonymyze:
-            try:
-                if value in self.anonymaps[gid]:
-                    return self.anonymaps[gid][value]
-                else:
-                    k = (len(self.anonymaps[gid]) + 1) % 100000
-                    new_item = u'{0}_{1:0{2}d}'.format(gid, k, 5)
-                    self.anonymaps[gid][value] = new_item
-                    return new_item
-            except KeyError:
-                return value
-        elif (gid == 'client' or gid == 'ipaddr') and self.ip_lookup:
-            return self.gethost(value)
-        elif (gid == 'user' or gid == 'uid') and self.uid_lookup:
-            return self.getuname(value)
-        else:
-            return value
-
+        if not self.mapping:
+            return match.string
+        s = match.string
+        parts = []
+        k = 0
+        for gid in sorted(gids, key=lambda x: gids[x]):
+            parts.append(s[k:match.start(gid)])
+            parts.append(self.values[gid])
+            k = match.end(gid)
+        parts.append(s[k:])
+        return u"".join(parts)
 
     def gethost(self, ip_addr):
         """

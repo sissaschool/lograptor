@@ -204,7 +204,7 @@ class ReportItem(UserDict):
             for field in fields:
                 if field[0] == '"' and field[-1] == '"':
                     continue
-                if field == "hostname":
+                if field == "host":
                     continue
                 if not field in self.rules[opt].regexp.groupindex:
                     msg = 'field "{0}" not in rule gids'.format(field)
