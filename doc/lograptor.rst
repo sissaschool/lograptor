@@ -120,6 +120,12 @@ Matching Control:
     Match only lines that are unparsable by app's rules. This option is useful for
     finding anomalies and for application's rules debugging.
 
+.. option:: --anonymize
+
+    Anonymize output for values connected to provided filters. Translation tables are
+    built in volatile memory for each run. The anonymous tokens have the format FILTER_NN.
+    This option overrides --ip, --uid.
+
 Output Control:
 ^^^^^^^^^^^^^^^
 

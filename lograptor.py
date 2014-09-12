@@ -169,9 +169,9 @@ def parse_args(cli_parser):
                           "to the UIDs that have to be resolved.")
     group.add_option("--anonymize", action="store_true", dest="anonymize", default=False,
                      help="Anonymize output for values connected to provided filters. "
-                          "A translation table is built in volatile memory for each run "
-                          "and is not saved. The anonymous tokens have the format FILTER_NN."
-                          "This option override --ip, --uid.")
+                          "Translation tables are built in volatile memory for each run. "
+                          "The anonymous tokens have the format FILTER_NN. This option "
+                          "overrides --ip, --uid.")
     cli_parser.add_option_group(group)
 
     ### Define the options for the group "Report Control"

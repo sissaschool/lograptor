@@ -42,7 +42,7 @@ class CacheEntry:
     """
     Simple container class for cache entries
     """
-    def __init__(self, event_time):
+    def __init__(self, event_time, getline):
         self.pattern_match = False
         self.filter_match = False
         self.counted = False
@@ -55,9 +55,8 @@ class LineCache:
     A class to manage line caching
     """
     
-    def __init__(self, outmap):
+    def __init__(self):
         self.data = OrderedDict()
-        self.outmap = outmap
 
     def add_line(self, line, thread, pattern_match, filter_match, event_time):
         try:
@@ -80,7 +79,6 @@ class LineCache:
         """
 
         cache = self.data
-        outmap = self.outmap
         counter = 0
         
         for thread in cache.keys():
@@ -92,7 +90,7 @@ class LineCache:
                 if cache[thread].buffer:
                     if not quiet:
                         for line in cache[thread].buffer:
-                            print(outmap.getline(line), end='')
+                            print(line, end='')
                         print('--')
                     cache[thread].buffer = []
             if abs(event_time - cache[thread].end_time) > 3600:
@@ -107,7 +105,6 @@ class LineCache:
         """
 
         cache = self.data
-        outmap = self.outmap
         counter = 0
         
         for thread in cache.keys():
@@ -119,7 +116,7 @@ class LineCache:
 
                     if not quiet and cache[thread].buffer:
                         for line in cache[thread].buffer:
-                            print(outmap.getline(line), end='')
+                            print(line, end='')
                         print('--')
                 del cache[thread]
         return counter

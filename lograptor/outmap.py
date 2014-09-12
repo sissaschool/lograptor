@@ -36,78 +36,90 @@ except ImportError:
 
 class OutMap(object):
     """
-    Output mapping class: translate matching group for output
+    Output mapping class: translate matching groups for output.
     """
-    base_gid_pattern = re.compile('^([a-zA-Z_]+)')
 
     def __init__(self, config):
-
+        self.mapexp = config['mapexp']
+        self.mapmax = 10 ** self.mapexp
         self.ip_lookup = config['ip_lookup']
         self.uid_lookup = config['uid_lookup']
         self.anonymyze = config['anonymize']
-        self.mapping = self.anonymyze or self.uid_lookup or self.ip_lookup
-        self.hostsmap = {}
-        self.uidsmap = {}
-        self.values = {}
-        if self.anonymyze:
-            self.anonymaps = {
-                'host': {},
-                'thread': {},
-            }
-            for flt in config.options('filters'):
-                self.anonymaps[flt] = {}
-
-    def map_values(self, logdata, match, gids):
-        """
-        Map log data and match to a dictionary of values.
-        """
-        for gid in gids:
-            try:
-                value = match.group(gid)
-                self.values[gid] = self.map_value(gid, value)
-            except IndexError:
-                self.values[gid] = self.map_value(gid, getattr(logdata, gid))
+        self.maps = dict()
+        for flt in set(['host', 'thread', 'uid'] + config.options('filters')):
+            self.maps[flt] = {}
+        self.hostsmap = self.maps['host']
+        self.uidsmap = self.maps['uid']
+        self.base_gid_pattern = re.compile('^([a-zA-Z_]+)')
+        self.ip_pattern = re.compile(u'({0}|{1})'.format(config['ipv4_pattern'], config['ipv6_pattern']))
 
     def map_value(self, gid, value):
         """
-        Return the value for a group id, applying translation
-        maps if requested by options. Map only named groups related
-        to a filter, that seems to contains personal informations.
+        Return the value for a group id, applying requested mapping.
+        Map only groups related to a filter, ie when the basename of
+        the group is identical to the name of a filter.
         """
-        if not self.mapping:
-            return value
         base_gid = self.base_gid_pattern.search(gid).group(1)
         if self.anonymyze:
             try:
-                if value in self.anonymaps[base_gid]:
-                    return self.anonymaps[base_gid][value]
+                if value in self.maps[base_gid]:
+                    return self.maps[base_gid][value]
                 else:
-                    k = (len(self.anonymaps[base_gid]) + 1) % 100000
-                    new_item = u'{0}_{1:0{2}d}'.format(base_gid.upper(), k, 5)
-                    self.anonymaps[base_gid][value] = new_item
+                    k = (len(self.maps[base_gid]) + 1) % self.mapmax
+                    new_item = u'{0}_{1:0{2}d}'.format(base_gid.upper(), k, self.mapexp)
+                    self.maps[base_gid][value] = new_item
                     return new_item
             except KeyError:
                 return value
-        elif (base_gid == 'client' or base_gid == 'ipaddr') and self.ip_lookup:
-            return self.gethost(value)
+        elif base_gid in ['client', 'mail', 'from', 'rcpt', 'user'] and self.ip_lookup:
+            ip_match = self.ip_pattern.search(value)
+            if ip_match is None:
+                return value
+            host = self.gethost(ip_match.group(1))
+            if host == ip_match.group(1) or value.startswith(host):
+                return value
+            return u''.join([
+                value[:ip_match.start(1)],
+                self.gethost(ip_match.group(1)),
+                value[ip_match.end(1):],])
         elif (base_gid == 'user' or base_gid == 'uid') and self.uid_lookup:
             return self.getuname(value)
         else:
             return value
 
-    def map_string(self, gids, match):
+    def map2dict(self, gids, match):
         """
-        Return the mapped string from match object.
+        Map values from match into a dictionary.
         """
-        if not self.mapping:
-            return match.string
+        values = {}
+        for gid in gids:
+            try:
+                values[gid] = self.map_value(gid, match.group(gid))
+            except IndexError:
+                pass
+        return values
+
+    def map2str(self, gids, match, values=None):
+        """
+        Return the mapped string from match object. If a dictionary of
+        values is provided then use it to build the string.
+        """
         s = match.string
         parts = []
         k = 0
         for gid in sorted(gids, key=lambda x: gids[x]):
-            parts.append(s[k:match.start(gid)])
-            parts.append(self.values[gid])
-            k = match.end(gid)
+            if values is None:
+                try:
+                    value = self.map_value(gid, match.group(gid))
+                    parts.append(s[k:match.start(gid)])
+                    parts.append(value)
+                    k = match.end(gid)
+                except IndexError:
+                    continue
+            elif gid in values:
+                parts.append(s[k:match.start(gid)])
+                parts.append(values[gid])
+                k = match.end(gid)
         parts.append(s[k:])
         return u"".join(parts)
 

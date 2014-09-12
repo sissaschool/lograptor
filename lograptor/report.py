@@ -704,7 +704,7 @@ class Report:
             self.stats[key] = value
             logger.debug('{0}={1}'.format(key,value))
 
-    def publish(self, rawfh):
+    def publish(self, apps, rawfh):
         """
         Publishes the report with attachments or files, using all enabled publishers.
         """
@@ -720,10 +720,12 @@ class Report:
             'patterns'      : [ pattern.pattern for pattern in self.patterns],
             'pattern_file'  : self.config['pattern_file'],
             'hosts'         : self.config['hosts'],
-            'apps'          : self.config['apps'],
+            'apps'          : u', '.join([u'%s(%d)' % (app.name, app.counter)
+                                          for app in apps.values() if app.counter > 0]),
             'version'       : lograptor.info.__version__
             }
 
+        print(self.config['apps'])
         logger.debug('Provide filtering informations')
         filters = ''
         for key,flt in self.filters.items():

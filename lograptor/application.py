@@ -69,7 +69,7 @@ class AppRule:
         - key_gids : map from gid to result key tuple index
     """
 
-    def __init__(self, name, pattern, is_filter, outmap):
+    def __init__(self, name, pattern, is_filter):
         """
         Initialize AppRule. Arguments passed include:
 
@@ -89,7 +89,6 @@ class AppRule:
         self.results = dict()
         self.is_filter = is_filter
         self.used_by_report = False
-        self.outmap = outmap
         
         key_gids = ['host']
         for gid in self.regexp.groupindex:
@@ -102,15 +101,15 @@ class AppRule:
 
         self._last_idx = None
 
-    def add_result(self, outmap):
+    def add_result(self, values):
         """
-        Add a tuple or increment the value of existing one
-        in the rule results dictionary
+        Add a tuple or increment the value of an existing one
+        in the rule results dictionary.
         """
 
-        idx = [outmap.values['host']]
+        idx = [values['host']]
         for gid in self.key_gids[1:]:
-            idx.append(outmap.values[gid])
+            idx.append(values[gid])
         idx = tuple(idx)
 
         try:
@@ -488,7 +487,7 @@ class AppLogParser:
                         new_pattern = string.Template(new_pattern).safe_substitute({opt: config[opt]})
 
                 # Adding to app rules
-                self.rules.append(AppRule(option, new_pattern, True, self.outmap))
+                self.rules.append(AppRule(option, new_pattern, True))
                 self.has_filters = True
                 logger.debug('Add filter rule "{0}" ({1}): {2}'
                              .format(option, u', '.join(filter_keys), new_pattern))
@@ -497,7 +496,7 @@ class AppLogParser:
             # Add once at the end the no filtering version of the rule
             for opt in self._no_filter_keys:
                 pattern = string.Template(pattern).safe_substitute({opt: config[opt]})
-            self.rules.append(AppRule(option, pattern, False, self.outmap))
+            self.rules.append(AppRule(option, pattern, False))
             logger.debug('Add rule "{0}": {1}'.format(option, pattern))
             logger.debug('Rule "{0}" gids : {1}'.format(option, self.rules[-1].key_gids))
 
@@ -534,40 +533,47 @@ class AppLogParser:
         
     def process(self, logdata):
         """
-        Process a log line data message (or entire line) with filters.
-        If requested buffer lines for threads/transactions matching.
-        The function return False if no filter match. If a filter or rule
-        match the function return True. Otherwise return None (no filter
-        is specified and no rule matched, meaning the line is unparsable).
+        Process a log line data message with app's regex rules.
+        Return a tuple with this data:
 
-        Return values (result, appthread):
-        
-        result == None  <==> if the log line is unparsable by filter/rule
-        result == True  <==> if a rule filter match, or a rule match and
-                             there are not filter rules in the application,
-                             or the application has no rules
-        result == False <==> if no rule filter match
-
-        The appthread is returned with the value of thread named group of
-        the rule. If the rule doesn't have a thread group, a None is returned.
+            Element #0: True if a rule match, False otherwise;
+            Element #1: True if a rule match and is a filter, False
+                if a rule match but is not a filter, None otherwise;
+            Element #2: Thread value if a rule match and it has a "thread"
+                group, None otherwise;
+            Element #3: Mapping dictionary if a rule match and a map
+                of output is requested (--anonymize/--ip/--uid options).
         """
-        outmap = self.outmap
         for rule in self.rules:
             match = rule.regexp.search(logdata.message)
             if match is not None:
                 logger.debug('Rule "{0}" match'.format(rule.name))
                 gids = rule.regexp.groupindex
                 self._last_rule = rule
-                outmap.map_values(logdata, match, rule.key_gids)
+
+                if self.outmap is not None:
+                    outmap = self.outmap
+                    values = outmap.map2dict(rule.key_gids, match)
+                    values['host'] = outmap.map_value('host', logdata.host)
+                    map_dict = {
+                        'host': values['host'],
+                        'message': outmap.map2str(gids, match, values),
+                        }
+                else:
+                    values = { 'host': logdata.host }
+                    for gid in gids:
+                        values[gid] = match.group(gid)
+                    map_dict = None
+
                 if self._thread and 'thread' in rule.regexp.groupindex:
                     thread = match.group('thread')
                     if self._report:
-                        rule.add_result(outmap)
-                    return (True, rule.is_filter, thread, outmap.getline(gids, match))
+                        rule.add_result(values)
+                    return (True, rule.is_filter, thread, map_dict)
                 else:
                     if self._report or (rule.is_filter or not self.has_filters):
-                        rule.add_result(outmap)
-                    return (True, rule.is_filter, None, outmap.map_string(gids, match))
+                        rule.add_result(values)
+                    return (True, rule.is_filter, None, map_dict)
 
         # No rule match: the application log message is unparsable
         # by enabled rules.

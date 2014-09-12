@@ -65,7 +65,7 @@ class RFC3164_Parser(LogParser):
     def __init__(self, pattern):
         LogParser.__init__(self, pattern)
         rfc3164_fields = tuple([
-            'pri', 'month', 'day', 'ltime', 'repeat', 'hostname', 'apptag', 'message'
+            'pri', 'month', 'day', 'ltime', 'repeat', 'host', 'apptag', 'message'
             ])
         extra = set(self.fields) - set(rfc3164_fields)
         if extra:
@@ -82,7 +82,7 @@ class RFC5424_Parser(LogParser):
         LogParser.__init__(self, pattern)
         rfc5424_fields = tuple([
             'pri', 'ver', 'year', 'month', 'day', 'ltime', 'secfrac', 'offset',
-            'hostname', 'apptag', 'procid', 'msgid', 'message'
+            'host', 'apptag', 'procid', 'msgid', 'message'
             ])
         extra = set(self.fields) - set(rfc5424_fields)
         if extra:

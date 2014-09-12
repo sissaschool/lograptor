@@ -84,6 +84,7 @@ class Lograptor:
             'tmpdir': '/var/tmp',
             'fromaddr': 'root@{0}'.format(socket.gethostname()),
             'smtpserv': '/usr/sbin/sendmail -t',
+            'mapexp': 4,
         },
         'patterns': {
             'rfc3164_pattern': r'^(?:<(?P<pri>[0-9]{1,3})>|)'
@@ -203,6 +204,7 @@ class Lograptor:
         self._search_flags = re.IGNORECASE if self.config['case'] else 0
         self.rawfh = None
         self.tmpprefix = None
+        self.prefix = None
         self.is_batch = is_batch
 
         # Check and initialize the logger if not already defined. If the program is run by cron-batch
@@ -376,8 +378,11 @@ class Lograptor:
         else:
             self.getline = self._get_line
 
-        # Output mapping instance to translate tokens for output
-        self.outmap = OutMap(self.config)
+        # Create an output mapping instance only when is asked by options
+        if self.config['anonymize'] or self.config['uid_lookup'] or self.config['ip_lookup']:
+            self.outmap = OutMap(self.config)
+        else:
+            self.outmap = None
 
         # Check incompatibilities of -A option
         if self.config['apps'] is None:
@@ -710,6 +715,7 @@ class Lograptor:
 
         # Load names to local variables to speed-up the run
         logparser = self._parser
+        header_gids = logparser.parser.groupindex
         parsers = self.parsers
         num_parsers = self._num_parsers
         outmap = self.outmap
@@ -763,7 +769,7 @@ class Lograptor:
             if filelineno == 1:
                 num_files += 1
                 if self.print_out_filenames:
-                    outmap.filename = logfile.filename
+                    self.prefix = logfile.filename
                 fstat = os.fstat(logfile.fileno())
                 file_mtime = datetime.datetime.fromtimestamp(fstat.st_mtime)
                 file_year = file_mtime.year
@@ -794,6 +800,7 @@ class Lograptor:
                         header_match = nextparser.match(line)
                         if header_match is not None:
                             logparser = nextparser
+                            header_gids = logparser.parser.groupindex
                             break
                 else:
                     unparsed_counter += 1
@@ -821,7 +828,8 @@ class Lograptor:
                     app.increase_last(repeat)
                     app.counter += 1
                     if app_thread is not None:
-                        app.cache.add_line(line, app_thread, pattern_search, filter_match, event_time)
+                        app.cache.add_line(self.getline(line), app_thread,
+                                           pattern_search, filter_match, event_time)
                     prev_data = None
                 elif app is not None:
                     app.counter += 1
@@ -870,11 +878,11 @@ class Lograptor:
             ###
             # Check the hostname. If log line format don't
             # include host information, the host is None and consider the line as matched.
-            hostname = getattr(logdata, 'host', None)
-            if not all_hosts_flag and hostname is not None and not hostname in hostlist:
+            host = getattr(logdata, 'host', None)
+            if not all_hosts_flag and host is not None and not host in hostlist:
                 for regex in regex_hosts:
-                    if regex.search(hostname) is not None:
-                        hostlist.append(hostname)
+                    if regex.search(host) is not None:
+                        hostlist.append(host)
                         break
                 else:
                     if debug:
@@ -936,7 +944,7 @@ class Lograptor:
 
             # Log message parsing with app's rules
             if useapps and pattern_search:
-                rule_match, filter_match, app_thread, app_message = app.process(logdata)
+                rule_match, filter_match, app_thread, map_dict = app.process(logdata)
                 if not rule_match:
                     # Log message unparsable by app rules
                     if not match_unparsed:
@@ -944,17 +952,24 @@ class Lograptor:
                             logger.debug('Unparsable line: {0}'.format(line[:-1]))
                         prev_data = None
                         continue
+                    if map_dict is not None:
+                        line = outmap.map2str(header_gids, header_match, map_dict)
                 elif match_unparsed:
                     # Log message parsed but match_unparsed option
                     prev_data = None
                     continue
                 elif app_thread is not None:
-                    app.cache.add_line(line, app_thread, pattern_search, filter_match, event_time)
+                    if map_dict is not None:
+                        line = outmap.map2str(header_gids, header_match, map_dict)
+                    app.cache.add_line(self.getline(line), app_thread,
+                                       pattern_search, filter_match, event_time)
                 elif not filter_match and app.has_filters:
                     if pattern_search and debug:
                         print('Filtered line: {0}'.format(line[:-1]))
                     prev_data = None
                     continue
+                elif map_dict is not None:
+                    line = outmap.map2str(header_gids, header_match, map_dict)
 
                 # Handle timestamps for report
                 if make_report:
@@ -980,15 +995,7 @@ class Lograptor:
                 if debug:
                     logger.debug('Matched line: {0}'.format(line[:-1]))
                 if print_out_lines:
-                    if app_message is not None:
-                        parts = [
-                            line[:header_match.start("host")],
-                            outmap.map_value("host", hostname),
-                            line[header_match.end("host"): header_match.start("message")],
-                            app_message]
-                        print(self.getline(u"".join(parts)))
-                    else:
-                        print(self.getline(line), end='')
+                    print(self.getline(line), end='')
 
             # Write line to raw file if provided by option
             if rawfh is not None:
@@ -1038,7 +1045,7 @@ class Lograptor:
         """
         Publish the report
         """
-        self.report.publish(self.rawfh)
+        self.report.publish(self.apps, self.rawfh)
 
     def mktempdir(self):
         """

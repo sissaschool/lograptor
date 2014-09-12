@@ -25,6 +25,7 @@ distro_tags = {
     'Ubuntu' : 'ubuntu1'
     }
 
+MAN_SOURCE_DIR = 'doc/_build/man/'
 
 class my_sdist(distutils.command.sdist.sdist):
     """
@@ -38,31 +39,37 @@ class my_sdist(distutils.command.sdist.sdist):
 
         print("copy lograptor.py -> scripts/lograptor")
         shutil.copyfile("lograptor.py", "scripts/lograptor")
-        print("compress man/lograptor.8 -> man/lograptor.8.gz")
-        os.system('gzip -c man/lograptor.8 > man/lograptor.8.gz')
-        print("compress man/lograptor.conf.5 -> man/lograptor.conf.5.gz")
-        os.system('gzip -c man/lograptor.conf.5 > man/lograptor.conf.5.gz')
-        print("compress man/lograptor-apps.5 -> man/lograptor-apps.5.gz")
-        os.system('gzip -c man/lograptor-apps.5 > man/lograptor-apps.5.gz')
+        print("compress {0}lograptor.8 -> man/lograptor.8.gz".format(MAN_SOURCE_DIR))
+        os.system("gzip -c {0}lograptor.8 > man/lograptor.8.gz".format(MAN_SOURCE_DIR))
+        print("compress {0}lograptor.conf.5 -> man/lograptor.conf.5.gz".format(MAN_SOURCE_DIR))
+        os.system("gzip -c {0}lograptor.conf.5 > man/lograptor.conf.5.gz".format(MAN_SOURCE_DIR))
+        print("compress {0}lograptor-apps.5 -> man/lograptor-apps.5.gz".format(MAN_SOURCE_DIR))
+        os.system("gzip -c {0}lograptor-apps.5 > man/lograptor-apps.5.gz".format(MAN_SOURCE_DIR))
         distutils.command.sdist.sdist.run(self)
 
 
 class my_build_scripts(distutils.command.build_scripts.build_scripts):
 
     def run(self):
+        print("INSTALLLLLLLLLLLLL")
+        import os
+        print("DIR:", os.getcwd())
+
         try:
             if not os.path.isdir('scripts'):
                 os.mkdir('scripts')
 
-            print("copy lograptor.py -> scripts/lograptor")
-            shutil.copyfile("lograptor.py", "scripts/lograptor")
-            print("compress man/lograptor.8 -> man/lograptor.8.gz")
-            os.system('gzip -c man/lograptor.8 > man/lograptor.8.gz')
-            print("compress man/lograptor.conf.5 -> man/lograptor.conf.5.gz")
-            os.system('gzip -c man/lograptor.conf.5 > man/lograptor.conf.5.gz')
-            print("compress man/lograptor-apps.5 -> man/lograptor-apps.5.gz")
-            os.system('gzip -c man/lograptor-apps.5 > man/lograptor-apps.5.gz')
+            #print("copy lograptor.py -> scripts/lograptor")
+            print("DIR2:", os.getcwd())
+            #shutil.copyfile("lograptor.py", "scripts/lograptor")
+            print("compress {0}lograptor.8 -> man/lograptor.8.gz".format(MAN_SOURCE_DIR))
+            os.system('gzip -c {0}lograptor.8 > man/lograptor.8.gz'.format(MAN_SOURCE_DIR))
+            print("compress {0}lograptor.conf.5 -> man/lograptor.conf.5.gz".format(MAN_SOURCE_DIR))
+            os.system('gzip -c {0}lograptor.conf.5 > man/lograptor.conf.5.gz'.format(MAN_SOURCE_DIR))
+            print("compress {0}lograptor-apps.5 -> man/lograptor-apps.5.gz".format(MAN_SOURCE_DIR))
+            os.system('gzip -c {0}lograptor-apps.5 > man/lograptor-apps.5.gz'.format(MAN_SOURCE_DIR))
         except Exception as msg:
+            print("Errore: ", msg)
             print("Error in copying script: not in base dir, skip custom operations "
                   "in build_scripts subclass ...")
             
@@ -137,6 +144,7 @@ setup(name='lograptor',
       data_files=[('/usr/share/man/man8', ['man/lograptor.8.gz']),
                   ('/usr/share/man/man5', ['man/lograptor.conf.5.gz']),
                   ('/usr/share/man/man5', ['man/lograptor-apps.5.gz']),
+                  #('/usr/share/doc', ['doc/lograptor-{0}/lograptor.pdf']),
                   ('/etc/lograptor', ['etc/lograptor/lograptor.conf',
                                      'etc/lograptor/report_template.html',
                                      'etc/lograptor/report_template.txt']),

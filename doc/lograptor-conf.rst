@@ -69,6 +69,12 @@ Other sections are ignored.
 
         smtpserv = /usr/sbin/sendmail -t
 
+.. envvar:: mapexp
+
+    The dimension of translation tables for
+    `--anonymize <lograptor.html#cmdoption--anonymize>`_ option. The number is
+    the power of 10 that represents the maximum extension of each table (default is 4).
+
 
 [patterns] SECTION
 ^^^^^^^^^^^^^^^^^^
@@ -115,7 +121,7 @@ simplify the patterns to slightly speed-up the processing.
 ^^^^^^^^^^^^^^^^^
 
 This section contains default pattern rules for Lograptor filters
-(`cmd option -F <lograptor.html#cmdoption-F>`_).
+(`command option -F <lograptor.html#cmdoption-F>`_).
 Each pattern rule is usually referred as a composition of basic patterns.
 Variable related strings's interpolation is then used to define the effective regexp
 pattern during execution.
