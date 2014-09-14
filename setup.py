@@ -155,3 +155,4 @@ setup(name='lograptor',
                   "install" : my_install,
                   "bdist_rpm" : my_bdist_rpm},
       )
+lo

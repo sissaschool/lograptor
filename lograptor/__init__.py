@@ -577,7 +577,7 @@ class Lograptor:
             opt for opt in self.config.options('filters')])))
         print("Report HTML template file: {0}".format(self.config['html_template']))
         print("Report plain text template file: {0}".format(self.config['text_template']))
-        self.report = Report(self.apps, self.config)
+        self.report = Report(self.patterns, self.apps, self.config)
         print("Subreports: {0}".format(', '.join([
             subreport.name for subreport in self.report.subreports])))
         print("Report publishers: {0}".format(', '.join([

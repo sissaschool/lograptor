@@ -42,7 +42,7 @@ class CacheEntry:
     """
     Simple container class for cache entries
     """
-    def __init__(self, event_time, getline):
+    def __init__(self, event_time):
         self.pattern_match = False
         self.filter_match = False
         self.counted = False
