@@ -118,7 +118,8 @@ Matching Control:
 .. option:: -u, --unparsed
 
     Match only lines that are unparsable by app's rules. This option is useful for
-    finding anomalies and for application's rules debugging.
+    finding anomalies and for application's rules debugging. This option is incompatible
+    with filters (`option -F <lograptor.html#cmdoption-F>`_).
 
 .. option:: --anonymize
 
@@ -147,7 +148,7 @@ Output Control:
 
 .. option:: -s, --no-messages
 
-    Suppress error messages about nonexistent or unreadable files.
+    Suppress final run summary and error messages about nonexistent or unreadable files.
 
 .. option:: -o, --with-filename
 

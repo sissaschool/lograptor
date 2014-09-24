@@ -91,8 +91,8 @@ class Lograptor:
                                r'(?P<month>[A-Z,a-z]{3}) (?P<day>(?:[1-3]| )[0-9]) '
                                r'(?P<ltime>[0-9]{2}:[0-9]{2}:[0-9]{2}) '
                                r'(?:last message repeated (?P<repeat>[0-9]{1,3}) times|'
-                               r'(?P<host>\S{1,255}) (?P<apptag>[^ \[\(\:]{1,32})'
-                               r'(?P<message>(?:[\[\(\:])?.*))',
+                               r'(?P<host>\S{1,255})\s+'
+                               r'(?P<message>(?P<apptag>[^ \[\(\:]{1,32})(?:[\[\(\:])?.*))',
             'rfc5424_pattern': r'^(?:<(?P<pri>[0-9]{1,3})>(?P<ver>[0-9]{0,2}) |)'
                                r'(?:-|(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})T)'
                                r'(?P<ltime>[0-9]{2}:[0-9]{2}:[0-9]{2})(?:|\.(?P<secfrac>[0-9]{1,6}))'
@@ -132,10 +132,6 @@ class Lograptor:
             'text_template': '$cfgdir/report_template.txt',
         },
         'subreports': {
-            'logins_report': 'Logins',
-            'mail_report': 'Message delivery',
-            'command_report': 'System commands',
-            'query_report': 'Database & directory lookups',
         },
         None: {
             'method': None,
@@ -200,6 +196,7 @@ class Lograptor:
         self.hosts = list()
         self.apps = dict()
         self.extra_tags = set()
+        self.known_tags = set()
         self.tagmap = dict()
         self._search_flags = re.IGNORECASE if self.config['case'] else 0
         self.rawfh = None
@@ -327,6 +324,8 @@ class Lograptor:
 
         # Translate config filter list (-F options)
         if self.config['filters'] is not None:
+            if self.config['unparsed'] is True:
+                raise OptionError('-F, -u/--unparsed', 'unparsed matching is incompatible with filters!')
             for item in self.config['filters']:
                 self.filters.append(dict())
                 for flt in item.split(','):
@@ -411,15 +410,6 @@ class Lograptor:
         if self.config['apps'] is not None:
             AppLogParser.set_options(self.config, self.filters, self.outmap)
             self._load_applications()
-            if self.config['filters'] is not None:
-                if all([not app.has_filters for key, app in self.apps.items()]):
-                    msg = 'No app\'s rules compatible with provided filters!'
-                    raise OptionError("-F", msg)
-                self.config['apps'] = u', '.join([
-                    appname for appname, app in self.apps.items() if app.has_filters
-                ])
-            else:
-                self.config['apps'] = u', '.join([appname for appname in self.apps])
 
         # Initialize the report object if the option is enabled
         if self.config['report'] is not None:
@@ -495,7 +485,7 @@ class Lograptor:
             logger.info('Get the applications from conf.d directory ...')
             appset = self.get_applist()
             if not appset:
-                raise ConfigError("No application configuration found")
+                raise ConfigError("No app configuration found")
             else:
                 logger.info('Found apps: {0}'.format(appset))
         else:
@@ -537,6 +527,18 @@ class Lograptor:
         if not self.apps:
             raise ConfigError('No application configured and enabled! Exiting ...')
 
+        # If filters then reduce the app set to the ones with at least a filter.
+        if self.config['filters'] is not None:
+            if all([not app.has_filters for key, app in self.apps.items()]):
+                msg = 'No app\'s rules compatible with provided filters!'
+                raise OptionError("-F", msg)
+            for app in self.apps.keys():
+                if not self.apps[app].has_filters:
+                    del self.apps[app]
+
+        # Set the configuration paramater to the effective list of apps.
+        self.config['apps'] = u', '.join([appname for appname in self.apps])
+
         # Set the list of apps, ordered by (priority, name)
         self.applist = sorted(self.apps, key=lambda x: (self.apps[x].priority, x))
 
@@ -555,34 +557,100 @@ class Lograptor:
                     logger.info('Add "{0}" to tagmap ...'.format(tag))
                     self.tagmap[tag] = self.apps[app]
 
+        # Set the known_tags dictionary final checks of extra_tags
+        self.known_tags = set(self.tagmap.keys())
+        for app in self.get_applist():
+            if app in self.applist:
+                continue
+
+            cfgfile = os.path.join(self.appscfgdir, "".join([app, ".conf"]))
+            try:
+                unused_app = AppLogParser(app, cfgfile, self.config)
+            except (OptionError, ConfigError, FormatError) as err:
+                logger.debug('Skip misconfigured app "{0}": {1}'.format(app, err))
+                continue
+            for tag in set(re.split('\s*,\s*', unused_app.tags)):
+                if len(tag) != 0:
+                    logger.debug('Add "{0}" to known tags ...'.format(tag))
+                    self.known_tags.add(tag)
+        logger.debug("Known app's tags: {0}".format(self.known_tags))
+
         # Exit if no app-name is provided
         if len(self.tagmap) == 0:
             raise ConfigError('No tags for enabled apps! Exiting ...')
 
         logger.info('Use the applist: {0}'.format(self.apps.keys()))
 
-    def display_configuration(self):
+    def get_configuration(self):
         """
-        Display the instance configuration to stdout.
+        Return a formatted text with main configuration parameters.
         """
-        print("---------------------------\n"
-              "| {0} configuration |\n"
-              "---------------------------".format(self.__class__.__name__))
-        print("Configuration main file: {0}".format(self.config['cfgfile']))
-        print("Configuration directory: {0}".format(self.config['cfgdir']))
-        print("Enabled applications: {0}".format(', '.join(self.apps.keys())))
-        print("Disabled applications: {0}".format(', '.join([
-            app for app in self.get_applist() if app not in self.apps])))
-        print("Available filters: {0}".format(', '.join([
-            opt for opt in self.config.options('filters')])))
-        print("Report HTML template file: {0}".format(self.config['html_template']))
-        print("Report plain text template file: {0}".format(self.config['text_template']))
-        self.report = Report(self.patterns, self.apps, self.config)
-        print("Subreports: {0}".format(', '.join([
-            subreport.name for subreport in self.report.subreports])))
-        print("Report publishers: {0}".format(', '.join([
-            pub[:-10] for pub in self.config.parser.sections()
-            if pub.endswith('_publisher')])))
+        # Create a dummy report object if necessary
+        if not hasattr(self, 'report'):
+            self.report = Report(self.patterns, self.apps, self.config, True)
+        publishers = self.config.get_all_publishers()
+        return u'\n'.join([
+            u"\n--- {0} configuration ---".format(self.__class__.__name__),
+            u"Configuration main file: {0}".format(self.config['cfgfile']),
+            u"Configuration directory: {0}".format(self.config['cfgdir']),
+            u"Enabled applications: {0}".format(', '.join(self.apps.keys())),
+            u"Disabled applications: {0}".format(', '.join([
+                app for app in self.get_applist() if app not in self.apps])),
+            u"Available filters: {0}".format(', '.join([
+                opt for opt in self.config.options('filters')])),
+            u"Report HTML template file: {0}".format(self.config['html_template']),
+            u"Report plain text template file: {0}".format(self.config['text_template']),
+            u"Subreports: {0}".format(', '.join([
+                subreport.name for subreport in self.report.subreports])),
+            u"Report publishers: \n    {0}\n".format('\n    '.join([
+                repr(pub) for pub in publishers])) if publishers else u'No publisher configured\n',
+            ])
+
+    def get_run_summary(self, run_stats):
+        """
+        Produce a summary from run statistics.
+
+        :return: Formatted multiline string
+        """
+        tot_counter = run_stats['tot_counter']
+        tot_files = run_stats['tot_files']
+        tot_lines = run_stats['tot_lines']
+        tot_unparsed = run_stats['tot_unparsed']
+        unknown_tags = run_stats['unknown_tags']
+        summary = u'\n--- {0} run summary ---'.format(self.__class__.__name__)
+        if not self._has_args:
+            summary = '{0}\nNumber of processed files: {1}'.format(summary, tot_files)
+        summary = u'{0}\nTotal lines read: {1}'.format(summary, tot_lines)
+        summary = u'{0}\nTotal log events matched: {1}'.format(summary, tot_counter)
+        if not self._debug and tot_unparsed > 0:
+            summary = u'{0}\nWARNING: Found {1} unparsed log header lines'.format(summary, tot_unparsed)
+        if self._useapps:
+            if any([ app.counter > 0 for app in self.apps.values() ]):
+                proc_apps = [ app for app in self.apps.values() if app.counter > 0 ]
+                summary = u'{0}\nTotal log events for apps: {1}'.format(summary, u', '.join([
+                    u'%s(%d)' % (app.name, app.counter)
+                    for app in proc_apps
+                ]))
+
+                if len(proc_apps) == 1 and self._count:
+                    rule_counters = dict()
+                    for rule in proc_apps[0].rules:
+                        rule_counters[rule.name] = sum( [ val for val in rule.results.values() ] )
+                    summary = u'{0}\nApp rules counters: {1}'.format(
+                        summary,
+                        u', '.join([
+                            u'{0}({1})'.format(rule, rule_counters[rule])
+                            for rule in sorted(rule_counters, key=lambda x: rule_counters[x], reverse=True)
+                        ]))
+            if unknown_tags:
+                summary = u'{0}\nFound unknown app\'s tags: {1}'.format(summary, u', '.join(unknown_tags))
+
+            if any([ app.unparsed_counter > 0 for app in self.apps.values() ]):
+                summary = u'{0}\nFound unparsed log lines for apps: {1}'.format(summary, u', '.join([
+                    u'%s(%d)' % (app.name, app.unparsed_counter)
+                    for app in self.apps.values() if app.unparsed_counter > 0
+                ]))
+        return summary
 
     def process(self):
         """
@@ -660,47 +728,32 @@ class Lograptor:
         logger.info('Total files processed: {0}'.format(tot_files))
         logger.info('Total log lines processed: {0}'.format(tot_lines))
 
+        # Save run stats
+        try:
+            starttime = datetime.datetime.fromtimestamp(self._first_event)
+            endtime = datetime.datetime.fromtimestamp(self._last_event)
+        except TypeError:
+            starttime = endtime = "None"
+
+        run_stats = {
+            'starttime': starttime,
+            'endtime': endtime,
+            'tot_counter': tot_counter,
+            'tot_files': tot_files,
+            'tot_lines': tot_lines,
+            'tot_unparsed': tot_unparsed,
+            'logfiles': ', '.join(logfiles),
+            'unknown_tags': set([ tag for tag in self.extra_tags if tag not in self.known_tags ]),
+        }
+
         # If final report is requested then purge all unmatched threads and set time stamps.
         # Otherwise print a final run summary if messages are not disabled.
         if make_report:
-            try:
-                starttime = datetime.datetime.fromtimestamp(self._first_event)
-                endtime = datetime.datetime.fromtimestamp(self._last_event)
-            except TypeError:
-                starttime = endtime = "None"
-
-            self.report.set_stats(
-                {
-                    'starttime': starttime,
-                    'endtime': endtime,
-                    'totalfiles': tot_files,
-                    'totallines': tot_lines,
-                    'logfiles': ', '.join(logfiles)
-                })
+            self.report.set_stats(run_stats)
             if self.rawfh is not None:
                 self.rawfh.close()
-
-        elif not self.print_out_status and not config['quiet']:
-            print(u'\n--- {0} run summary ---'.format(self.__class__.__name__))
-            if not self._has_args:
-                print('Number of processed files: {0}'.format(tot_files))
-            print(u'Total lines read: {0}'.format(tot_lines))
-            print(u'Total lines matched: {0}'.format(tot_counter))
-            if not self._debug and tot_unparsed > 0:
-                print(u'WARNING: Found {0} unparsed log header lines'.format(tot_unparsed))
-            if self._useapps:
-                if any([ app.counter > 0 for app in self.apps.values() ]):
-                    print(u'Total log lines per apps: {0}'.format(u', '.join([
-                        u'%s(%d)' % (app.name, app.counter)
-                        for app in self.apps.values() if app.counter > 0
-                    ])))
-                if any([ app.unparsed_counter > 0 for app in self.apps.values() ]):
-                    print(u'Found unparsed log lines for apps: {0}'.format(u', '.join([
-                        u'%s(%d)' % (app.name, app.unparsed_counter)
-                        for app in self.apps.values() if app.unparsed_counter > 0
-                    ])))
-                if self.extra_tags:
-                    print(u'Found unmatched application\'s tags: {0}'.format(u', '.join(self.extra_tags)))
+        elif not config['no_messages'] and not config['quiet']:
+            print(u'%s\n' % self.get_run_summary(run_stats))
 
         return tot_counter > 0
 
@@ -741,8 +794,6 @@ class Lograptor:
         prev_data = None
         app = None
         app_thread = None
-        debug_fmt = "date,time,repeat,host,tag : {0}-{1}-{2},{3},{4},{5},{6}"
-
         hostlist = []
         counter = 0
         unparsed_counter = 0
@@ -812,7 +863,7 @@ class Lograptor:
             # Extract log data tuple from named matching groups
             logdata = logparser.LogData(*map(header_match.group, logparser.fields))
             if debug:
-                logger.debug(debug_fmt.format(logdata))
+                logger.debug(logdata)
 
             ###
             # Process first RFC 3164 'last message repeated N times' log lines

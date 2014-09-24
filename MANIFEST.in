@@ -1,3 +1,6 @@
 include LICENSE
+include doc/Lograptor.pdf
+recursive-include lograptor  *.py
 recursive-include etc/lograptor *.conf *.txt *.html
 recursive-include man *.5.gz *.8.gz
+include scripts/lograptor

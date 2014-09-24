@@ -16,11 +16,12 @@ build/
 deb_dist/
 dist/
 doc/_build/
+doc/*.pdf
 man/*.html
 man/*.gz
 packages/
 samples/
 scripts/
-test/
+test_samples/
 var/
 .idea/

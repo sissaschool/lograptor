@@ -100,7 +100,6 @@ This section contains rules written as regular expressions, according to the syn
 *"pattern rules"*.
 Those rules are used by the program to analyze application's log lines and to extract
 information  from matched events.
-For clarity each regular expression must be written between double quotes.
 Each rule is identified with the option name, so must be unique within application.
 You should not use names already used by other options of the program for naming a rule,
 in order to avoid ambiguity or incompatibility.

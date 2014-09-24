@@ -47,7 +47,7 @@ except ImportError:
     from lograptor.backports.ordereddict import OrderedDict
 
 from lograptor.exceptions import ConfigError, FileMissingError, FormatError
-
+from lograptor.publishers import FilePublisher, MailPublisher
 
 logger = logging.getLogger('lograptor')
 
@@ -248,3 +248,36 @@ class ConfigMap(UserDict):
         Get the options list for a section of configuration file
         """    
         return self.parser.options(section)
+
+    def get_all_publishers(self):
+        """
+        Get available publisher sections as a list. Skip publisher sections with
+        configuration errors.
+
+        :param config: Program configuration
+        :return:
+        """
+        publishers = []
+        for sec in self.parser.sections():
+            sec = sec.strip()
+            if sec in ['main', 'patterns', 'filters', 'report', 'subreports', 'options']:
+                continue
+
+            try:
+                method = self.getstr(sec, 'method')
+            except configparser.NoOptionError:
+                logger.debug('Skip no-publisher section "{0}"'.format(sec))
+
+            try:
+                if method == 'file':
+                    publishers.append(FilePublisher(sec, self))
+                elif method == 'mail':
+                    publishers.append(MailPublisher(sec, self))
+                else:
+                    logger.debug('Wrong value for option "method": {0}. '
+                                 'Skip publisher section "{0}"'.format(method, sec))
+            except ConfigError as msg:
+                logger.debug('Configuration Error: {0}. '
+                             'Skip publisher section "{0}"'.format(msg, sec))
+            logger.debug('Added {0} publisher "{1}".'.format(method, sec))
+        return publishers

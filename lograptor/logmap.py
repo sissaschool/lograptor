@@ -56,7 +56,7 @@ class LogMap:
         
         self.dt1 = initial_datetime     # Initial date and time for logmap iteration
         self.dt2 = final_datetime       # Final date and time for logmap iteration
-        
+
         self.__logmap = dict()
         self.__appmap = dict()
 

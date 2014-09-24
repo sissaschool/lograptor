@@ -82,7 +82,7 @@ class AppRule:
         try:
             self.regexp = re.compile(pattern)
         except RegexpCompileError:
-            msg = 'Wrong pattern in configuration: "{0}"'.format(pattern)
+            msg = 'Illegal pattern for app\'rule: "{0}"'.format(name)
             raise lograptor.ConfigError(msg)
 
         self.name = name
@@ -329,12 +329,12 @@ class AppLogParser:
                     re.compile(pattern)
                 except RegexpCompileError:
                     msg = 'Wrong pattern specification in filter!: %s=%s'
-                    raise lograptor.OptionError("-F", msg % (name, pattern))           
+                    raise lograptor.OptionError("-F", msg % (name, pattern))
                 filter_names.add(name)
 
         AppLogParser.outmap = outmap
         AppLogParser._filters = copy.deepcopy(filters)
-        AppLogParser._filter_keys = tuple(filter_names)         
+        AppLogParser._filter_keys = tuple(filter_names)
         AppLogParser._no_filter_keys = tuple([
             key for key in config.options('filters')
             if key not in AppLogParser._filter_keys
@@ -459,7 +459,8 @@ class AppLogParser:
         """
         for option, pattern in rules:
             # Strip optional string quotes and remove newlines
-            pattern = pattern.strip('\'"').replace('\n', '')
+            #pattern = pattern.strip('\'"').replace('\n', '')
+            pattern = pattern.replace('\n', '')
 
             if len(pattern) == 0:
                 logger.debug('Rule "{0}" is empty'.format(option))

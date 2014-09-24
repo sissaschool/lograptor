@@ -107,7 +107,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 TODO
 ----
 
- * Improve output adding the feature that permit to anonymize system
-   logs using app's regex rules;
+ * Improve the anonymized output feature;
+ * Introduce several different levels of details as a program option,
+   in order to produce more or less verbose reports;
  * Try an integration with RFC 3161 timestamp services, in order to
-   mark rotated log files and the produced reports.
+   mark rotated log files and the produced reports;
+ * Maybe examine the opportunity to translate a log format to another format.

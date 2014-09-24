@@ -13,8 +13,8 @@ Applications: $apps
 First event: $starttime
 Last event: $endtime
 Processed files: $logfiles
-Total files examined: $totalfiles
-Total log lines parsed: $totallines
+Total files examined: $tot_files
+Total log lines parsed: $tot_lines
 ---------------------------------------------------------
 $subreports
 ----- Brought to you by Lograptor $version -----

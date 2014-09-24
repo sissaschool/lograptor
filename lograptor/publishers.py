@@ -102,7 +102,10 @@ class MailPublisher(BasePublisher):
                     self.gpg_signers.append(keyid)
         
         logger.debug('gpg_encrypt={0}'.format(self.gpg_encrypt))        
-        
+
+    def __repr__(self):
+        return u'{0}({1}: mailto={2})'.format(self.section, self.name, u','.join(self.mailto))
+
     def publish(self, title, report_parts, rawfh):
         
         logger.info('Creating an email message')
@@ -289,26 +292,23 @@ class FilePublisher(BasePublisher):
 
     def __init__(self, section, config):
         super(FilePublisher, self).__init__(section, config)
-        expire = config.getint(section, 'expire_in')
-        dirmask = config.getstr(section,'dirmask')
-        filemask = config.getstr(section,'filemask')
+        self.expire = config.getint(section, 'expire_in')
+        self.dirmask = config.getstr(section, 'dirmask')
+        self.filemask = config.getstr(section, 'filemask')
         maskmsg = 'Invalid mask for {0}: {1}'
 
-        self.pubdir = config.getstr(section,'pubdir')
+        self.pubdir = config.getstr(section, 'pubdir')
 
         try: 
-            self.dirname = time.strftime(dirmask, time.localtime())
+            self.dirname = time.strftime(self.dirmask, time.localtime())
         except: 
-            raise ConfigError(maskmsg.format('dirmask', dirmask))
+            raise ConfigError(maskmsg.format('dirmask', self.dirmask))
 
         try: 
-            self.filename = time.strftime(filemask, time.localtime())
+            self.filename = time.strftime(self.filemask, time.localtime())
         except: 
-            ConfigError(maskmsg.format('filemask', filemask))
+            ConfigError(maskmsg.format('filemask', self.filemask))
 
-        self._prune_old(self.pubdir, dirmask, expire)
-        self.pubdir = os.path.join(self.pubdir, self.dirname)
-        
         self.rawlogs = config.getboolean(section, 'save_rawlogs')       
         if self.rawlogs:
             logger.info('Will save raw logs in the reports directory')
@@ -339,12 +339,18 @@ class FilePublisher(BasePublisher):
         logger.debug('path={0}'.format(self.pubdir))
         logger.debug('filename={0}'.format(self.filename))
 
-    def _prune_old(self, path, dirmask, expire):
+    def __repr__(self):
+        return u'{0}({1}: pubdir={2}, expire_in={3})'.format(
+            self.section, self.name, self.pubdir, self.expire)
+
+    def prune_old(self):
         """
         Removes the directories that are older than a certain date.
         """
+        path = self.pubdir
+        dirmask = self.dirmask
+        expire = self.expire
         logger.info('Pruning directories older than {0} days'.format(expire))
-
         expire_limit = int(time.time()) - (86400 * expire)
 
         logger.debug('expire_limit={0}'.format(expire_limit))
@@ -384,12 +390,14 @@ class FilePublisher(BasePublisher):
         """
         logger.info('Checking and creating the report directories')
 
-        if not os.path.isdir(self.pubdir):
+        workdir = os.path.join(self.pubdir, self.dirname)
+
+        if not os.path.isdir(workdir):
             try: 
-                os.makedirs(self.pubdir)
+                os.makedirs(workdir)
             except OSError as e:
                 logger.error('Error creating directory "{0}": {0}'.format(
-                             self.pubdir, e))
+                             workdir, e))
                 logger.error('File publisher exiting.')
                 return
 
@@ -403,7 +411,7 @@ class FilePublisher(BasePublisher):
                 continue
 
             filename = fmtname.format(self.filename, i, report_parts[i].title, ext)
-            repfile = os.path.join(self.pubdir, filename)
+            repfile = os.path.join(workdir, filename)
             
             logger.info('Dumping the report part {1} into {0}'.format(repfile, i))
             
@@ -436,11 +444,13 @@ class FilePublisher(BasePublisher):
 
         if self.rawlogs:
             logfilen = '{0}.log'.format(self.filename)
-            logfile  = os.path.join(self.pubdir, '{0}.gz'.format(logfilen))
+            logfile  = os.path.join(workdir, '{0}.gz'.format(logfilen))
 
             logger.info('Gzipping logs and writing them to {0}'.format(logfilen))
             outfh = open(logfile, 'w+b')
             do_chunked_gzip(rawfh, outfh, logfilen)
             outfh.close()
             print('Gzipped logs saved in: {0}'.format(logfile))
-        
+
+        # Purge old reports
+        self.prune_old()

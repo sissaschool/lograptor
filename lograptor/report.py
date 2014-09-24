@@ -725,7 +725,6 @@ class Report:
             'version'       : lograptor.info.__version__
             }
 
-        print(self.config['apps'])
         logger.debug('Provide filtering informations')
         filters = ''
         for key,flt in self.filters.items():

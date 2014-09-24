@@ -26,6 +26,7 @@ distro_tags = {
     }
 
 MAN_SOURCE_DIR = 'doc/_build/man/'
+PDF_SOURCE_DIR = 'doc/_build/latex/'
 
 class my_sdist(distutils.command.sdist.sdist):
     """
@@ -34,45 +35,33 @@ class my_sdist(distutils.command.sdist.sdist):
     """
     
     def run(self):
+        print("Copy lograptor.py -> scripts/lograptor")
         if not os.path.isdir('scripts'):
             os.mkdir('scripts')
-
-        print("copy lograptor.py -> scripts/lograptor")
         shutil.copyfile("lograptor.py", "scripts/lograptor")
-        print("compress {0}lograptor.8 -> man/lograptor.8.gz".format(MAN_SOURCE_DIR))
+
+        print("Copy {0}Lograptor.pdf -> doc/Lograptor.pdf".format(PDF_SOURCE_DIR))
+        os.system("gzip -c {0}Lograptor.pdf > doc/Lograptor.pdf".format(PDF_SOURCE_DIR))
+        print("Compress {0}lograptor.8 -> man/lograptor.8.gz".format(MAN_SOURCE_DIR))
         os.system("gzip -c {0}lograptor.8 > man/lograptor.8.gz".format(MAN_SOURCE_DIR))
-        print("compress {0}lograptor.conf.5 -> man/lograptor.conf.5.gz".format(MAN_SOURCE_DIR))
+        print("Compress {0}lograptor.conf.5 -> man/lograptor.conf.5.gz".format(MAN_SOURCE_DIR))
         os.system("gzip -c {0}lograptor.conf.5 > man/lograptor.conf.5.gz".format(MAN_SOURCE_DIR))
-        print("compress {0}lograptor-apps.5 -> man/lograptor-apps.5.gz".format(MAN_SOURCE_DIR))
+        print("Compress {0}lograptor-apps.5 -> man/lograptor-apps.5.gz".format(MAN_SOURCE_DIR))
         os.system("gzip -c {0}lograptor-apps.5 > man/lograptor-apps.5.gz".format(MAN_SOURCE_DIR))
+        print("Compress {0}lograptor-examples.8 -> man/lograptor-examples.8.gz".format(MAN_SOURCE_DIR))
+        os.system("gzip -c {0}lograptor-examples.8 > man/lograptor-examples.8.gz".format(MAN_SOURCE_DIR))
         distutils.command.sdist.sdist.run(self)
 
 
 class my_build_scripts(distutils.command.build_scripts.build_scripts):
 
     def run(self):
-        print("INSTALLLLLLLLLLLLL")
-        import os
-        print("DIR:", os.getcwd())
-
-        try:
+        if os.path.isfile('lograptor.py'):
             if not os.path.isdir('scripts'):
                 os.mkdir('scripts')
+            print("Copy lograptor.py -> scripts/lograptor")
+            shutil.copyfile("lograptor.py", "scripts/lograptor")
 
-            #print("copy lograptor.py -> scripts/lograptor")
-            print("DIR2:", os.getcwd())
-            #shutil.copyfile("lograptor.py", "scripts/lograptor")
-            print("compress {0}lograptor.8 -> man/lograptor.8.gz".format(MAN_SOURCE_DIR))
-            os.system('gzip -c {0}lograptor.8 > man/lograptor.8.gz'.format(MAN_SOURCE_DIR))
-            print("compress {0}lograptor.conf.5 -> man/lograptor.conf.5.gz".format(MAN_SOURCE_DIR))
-            os.system('gzip -c {0}lograptor.conf.5 > man/lograptor.conf.5.gz'.format(MAN_SOURCE_DIR))
-            print("compress {0}lograptor-apps.5 -> man/lograptor-apps.5.gz".format(MAN_SOURCE_DIR))
-            os.system('gzip -c {0}lograptor-apps.5 > man/lograptor-apps.5.gz'.format(MAN_SOURCE_DIR))
-        except Exception as msg:
-            print("Errore: ", msg)
-            print("Error in copying script: not in base dir, skip custom operations "
-                  "in build_scripts subclass ...")
-            
         distutils.command.build_scripts.build_scripts.run(self)    
 
 
@@ -144,7 +133,7 @@ setup(name='lograptor',
       data_files=[('/usr/share/man/man8', ['man/lograptor.8.gz']),
                   ('/usr/share/man/man5', ['man/lograptor.conf.5.gz']),
                   ('/usr/share/man/man5', ['man/lograptor-apps.5.gz']),
-                  #('/usr/share/doc', ['doc/lograptor-{0}/lograptor.pdf']),
+                  ('/usr/share/man/man8', ['man/lograptor-examples.8.gz']),
                   ('/etc/lograptor', ['etc/lograptor/lograptor.conf',
                                      'etc/lograptor/report_template.html',
                                      'etc/lograptor/report_template.txt']),
@@ -155,4 +144,3 @@ setup(name='lograptor',
                   "install" : my_install,
                   "bdist_rpm" : my_bdist_rpm},
       )
-lo

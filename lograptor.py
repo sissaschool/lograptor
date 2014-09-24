@@ -132,7 +132,8 @@ def parse_args(cli_parser):
                      "The thread rules are defined in app's configuration file.")
     group.add_option("-u", "--unparsed", action="store_true", dest="unparsed", default=False,
                      help="Match lines that are unparsable by app's rules. Useful for "
-                          "finding anomalies and for application's rules debugging.")
+                          "finding anomalies and for application's rules debugging. This option "
+                          "is incompatible with filters (option -F")
     cli_parser.add_option_group(group)
 
     ### Define the options for the group "Output Control"
@@ -151,7 +152,8 @@ def parse_args(cli_parser):
                           "immediately with zero status if any match is found, even "
                           "if an error was detected. Also see the -s or --no-messages option.")
     group.add_option("-s", "--no-messages", action="store_true", default=False,
-                     help="Suppress error messages about nonexistent or unreadable files.")
+                     help="Suppress final run summary and error messages about nonexistent or "
+                          "unreadable files.")
     group.add_option("-o", "--with-filename", action="store_true", dest="out_filenames",
                      default=None, help="Print the filename for each matching line.")
     group.add_option("-O", "--no-filename", action="store_false", dest="out_filenames",
@@ -220,7 +222,7 @@ def main(is_batch):
                 len(sys.argv) == 1 or
                 (len(sys.argv) == 2 and sys.argv[1].startswith('--conf=')) or
                 (len(sys.argv) == 3 and sys.argv[1] == '--conf') ):
-            my_raptor.display_configuration()
+            print(my_raptor.get_configuration())
             my_raptor.cleanup()
             sys.exit(0)
 
