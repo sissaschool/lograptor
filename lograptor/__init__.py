@@ -802,7 +802,7 @@ class Lograptor:
         readsize = 0
         progressbar = None
         pattern_search = False
-        filter_match = False
+        full_match = False
         extra_tags = set()
 
         ini_datetime = time.mktime(self.ini_datetime.timetuple())
@@ -820,7 +820,7 @@ class Lograptor:
             if filelineno == 1:
                 num_files += 1
                 if self.print_out_filenames:
-                    self.prefix = logfile.filename
+                    self.prefix = logfile.filename()
                 fstat = os.fstat(logfile.fileno())
                 file_mtime = datetime.datetime.fromtimestamp(fstat.st_mtime)
                 file_year = file_mtime.year
@@ -873,14 +873,16 @@ class Lograptor:
                 if prev_data is not None:
                     if debug:
                         logger.debug('Repetition: {0}'.format(line[:-1]))
-                    apptag = prev_data.apptag
-                    app = tagmap[apptag]
-                    counter += repeat
-                    app.increase_last(repeat)
-                    app.counter += 1
-                    if app_thread is not None:
-                        app.cache.add_line(self.getline(line), app_thread,
-                                           pattern_search, filter_match, event_time)
+                    if not thread:
+                        counter += repeat
+                    if useapps:
+                        apptag = prev_data.apptag
+                        app = tagmap[apptag]
+                        app.increase_last(repeat)
+                        app.counter += 1
+                        if app_thread is not None:
+                            app.cache.add_line(self.getline(line), app_thread,
+                                               pattern_search, full_match, event_time)
                     prev_data = None
                 elif app is not None:
                     app.counter += 1
@@ -967,7 +969,6 @@ class Lograptor:
                     app = logparser.app
                 app.counter += 1
 
-
             ###
             # Process the message part of the log line. First search for provided pattern(s)
             # then process with app rules if the app processing is enabled.
@@ -994,8 +995,8 @@ class Lograptor:
                 pattern_search = False
 
             # Log message parsing with app's rules
-            if useapps and pattern_search:
-                rule_match, filter_match, app_thread, map_dict = app.process(logdata)
+            if useapps and (pattern_search or thread):
+                rule_match, full_match, app_thread, map_dict = app.process(logdata)
                 if not rule_match:
                     # Log message unparsable by app rules
                     if not match_unparsed:
@@ -1013,8 +1014,8 @@ class Lograptor:
                     if map_dict is not None:
                         line = outmap.map2str(header_gids, header_match, map_dict)
                     app.cache.add_line(self.getline(line), app_thread,
-                                       pattern_search, filter_match, event_time)
-                elif not filter_match and app.has_filters:
+                                       pattern_search, full_match, event_time)
+                elif not full_match and app.has_filters:
                     if pattern_search and debug:
                         print('Filtered line: {0}'.format(line[:-1]))
                     prev_data = None
@@ -1034,13 +1035,14 @@ class Lograptor:
                             last_event = event_time
 
             ###
-            # Increment counters and send to output. Purge thread every
+            # Increment counters and send to output. Purge old threads every
             # PURGE_THREADS_LIMIT processed lines.
             if thread:
                 if (filelineno % PURGE_THREADS_LIMIT) == 0:
                     for app in applist:
                         apps[app].purge_unmatched_threads(event_time)
-                        counter += apps[app].cache.flush_old_cache(event_time, print_out_lines)
+                        max_threads = None if max_count is None else max_count - counter
+                        counter += apps[app].cache.flush_old_cache(event_time, print_out_lines, max_threads)
             else:
                 counter += 1
                 if debug:
@@ -1063,7 +1065,10 @@ class Lograptor:
                     apps[app].purge_unmatched_threads(event_time)
                 except UnboundLocalError:
                     break
-                counter += apps[app].cache.flush_cache(event_time, print_out_lines)
+                if max_count is not None and counter >= max_count:
+                    break
+                max_threads = None if max_count is None else max_count - counter
+                counter += apps[app].cache.flush_cache(event_time, print_out_lines, max_threads)
 
         # Save modificable class variables
         self._parser = logparser

@@ -87,7 +87,7 @@ class AppRule:
 
         self.name = name
         self.results = dict()
-        self.is_filter = is_filter
+        self.is_filter = self.full_match = is_filter
         self.used_by_report = False
         
         key_gids = ['host']
@@ -430,19 +430,22 @@ class AppLogParser:
                                             'file "{1}"'.format(msg, sect, appcfgfile))
             self.repitems.append(repitem)
 
-        # If 'unparsed' matching is disabled then restrict the set of rules to
-        # the minimal set useful for processing.
-        if False: #not config['unparsed']:
+        # If 'unparsed' matching is disabled and there are filter rules then restrict
+        # the set of rules to the minimal set useful for processing.
+        if not config['unparsed'] and self.has_filters:
             logger.debug('Purge unused rules for "{0}" app.'.format(self.name))
             self.rules = [
                 rule for rule in self.rules
                 if rule.is_filter or rule.used_by_report or
                 (self._thread and 'thread' in rule.regexp.groupindex)
             ]
-        
+
         # If the app has filters, reorder rules putting filters first.
         if self.has_filters:
             self.rules = sorted(self.rules, key=lambda x: not x.is_filter)
+        else:
+            for rule in self.rules:
+                rule.full_match = True
 
         logger.info('Valid filters for app "{0}": {1}'
                     .format(self.name, len([rule.name for rule in self.rules if rule.is_filter])))
@@ -452,7 +455,7 @@ class AppLogParser:
         # Set threads cache using finally rules list
         if self._thread:
             self.cache = lograptor.linecache.LineCache()
-        
+
     def add_rules(self, rules, config):
         """
         Add a set of rules to the app, dividing between filter and other rule set
@@ -537,12 +540,13 @@ class AppLogParser:
         Process a log line data message with app's regex rules.
         Return a tuple with this data:
 
-            Element #0: True if a rule match, False otherwise;
-            Element #1: True if a rule match and is a filter, False
-                if a rule match but is not a filter, None otherwise;
-            Element #2: Thread value if a rule match and it has a "thread"
+            Element #0 (rule_match): True if a rule match, False otherwise;
+            Element #1 (full_match): True if a rule match and is a filter or the app
+                has not filters; False if a rule match but is not a filter;
+                None otherwise;
+            Element #2 (app_thread): Thread value if a rule match and it has a "thread"
                 group, None otherwise;
-            Element #3: Mapping dictionary if a rule match and a map
+            Element #3 (map_dict): Mapping dictionary if a rule match and a map
                 of output is requested (--anonymize/--ip/--uid options).
         """
         for rule in self.rules:
@@ -570,14 +574,15 @@ class AppLogParser:
                     thread = match.group('thread')
                     if self._report:
                         rule.add_result(values)
-                    return (True, rule.is_filter, thread, map_dict)
+                    return (True, rule.full_match, thread, map_dict)
                 else:
                     if self._report or (rule.is_filter or not self.has_filters):
                         rule.add_result(values)
-                    return (True, rule.is_filter, None, map_dict)
+                    return (True, rule.full_match, None, map_dict)
 
         # No rule match: the application log message is unparsable
         # by enabled rules.
         self._last_rule = None
-        self.unparsed_counter += 1
+        if not self.has_filters:
+            self.unparsed_counter += 1
         return False, None, None, None

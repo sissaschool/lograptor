@@ -44,7 +44,7 @@ class CacheEntry:
     """
     def __init__(self, event_time):
         self.pattern_match = False
-        self.filter_match = False
+        self.full_match = False
         self.counted = False
         self.buffer = list()
         self.start_time = self.end_time = event_time
@@ -58,7 +58,7 @@ class LineCache:
     def __init__(self):
         self.data = OrderedDict()
 
-    def add_line(self, line, thread, pattern_match, filter_match, event_time):
+    def add_line(self, line, thread, pattern_match, full_match, event_time):
         try:
             cache_entry = self.data[thread]
         except KeyError:
@@ -66,29 +66,34 @@ class LineCache:
         
         if pattern_match:
             cache_entry.pattern_match = True
-        if filter_match:
-            cache_entry.filter_match = True
+        if full_match:
+            cache_entry.full_match = True
         cache_entry.buffer.append(line)
         cache_entry.end_time = event_time
         
-    def flush_cache(self, event_time=None, quiet=False):
+    def flush_cache(self, event_time, print_out_lines, max_threads=None):
         """
         Flush the cache to output. Only matched threads are printed.
         Delete cache entries older (last updated) than 1 hour. Return
         the total lines of matching threads.
         """
-
         cache = self.data
         counter = 0
         
         for thread in cache.keys():
-            if cache[thread].pattern_match and cache[thread].filter_match:
+            if cache[thread].pattern_match and cache[thread].full_match:
+                if max_threads is not None:
+                    max_threads -= 1
+                    if max_threads < 0:
+                        break
+
                 if not cache[thread].counted:
                     counter += 1
                     cache[thread].counted = True
 
                 if cache[thread].buffer:
-                    if not quiet:
+                    if print_out_lines:
+                        print(len(cache[thread].buffer))
                         for line in cache[thread].buffer:
                             print(line, end='')
                         print('--')
@@ -97,24 +102,27 @@ class LineCache:
                 del cache[thread]
         return counter
     
-    def flush_old_cache(self, event_time=None, quiet=False):
+    def flush_old_cache(self, event_time, print_out_lines, max_threads=None):
         """
         Flush the older cache to output. Only matched threads are printed.
         Delete cache entries older (last updated) than 1 hour. Return the
         total lines of old matching threads.
         """
-
         cache = self.data
         counter = 0
-        
         for thread in cache.keys():
             if (abs(event_time - cache[thread].end_time) > 3600):
-                if cache[thread].pattern_match and cache[thread].filter_match:
+                if cache[thread].pattern_match and cache[thread].full_match:
+                    if max_threads is not None:
+                        max_threads -= 1
+                        if max_threads < 0:
+                            break
+
                     if not cache[thread].counted:
                         counter += 1
                         cache[thread].counted = True
 
-                    if not quiet and cache[thread].buffer:
+                    if print_out_lines and cache[thread].buffer:
                         for line in cache[thread].buffer:
                             print(line, end='')
                         print('--')

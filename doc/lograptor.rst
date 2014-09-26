@@ -108,8 +108,10 @@ Matching Control:
 
 .. option:: -F FILTER=PATTERN[,FILTER=PATTERN...]
 
-    Apply a list of filters to the run. The list are applied with logical disjunction (OR).
-    More --filter options are threated with logical conjunction (AND).
+    Apply a list of filters to the search. The filters specified within a single
+    option are applied with logical conjunction (AND): only the app's rules that
+    contain all the filters, as Python regex's named groups, are considered.
+    Multiple -F options are used with logical disjunction (OR).
 
 .. option:: -t, --thread
 
