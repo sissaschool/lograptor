@@ -62,6 +62,15 @@ class OptionError(Exception):
         logger.debug('!OptionError: {0}'.format(message))
 
 
+class RuleMissingError(Exception):
+    """
+    This exception is raised when a rule definition is missing.
+    """
+    def __init__(self, message):
+        Exception.__init__(self, message)
+        logger.debug('!RuleMissingError: {0}'.format(message))
+
+
 class FileMissingError(Exception):
     """
     This exception is raised when a file is missing.

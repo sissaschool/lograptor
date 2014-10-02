@@ -132,12 +132,12 @@ class AppRule:
         """
         return self.results
 
-    def total_events(self, cond, valfld):
+    def total_events(self, cond, valfld=None):
         """
-        Return total events of a rule result set. A condition
-        could be provided to select the events to count.
-        Intead of simply counting events a value field could
-        be provided to sum product of values with events.
+        Return total number of events in the rule'result set. A condition
+        could be provided to select the events to count. If value field (valfld)
+        is passed the function compute the sum taking the product of each value with
+        correspondent event counter.
         """
         results = self.results
 
@@ -193,7 +193,7 @@ class AppRule:
         if not self.results:
             return []
 
-        results = self.results        
+        results = self.results
         top = [None] * num
         pos = self.key_gids.index(gid)
 
@@ -228,30 +228,35 @@ class AppRule:
         Return the list of events, with a specific order and filtered by a condition.
         An element of the list is a tuple with three component. The first is the main
         attribute (first field). The second the second field/label, usually a string
-        that identify the service. The third is a list of all other fields and the
-        value indicating the number of events associated. 
+        that identify the service. The third is a dictionary with a key-tuple composed
+        byall other fields and values indicating the number of events associated.
         """
+
         def insert_row():
-            row = list(def_row)
-            
+            """
+            Internal function to flush results for a single tabkey to result list.
+            """
+            row = list(row_template)
             j = 0
             for n in range(cols):
                 if row[n] is None:
-                    if j == kl:                        
+                    if j == keylen:
                         row[n] = tabvalues
                     else:
                         row[n] = tabkey[j]
                     j += 1
-            events.append(row)
-            
+            reslist.append(row)
+
         if not self.results:
             return []
-        
+
+        # Set local variables
         results = self.results
         events = []
         pos = [self.key_gids.index(gid) for gid in fields if gid[0] != '"']
         has_cond = cond != "*"
 
+        # If a condition is passed then compile a pattern matching object
         if has_cond:
             match = re.search("(\w+)(!=|==)\"([^\"]*)\"", cond)
             condpos = self.key_gids.index(match.group(1))
@@ -260,37 +265,48 @@ class AppRule:
         else:
             recond = condpos = None
 
-        kl = len(pos) - (len(fields) - cols) - 1
-        
-        def_row = []
+        # Define the row template with places for values and fixed strings
+        row_template = []
         for i in range(cols):
             if fields[i][0] == '"':
-                def_row.append(fields[i].strip('"'))
+                row_template.append(fields[i].strip('"'))
             else:
-                def_row.append(None)
+                row_template.append(None)
 
+        # Set the processing table and reduced key length
+        keylen = len(pos) - (len(fields) - cols) - 1
+        tabvalues = dict()
         tabkey = None
-        tabvalues = []
+
+        reslist = []
         for key in sorted(results, key=lambda x: x[pos[0]]):
+            # Skip results that don't satisfy the condition
             if has_cond:
-                match = recond.search(key[condpos])
+                try:
+                    match = recond.search(key[condpos])
+                except TypeError:
+                    continue
                 if ((match is None) and not invert) or ((match is not None) and invert):
                     continue
 
-            if tabkey is None or tabkey != [key[pos[i]] for i in range(kl)]:
-                if tabkey is not None:
-                    insert_row()
-                tabkey = [key[pos[i]] for i in range(kl)]
-
-            value = [key[k] for k in pos[kl:]]
-            value.append(results[key])
-            tabvalues.append(tuple(value))
-        else:
-            if tabkey is not None:
+            new_tabkey = [key[pos[i]] for i in range(keylen)]
+            if tabkey is None:
+                tabkey = new_tabkey
+            elif tabkey != new_tabkey:
                 insert_row()
+                tabvalues = dict()
+                tabkey = [key[pos[i]] for i in range(keylen)]
 
-        return events
-    
+            value = tuple([key[k] for k in pos[keylen:]])
+            if value in tabvalues:
+                tabvalues[value] += results[key]
+            else:
+                tabvalues[value] = results[key]
+
+        if tabvalues:
+            insert_row()
+        return reslist
+
 
 class AppLogParser:
     """
@@ -299,8 +315,7 @@ class AppLogParser:
 
     # Class internal processing attributes
     _filters = None
-    _filter_keys = None     # Passed filter options
-    _no_filter_keys = None  # Filter options not passed
+    _filter_keys = None     # Admitted filter options
     _report = None          # Report flag
     _thread = None          # Thread flag
     outmap = None           # Output mapping
@@ -334,10 +349,8 @@ class AppLogParser:
 
         AppLogParser.outmap = outmap
         AppLogParser._filters = copy.deepcopy(filters)
-        AppLogParser._filter_keys = tuple(filter_names)
-        AppLogParser._no_filter_keys = tuple([
+        AppLogParser._filter_keys = tuple([
             key for key in config.options('filters')
-            if key not in AppLogParser._filter_keys
         ])
         AppLogParser._report = config['report']
         AppLogParser._thread = config['thread']
@@ -407,7 +420,7 @@ class AppLogParser:
         except configparser.NoSectionError:
             raise lograptor.ConfigError('No section [rules] in config file of app "{0}"'.format(self.name))
         if not rules:
-            msg = 'No rules for app "{0}": application must have at least a rule!'
+            msg = 'an application must have at least a rule!'
             raise lograptor.ConfigError(msg.format(self.name))
         
         self.add_rules(rules, config)
@@ -428,6 +441,10 @@ class AppLogParser:
             except configparser.NoOptionError as msg:
                 raise lograptor.ConfigError('No option "{0}" in section "{1}" of configuration '
                                             'file "{1}"'.format(msg, sect, appcfgfile))
+            except lograptor.RuleMissingError as msg:
+                logger.info(msg)
+                continue
+
             self.repitems.append(repitem)
 
         # If 'unparsed' matching is disabled and there are filter rules then restrict
@@ -462,13 +479,22 @@ class AppLogParser:
         """
         for option, pattern in rules:
             # Strip optional string quotes and remove newlines
-            #pattern = pattern.strip('\'"').replace('\n', '')
             pattern = pattern.replace('\n', '')
 
             if len(pattern) == 0:
                 logger.debug('Rule "{0}" is empty'.format(option))
                 raise lograptor.ConfigError('Error in app "{0}" configuration: '
                                             'empty rules not admitted!'.format(option))
+
+            # There are no filters, then adds each rule once substituting
+            # the filter keys with the corresponding patterns.
+            if not self._filters:
+                for opt in self._filter_keys:
+                    pattern = string.Template(pattern).safe_substitute({opt: config[opt]})
+                self.rules.append(AppRule(option, pattern, is_filter=False))
+                logger.debug('Add rule "{0}": {1}'.format(option, pattern))
+                logger.debug('Rule "{0}" gids : {1}'.format(option, self.rules[-1].key_gids))
+                continue
 
             # Iterate over filter list. Each item is a set of filtering rules
             # to be applied with AND logical operator.
@@ -487,22 +513,14 @@ class AppLogParser:
 
                 # Substitute not used filters with default pattern matching string
                 for opt in self._filter_keys:
-                    if opt not in filter_group:
-                        new_pattern = string.Template(new_pattern).safe_substitute({opt: config[opt]})
+                    new_pattern = string.Template(new_pattern).safe_substitute({opt: config[opt]})
 
                 # Adding to app rules
-                self.rules.append(AppRule(option, new_pattern, True))
+                self.rules.append(AppRule(option, new_pattern, is_filter=True))
                 self.has_filters = True
                 logger.debug('Add filter rule "{0}" ({1}): {2}'
                              .format(option, u', '.join(filter_keys), new_pattern))
                 logger.debug('Rule "{0}" gids : {1}'.format(option, self.rules[-1].key_gids))
-
-            # Add once at the end the no filtering version of the rule
-            for opt in self._no_filter_keys:
-                pattern = string.Template(pattern).safe_substitute({opt: config[opt]})
-            self.rules.append(AppRule(option, pattern, False))
-            logger.debug('Add rule "{0}": {1}'.format(option, pattern))
-            logger.debug('Rule "{0}" gids : {1}'.format(option, self.rules[-1].key_gids))
 
     def purge_unmatched_threads(self, event_time=0):
         """

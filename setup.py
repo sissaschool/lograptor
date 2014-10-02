@@ -41,7 +41,7 @@ class my_sdist(distutils.command.sdist.sdist):
         shutil.copyfile("lograptor.py", "scripts/lograptor")
 
         print("Copy {0}Lograptor.pdf -> doc/Lograptor.pdf".format(PDF_SOURCE_DIR))
-        os.system("gzip -c {0}Lograptor.pdf > doc/Lograptor.pdf".format(PDF_SOURCE_DIR))
+        os.system("cp -p {0}Lograptor.pdf doc/Lograptor.pdf".format(PDF_SOURCE_DIR))
         print("Compress {0}lograptor.8 -> man/lograptor.8.gz".format(MAN_SOURCE_DIR))
         os.system("gzip -c {0}lograptor.8 > man/lograptor.8.gz".format(MAN_SOURCE_DIR))
         print("Compress {0}lograptor.conf.5 -> man/lograptor.conf.5.gz".format(MAN_SOURCE_DIR))

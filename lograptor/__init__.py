@@ -39,7 +39,7 @@ from sre_constants import error as RegexpCompileError
 
 from lograptor.application import AppLogParser
 from lograptor.configmap import ConfigMap
-from lograptor.exceptions import ConfigError, FileMissingError, FormatError, OptionError
+from lograptor.exceptions import ConfigError, FileMissingError, FormatError, OptionError, RuleMissingError
 from lograptor.logparser import LogParser, RFC3164_Parser, RFC5424_Parser
 from lograptor.logmap import LogMap
 from lograptor.outmap import OutMap
@@ -116,7 +116,7 @@ class Lograptor:
             'id_pattern': r'[0-9]+',
         },
         'filters': {
-            'user': r'${username_pattern}',
+            'user': r'(|${username_pattern})',
             'mail': r'${email_pattern}',
             'from': r'${email_pattern}',
             'rcpt': r'${email_pattern}',
@@ -412,7 +412,7 @@ class Lograptor:
             self._load_applications()
 
         # Initialize the report object if the option is enabled
-        if self.config['report'] is not None:
+        if self.config['report'] is not None or self.config['publish'] is not None:
             self.report = Report(self.patterns, self.apps, self.config)
 
         # Create and configure the log base object, with the list of files to scan.
@@ -461,7 +461,8 @@ class Lograptor:
             applist.append(filename[0:-5])
         return applist
 
-    def _get_line(self, line):
+    @staticmethod
+    def _get_line(line):
         return line
 
     def _get_prefixed_line(self, line):
@@ -478,20 +479,20 @@ class Lograptor:
         logger.debug('Reading apps configurations ...')
         self.appscfgdir = os.path.join(self.config['cfgdir'], 'conf.d')
         if not os.path.isdir(self.appscfgdir):
-            raise ConfigError('conf.d not found in "{0}"'.format(self.config['cfgdir']))
+            raise ConfigError('directory "{0}" not found!'.format(self.appscfgdir))
 
         # Determine the application list
         if self.config['apps'] == '':
             logger.info('Get the applications from conf.d directory ...')
             appset = self.get_applist()
             if not appset:
-                raise ConfigError("No app configuration found")
+                raise ConfigError("no app configuration found!")
             else:
                 logger.info('Found apps: {0}'.format(appset))
         else:
             appset = list(set(re.split('\s*,\s*', self.config['apps'].strip())))
             if not appset:
-                raise ConfigError("--apps option has not valid app names")
+                raise ConfigError("--apps option has not valid app names!")
 
         # Load applications's configurations
         logger.debug('Load app set: {0}'.format(appset))
@@ -519,13 +520,17 @@ class Lograptor:
                 continue
 
             if not self.apps[app].rules:
-                logger.warning('Skip app "{0}": no rules defined!'.format(app))
-                del self.apps[app]
+                if self.config['filters'] is not None:
+                    logger.warning('Skip app "{0}": disabled by filters!'.format(app))
+                    del self.apps[app]
+                else:
+                    raise ConfigError(u"unknown status: no rules for application "
+                                      u"'{0}' without filters!".format(app))
                 continue
 
         # Exit if no application is enabled
         if not self.apps:
-            raise ConfigError('No application configured and enabled! Exiting ...')
+            raise ConfigError('no application configured and enabled!')
 
         # If filters then reduce the app set to the ones with at least a filter.
         if self.config['filters'] is not None:
@@ -577,7 +582,7 @@ class Lograptor:
 
         # Exit if no app-name is provided
         if len(self.tagmap) == 0:
-            raise ConfigError('No tags for enabled apps! Exiting ...')
+            raise ConfigError('no tags for enabled apps!')
 
         logger.info('Use the applist: {0}'.format(self.apps.keys()))
 
@@ -587,7 +592,7 @@ class Lograptor:
         """
         # Create a dummy report object if necessary
         if not hasattr(self, 'report'):
-            self.report = Report(self.patterns, self.apps, self.config, True)
+            self.report = Report(self.patterns, self.apps, self.config)
         publishers = self.config.get_all_publishers()
         return u'\n'.join([
             u"\n--- {0} configuration ---".format(self.__class__.__name__),
@@ -663,7 +668,7 @@ class Lograptor:
         # Local variables
         apps = self.apps
         config = self.config
-        make_report = self.config['report']
+        make_report = self.config['report'] or self.config['publish'] is not None
         print_out_filenames = self.print_out_filenames
         print_out_header = self.print_out_status or \
                            (self.print_out_lines and print_out_filenames is None)
@@ -786,7 +791,7 @@ class Lograptor:
         config = self.config
         invert = config['invert']
         match_unparsed = config['unparsed']
-        make_report = config['report']
+        make_report = config['report'] or self.config['publish'] is not None
         timerange = config['timerange']
 
         # Other local variables for the file lines iteration
@@ -1081,7 +1086,7 @@ class Lograptor:
         """
         Create the report based on the results of Lograptor run
         """
-        if not self.config['report']:
+        if not self.config['report'] and self.config['publish'] is None:
             return False
 
         if self.report.make():
@@ -1119,7 +1124,7 @@ class Lograptor:
         try:
             pass
         except:
-            msg = 'Could not create a temp directory in "{0}"'.format(tmpprefix)
+            msg = 'could not create a temp directory in "{0}"!'.format(tmpprefix)
             raise ConfigError(msg)
 
         self.tmpprefix = tmpprefix

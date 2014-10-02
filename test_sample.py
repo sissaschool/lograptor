@@ -97,15 +97,17 @@ class TestLograptor(object):
         try:
             my_raptor = Lograptor(run_options['cfgfile'], options, DEFAULT_OPTIONS, args, as_batch)
             retval = my_raptor.process()
-            my_raptor.cleanup()
         except FileMissingError as e:
             print(e)
-            my_raptor.cleanup()
+            if 'my_raptor' in locals():
+                my_raptor.cleanup()
             return False
 
         # Publish the report if is requested and it's not empty
         if my_raptor.make_report():
             my_raptor.publish_report()
+
+        my_raptor.cleanup()
 
         return retval
 
@@ -340,6 +342,35 @@ class TestLograptor(object):
             print(u"\n{0}".format(out))
             assert retval and re.search(tests[app], out) is not None
 
+    @pytest.mark.publish
+    def test_publishing(self, capsys):
+        """
+        Test on-line report publishing. Is not called by default.
+        """
+        self.set_cmdheader()
+        tests = {
+            'dovecot' : r'Mailed the report to: brunato@sissa.it\s*\n'
+                        r'Report saved in: \.\/var\/www\/lograptor\/',
+            '' : r'Mailed the report to: brunato@sissa.it\s*\n'
+                 r'Report saved in: \.\/var\/www\/lograptor\/',
+        }
+        for app in tests:
+            args = get_args_for_apps(app)
+            options = {
+                'apps' : app,
+                'count' : True,
+                'publish' : u'mailtest,filetest',
+                #'publish' : u'filetest',
+                #'no_messages' : True,
+            }
+            cmdline = u'--publish \'mailtest,filetest\' -c -a \'{0}\' {1}'.format(app, u' '.join(args))
+            print("--- Test on-line report publishing for '{0}' app ---\n".format(app))
+            print(u"# {0} {1}".format(self.cmdheader, cmdline))
+            retval = self.run_lograptor(options, args)
+            out, err = capsys.readouterr()
+            print(u"\n{0}".format(out))
+            assert retval and re.search(tests[app], out) is not None
+
     @pytest.mark.filters
     def test_filters(self, capsys):
         """
@@ -350,7 +381,7 @@ class TestLograptor(object):
             ('postfix', ("from=brunato.*",)): r'93561\s*\nTotal log events matched: 1\s*\n',
             ('postfix', ("rcpt=brunato.*",)): r'93561\s*\nTotal log events matched: 74\s*\n',
             ('postfix', ("from=brunato.*", "rcpt=brunato.*",)): r'93561\s*\nTotal log events matched: 75\s*\n',
-            ('', ("user=brunato.*",)): r'238030\s*\nTotal log events matched: 92\s*\n',
+            ('', ("user=brunato.*",)): r'238030\s*\nTotal log events matched: 746\s*\n',
         }
         for app, filters in tests:
             args = get_args_for_apps(app)

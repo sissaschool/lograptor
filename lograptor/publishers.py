@@ -123,10 +123,8 @@ class MailPublisher(BasePublisher):
         root_part = MIMEMultipart('mixed')
         root_part.preamble = 'This is a multi-part message in MIME format.'
 
-        # Fix problem with html attachments in Thunderbird
-        if len(report_parts) == 1 and report_parts[0].ext == 'html':
-            root_part.attach(MIMEText('', 'txt', 'utf-8'))
-                             
+        has_text_plain = any(text_part.ext == 'txt' for text_part in report_parts)
+
         logger.debug('Creating the text/"text_type" parts')
         for text_part in report_parts:
 
@@ -134,11 +132,14 @@ class MailPublisher(BasePublisher):
             if not self.has_format(text_part.ext):
                 continue
 
-            attach_part = MIMEText(text_part.text, text_part.ext, 'utf-8')
-            attach_part.add_header('Content-Disposition', 'attachment',
-                                   filename='{0}.{1}'.format(text_part.title, text_part.ext))
-            root_part.attach(attach_part)
-                             
+            if text_part.ext == 'txt' or (not has_text_plain and text_part.ext == 'html'):
+                root_part.attach(MIMEText(text_part.text, text_part.ext, 'utf-8'))
+            else:
+                attach_part = MIMEText(text_part.text, text_part.ext, 'utf-8')
+                attach_part.add_header('Content-Disposition', 'attachment',
+                                       filename='{0}.{1}'.format(text_part.title, text_part.ext))
+                root_part.attach(attach_part)
+
         if self.rawlogs:
             try:
                 import cStringIO
@@ -391,6 +392,7 @@ class FilePublisher(BasePublisher):
         logger.info('Checking and creating the report directories')
 
         workdir = os.path.join(self.pubdir, self.dirname)
+        filename = None
 
         if not os.path.isdir(workdir):
             try: 

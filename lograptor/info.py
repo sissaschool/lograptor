@@ -28,10 +28,10 @@ __author__ = "Davide Brunato"
 __copyright__ = "Copyright 2011-2014, SISSA"
 __credits__ = ["Davide Brunato"]
 __license__ = "GPLv2+"
-__version__ = "1.0rc1"
+__version__ = "1.0"
 __maintainer__ = "Davide Brunato"
 __email__ = "brunato@sissa.it"
-__status__ = "beta"
+__status__ = "Beta"
 __description__ = ("Command-line utility for searching into log files. "
                    "Produces matching outputs and reports.")
 LONG_DESCRIPTION =\

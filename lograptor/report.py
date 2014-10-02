@@ -46,10 +46,11 @@ except ImportError:
     # Fall back for Python 2.x
     import ConfigParser as configparser
 
-import lograptor
+#import lograptor
 import lograptor.info
 import lograptor.publishers
 import lograptor.tui
+import lograptor.utils
 
 try:
     from collections import OrderedDict
@@ -89,7 +90,10 @@ class ReportItem(UserDict):
         self.subreport = self.title = self.color = self.function = None
         self.rules = dict()
         self.results = []
-        self.text = None
+        self.plain_text = None
+        self.html_text = None
+        self.csv_text = None
+        n_headers = 0
         
         for opt, value in section_items:
             # Check fixed options
@@ -131,23 +135,23 @@ class ReportItem(UserDict):
                         raise lograptor.OptionError('function', msg)
             else:
                 # Load and check names of report rule options
-                for rule in rules:                    
+                for rule in rules:
                     if rule.name == opt or (opt[-1].isdigit() and opt[:-1] == rule.name):
                         rule.used_by_report = True
                         self.rules[opt] = rule
                         break
                 else:
-                    msg = 'cannot associate report rule with an app rule!'
-                    raise lograptor.OptionError(opt, msg)
+                    msg = u"Skip report rule '%s' because use undefined or not active app rule!" % self.name
+                    raise lograptor.RuleMissingError(msg)
                 self.data[opt] = value
 
         # Check if fixed options are all defined
-        if self.subreport == None:
-            raise configparser.NoOptionError('subreport')
-        elif self.title == None:
-            raise configparser.NoOptionError('title')
-        elif self.function == None:
-            raise configparser.NoOptionError('function')
+        if self.subreport is None:
+            raise configparser.NoOptionError('subreport', section)
+        elif self.title is None:
+            raise configparser.NoOptionError('title', section)
+        elif self.function is None:
+            raise configparser.NoOptionError('function', section)
 
         # Check the values of report rule options
         for opt in self:
@@ -239,56 +243,58 @@ class ReportItem(UserDict):
         def mformat(reslist, filling):
             plaintext = ""
             buffer = reslist[0]
-            for j in range(1,len(reslist)):
+            for j in range(1, len(reslist)):
                 if (buffer=="") or (len(buffer) + len(reslist[j])) <= (width - len(filling)):
-                    buffer = '{0}, {1}'.format(buffer, reslist[j])
+                    if reslist[j][0] == '[' and reslist[j][-1] == ']':
+                        buffer = '{0} {1}'.format(buffer, reslist[j])
+                    else:
+                        buffer = '{0}, {1}'.format(buffer, reslist[j])
                 else:
                     plaintext = '{0}{1}\n{2}'.format(plaintext, buffer, filling)
                     buffer = reslist[j]
             plaintext = '{0}{1}'.format(plaintext, buffer)
-            return plaintext            
-            
-        self.text = '\n----- {0} -----\n\n'.format(self.title.strip())
+            return plaintext
+
+        text = '\n----- {0} -----\n\n'.format(self.title.strip())
 
         if self.function == 'total':
             width1 = max(len(res[0]) for res in self.results if res is not None)
             for res in self.results:
                 padding = ' ' * (width1 - len(res[0]) + 1)
-                self.text = '{0}{1}{2}| {3}\n'.format(self.text, res[0], padding, res[1])
+                text = '{0}{1}{2}| {3}\n'.format(text, res[0], padding, res[1])
                 
         elif self.function == 'top':
             header = self.headers.strip('"')
             if self.results[0] is not None:
                 width1 = max(len(res[0]) for res in self.results if res is not None)
-                width2 = min([width-width1-4, \
+                width2 = min([width-width1-4,
                               max(len(', '.join(res[1])) for res in self.results if res is not None)])
 
-                self.text = '{0}{1} | {2}\n'.format(self.text, ' ' * width1, self.headers.strip('"'))
-                self.text = '{0}{1}-+-{2}-\n'.format(self.text, '-' * width1, '-' * width2 )
+                text = '{0}{1} | {2}\n'.format(text, ' ' * width1, self.headers.strip('"'))
+                text = '{0}{1}-+-{2}-\n'.format(text, '-' * width1, '-' * width2 )
 
                 for res in self.results:
                     if res is not None:
                         padding = ' ' * (width1 - len(res[0]) + 1)
                         filling = '{0}| '.format(' ' * (width1 + 1))
-                        self.text = '{0}{1}{2}| {3}\n'.format(self.text, res[0], padding, \
-                                                              mformat(res[1], filling))
+                        lastcol = mformat(res[1], filling)
+                        text = '{0}{1}{2}| {3}\n'.format(text, res[0], padding, lastcol)
             else:
-                self.text = '{0} {1}\n'.format(self.text, 'None')
+                text = '{0} {1}\n'.format(text, 'None')
                     
         elif self.function == 'table':
             headers = re.split('\s*,\s*', self.headers)
 
             colwidth = []
             for i in range(len(headers)-1):
-                colwidth.append( max([len(headers[i]),max(len(res[i]) for res in self.results)]) )
+                colwidth.append(max([len(headers[i]),max(len(res[i]) for res in self.results)]) )
 
             for i in range(len(headers)-1):
-                self.text = '{0}{1}{2}| '\
-                            .format(self.text, headers[i].strip('"'), \
-                                    ' ' * (colwidth[i]-len(headers[i])+2))
+                text = '{0}{1}{2}| '\
+                            .format(text, headers[i].strip('"'), ' ' * (colwidth[i]-len(headers[i])+2))
 
-            self.text = '{0}{1}\n'.format(self.text, headers[-1].strip('"'))
-            self.text = '{0}{1}\n'.format(self.text, '-' * (width-1))
+            text = '{0}{1}\n'.format(text, headers[-1].strip('"'))
+            text = '{0}{1}\n'.format(text, '-' * (width-1))
 
             filling = ""
             for i in range(len(headers)-1):
@@ -296,64 +302,56 @@ class ReportItem(UserDict):
             
             for res in sorted(self.results, key=lambda x:x[0]):
                 for i in range(len(headers)-1):
-                    self.text = '{0}{1}{2}| '.format(self.text, res[i], \
-                                                     ' ' * (colwidth[i]-len(res[i])) )
-                    
-                if len(res[-1]) <= 10 or len(self.results) <= 10:
-                    lastcol = []
-                    for j in range(len(res[-1])):
-                        lastcol.append(self.result_list_2_str(res[-1][j]))
-                else:
-                    lastcol = ['{0} [{1} more skipped]'\
-                               .format(self.result_list_2_str(res[-1][0]), str(len(res[-1])-1))]
-
-                self.text = '{0}{1}\n'.format(self.text, mformat(lastcol, filling))
+                    text = '{0}{1}{2}| '.format(text, res[i], ' ' * (colwidth[i]-len(res[i])) )
+                lastcol = self.get_fmt_results(res[-1], limit=5)
+                text = '{0}{1}\n'.format(text, mformat(lastcol, filling))
+        self.plain_text = text
 
     def make_text_html(self):
         """
         Make the text representation of a report element as html.
         """
+        text = None
         if self.function == 'total':
-            self.text = '<table border="0" width="100%" rules="cols" cellpadding="2">\n'\
-                        '<tr><th colspan="2" align="left"><h3><font color="{1}">'\
-                        '{0}</font></h3></th></tr>\n'\
-                        .format(lograptor.utils.htmlsafe(self.title.strip()), self.color)
+            text = u'<table border="0" width="100%" rules="cols" cellpadding="2">\n'\
+                   '<tr><th colspan="2" align="left"><h3><font color="{1}">'\
+                   '{0}</font></h3></th></tr>\n'\
+                   .format(lograptor.utils.htmlsafe(self.title.strip()), self.color)
 
             for res in self.results:
-                self.text = '{0}<tr><td valign="top" align="right">{1}</td>'\
-                            '<td valign="top" width="90%">{2}</td></tr>'\
-                            .format(self.text, res[0], res[1] )
+                text = u'{0}<tr><td valign="top" align="right">{1}</td>'\
+                       '<td valign="top" width="90%">{2}</td></tr>'\
+                       .format(text, res[0], res[1] )
 
         elif self.function == 'top':
-            self.text = '<table border="0" width="100%" rules="cols" cellpadding="2">\n'\
-                        '<tr><th colspan="2" align="left"><h3><font color="{1}">'\
-                        '{0}</font></h3></th></tr>\n'\
-                        .format(lograptor.utils.htmlsafe(self.title.strip()), self.color)
+            text = u'<table border="0" width="100%" rules="cols" cellpadding="2">\n'\
+                   '<tr><th colspan="2" align="left"><h3><font color="{1}">'\
+                   '{0}</font></h3></th></tr>\n'\
+                   .format(lograptor.utils.htmlsafe(self.title.strip()), self.color)
 
             if self.results[0] is not None:
                 for res in self.results:
                     if res is not None:
-                        self.text = '{0}<tr><td valign="top" align="right">{1}</td>'\
-                                    '<td valign="top" width="90%">{2}</td></tr>'\
-                                    .format(self.text, res[0], ', '.join(res[1]))                        
+                        text = u'{0}<tr><td valign="top" align="right">{1}</td>'\
+                               '<td valign="top" width="90%">{2}</td></tr>'\
+                               .format(text, res[0], ', '.join(res[1]))
             else:
-                self.text = '{0}<tr><td valign="top" align="left">{1}</td>'\
-                            .format(self.text, "None")                        
+                text = u'{0}<tr><td valign="top" align="left">{1}</td>'\
+                       .format(text, "None")
                 
         elif self.function == 'table':
-            sepfmt = '{0}::<font color="darkred">{1}</font>'
-            self.text = '<h3><font color="{1}">{0}</font></h3>'\
-                        '<table width="100%" rules="cols" cellpadding="2">\n'\
-                        '<tr bgcolor="#aaaaaa">'\
-                        .format(lograptor.utils.htmlsafe(self.title.strip()), self.color)
+            text = u'<h3><font color="{1}">{0}</font></h3>'\
+                   '<table width="100%" rules="cols" cellpadding="2">\n'\
+                   '<tr bgcolor="#aaaaaa">'\
+                   .format(lograptor.utils.htmlsafe(self.title.strip()), self.color)
             
             headers = re.split('\s*,\s*', self.headers)
             for i in range(len(headers)):
-                self.text = '{0}<th align="center" colspan="1">'\
-                            '<font color="black">{1}</font></th>'\
-                            .format(self.text, headers[i].strip('"'))
+                text = '{0}<th align="center" colspan="1">'\
+                       '<font color="black">{1}</font></th>'\
+                       .format(text, headers[i].strip('"'))
 
-            self.text = '{0}</tr>\n'.format(self.text)
+            text = u'{0}</tr>\n'.format(text)
             
             oddflag = False
             lastval = ""            
@@ -361,38 +359,34 @@ class ReportItem(UserDict):
                 if lastval != res[0]:
                     oddflag = not oddflag
                     if oddflag:
-                        self.text = '{0}<tr bgcolor="#dddddd">'.format(self.text)
+                        text = u'{0}<tr bgcolor="#dddddd">'.format(text)
                     else:
-                        self.text = '{0}<tr>'.format(self.text)
+                        text = u'{0}<tr>'.format(text)
 
-                    self.text = '{0}<td valign="top" width="15%">{1}</td>'\
-                                .format(self.text, res[0])
+                    text = u'{0}<td valign="top" width="15%">{1}</td>'\
+                           .format(text, res[0])
                 else:
                     if oddflag:
-                        self.text = '{0}<tr bgcolor="#dddddd">'.format(self.text)
+                        text = u'{0}<tr bgcolor="#dddddd">'.format(text)
                     else:
-                        self.text = '{0}<tr>'.format(self.text)
+                        text = u'{0}<tr>'.format(text)
 
-                    self.text = '{0}<td valign="top" width="15%">&nbsp;</td>'.format(self.text)
+                    text = u'{0}<td valign="top" width="15%">&nbsp;</td>'.format(text)
                 lastval = res[0]
                 
                 for i in range(1,len(headers)-1):
-                    self.text = '{0}<td valign="top" width="15%">{1}</td>'\
-                                .format(self.text, res[i])
- 
-                if len(res[-1]) <= 10 or len(self.results) <= 10:
-                    lastcol = self.result_list_2_str(res[-1][0], sepfmt)
-                    for j in range(1,len(res[-1])):
-                        lastcol = '{0}, {1}'.format(lastcol, self.result_list_2_str(res[-1][j], sepfmt))
+                    text = u'{0}<td valign="top" width="15%">{1}</td>'.format(text, res[i])
+                lastcol = self.get_fmt_results(res[-1], limit=10, fmt=u'<font color="darkred">{0}</font>')
+
+                if lastcol[-1].find(u" more skipped]") > -1:
+                    text = u'{0}<td valign="top" width="{1}%">{2} {3}</td></tr>\n'\
+                           .format(text, 100-15*(len(headers)-1),
+                                   u', '.join(lastcol[:-1]), lastcol[-1])
                 else:
-                    lastcol = '{0}<font color="darkred">[{1} more skipped]</font>'\
-                              .format(self.result_list_2_str(res[-1][0], sepfmt), \
-                                      str(len(res[-1])-1))
+                    text = u'{0}<td valign="top" width="{1}%">{2}</td></tr>\n'\
+                           .format(text, 100-15*(len(headers)-1), u', '.join(lastcol))
 
-                self.text = '{0}<td valign="top" width="{1}%">{2}</td></tr>\n'\
-                            .format(self.text, 100-15*(len(headers)-1), lastcol)
-
-        self.text = '{0}</table>\n<p>\n'.format(self.text)
+        self.html_text = u'{0}</table>\n<p>\n'.format(text)
 
     def make_text_csv(self):
         """
@@ -428,22 +422,45 @@ class ReportItem(UserDict):
             
             for res in sorted(self.results, key=lambda x:x[0]):
                 row = list(res[:-1])
-                lastcol = []
-                for j in range(len(res[-1])):
-                    lastcol.append(self.result_list_2_str(res[-1][j]))
-                row.append(','.join(lastcol))
+                lastcol = self.get_fmt_results(res[-1], limit=10)
+                if lastcol[-1][0] == '[' and lastcol[-1][-1] == ']':
+                    row.append(u'{0} {1}'.format(u', '.join(lastcol[:-1]), lastcol[-1]))
+                else:
+                    row.append(u', '.join(lastcol))
                 rows.append(row)
                 
             writer.writerows(rows)
 
-        self.text = out.getvalue()
+        self.csv_text = out.getvalue()
 
-    def result_list_2_str(self, reslist, sepfmt='{0}::{1}'):
-        restr = str(reslist[0])
-        for res in reslist[1:-1]:
-            restr = sepfmt.format(restr, str(res))
-        restr = '{0}({1})'.format(restr, str(reslist[-1]))
-        return restr
+    def get_fmt_results(self, resdict, limit=5, sep='::', fmt=None):
+        """
+        Return a list of formatttes strings representation on a result dictionary.
+        The elements of the key are divided by a separator string. The result is
+        appended after the key beetween parentheses. Apply a format transformation
+        to odd elements of the key if a fmt parameter is passed.
+        """
+        reslist = []
+        for key in sorted(resdict, key=lambda x:resdict[x], reverse=True):
+            if len(reslist) >= limit and resdict[key]<=1:
+                break
+            if fmt is not None:
+                fmtkey = []
+                for i in range(len(key)):
+                    if i % 2 == 1:
+                        fmtkey.append(fmt.format(key[i]))
+                    else:
+                        fmtkey.append(key[i])
+                reslist.append(u'{0}({1})'.format(sep.join(fmtkey), resdict[key]))
+            else:
+                reslist.append(u'{0}({1})'.format(sep.join(key), resdict[key]))
+        else:
+            return reslist
+        if fmt is not None:
+            reslist.append(fmt.format(u'[%d more skipped]' % (len(resdict)-len(reslist))))
+        else:
+            reslist.append(u'[%d more skipped]' % (len(resdict)-len(reslist)))
+        return reslist
 
     def parse_report_rule(self, opt):
         return self._reprule_regexp.search(self.data[opt])
@@ -485,12 +502,16 @@ class Subreport:
                         itemtitle = match.group('fields').strip('"')
 
                         total = repitem.rules[opt].total_events(cond, valfld)
+                        if total == 0:
+                            continue
 
                         if unit is not None:
                             total, unit = lograptor.utils.get_value_unit(total, unit, 'T')
                             total = '{0} {1}'.format(total, unit)
                         else:
                             total = str(total)
+
+                        print("Total: ", total)
                         repitem.results.append( tuple([total, itemtitle]) )
 
                 elif repitem.function == 'top':
@@ -502,7 +523,7 @@ class Subreport:
                         field = match.group('fields')
                         usemax = match.group('add2res') is None
 
-                        toplist = repitem.rules[opt].top_events(k, valfld, usemax, field)                        
+                        toplist = repitem.rules[opt].top_events(k, valfld, usemax, field)
                         repitem.results.extend(toplist)
                         
                 elif repitem.function == 'table':
@@ -773,7 +794,7 @@ class Report:
         fh = open(self.html_template)
         template = fh.read()
         fh.close()
-        
+
         logger.info('Concatenating the subreports together')
 
         allsubrep = ''
@@ -783,7 +804,7 @@ class Report:
                 allsubrep = '{0}\n<h2>{1}</h2>\n'\
                             .format(allsubrep, subrep.title, subrep.reptext)
                 for repitem in subrep.repitems:
-                    allsubrep = '{0}{1}'.format(allsubrep, repitem.text)
+                    allsubrep = '{0}{1}'.format(allsubrep, repitem.html_text)
                 allsubrep = '{0}<hr />'.format(allsubrep)
         
         valumap['subreports'] = allsubrep
@@ -815,10 +836,10 @@ class Report:
         for subrep in self.subreports:
             if subrep.repitems:
                 logger.info('Processing report for "{0}"'.format(subrep.name))
-                allsubrep = '{0}\n{2}\n***** {1} *****\n{2}\n'\
+                allsubrep = '{0}\n\n{2}\n***** {1} *****\n{2}'\
                             .format(allsubrep, subrep.title, '*' * (len(subrep.title)+12))
                 for repitem in subrep.repitems:
-                    allsubrep = '{0}\n{1}'.format(allsubrep, repitem.text)
+                    allsubrep = '{0}\n{1}'.format(allsubrep, repitem.plain_text)
 
         valumap['subreports'] = allsubrep
         
@@ -854,6 +875,6 @@ class Report:
         for subrep in self.subreports:
             if subrep.repitems:
                 for repitem in subrep.repitems:
-                    report_parts.append(TextPart(repitem.title, repitem.text, 'csv'))
+                    report_parts.append(TextPart(repitem.title, repitem.csv_text, 'csv'))
 
         return report_parts

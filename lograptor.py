@@ -254,7 +254,7 @@ def main(is_batch):
     except OptionError as e:
         cli_parser.error(e)
     except (ConfigError, FormatError, FileMissingError, FileAccessError) as e:
-        sys.exit(e)
+        sys.exit(u"ERROR: {0}\nExiting ...".format(e))
     except KeyboardInterrupt:
         print("\nCtrl-C pressed, terminate the process ...")
         sys.exit(1)
