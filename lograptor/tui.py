@@ -123,7 +123,7 @@ def _getTerminalSize_linux():
     return int(cr[1]), int(cr[0])
 
 
-class ProgressBar:
+class ProgressBar(object):
     """
     Draw a progress toolbar to stdout. The toolbar is initialized calling
     the function with the first argument set to None.

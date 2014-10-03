@@ -67,7 +67,7 @@ NILVALUE = '-'
 PURGE_THREADS_LIMIT = 1000
 
 
-class Lograptor:
+class Lograptor(object):
     """
     This is the main class of Lograptor package.
       - options: contains options. Should be passed with an object (optparse)
@@ -519,7 +519,8 @@ class Lograptor:
                 del self.apps[app]
                 continue
 
-            if not self.apps[app].rules:
+            if not self.apps[app].rules or \
+                    (self.config['filters'] is not None and not self.apps[app].has_filters):
                 if self.config['filters'] is not None:
                     logger.warning('Skip app "{0}": disabled by filters!'.format(app))
                     del self.apps[app]

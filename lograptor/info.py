@@ -31,7 +31,7 @@ __license__ = "GPLv2+"
 __version__ = "1.0"
 __maintainer__ = "Davide Brunato"
 __email__ = "brunato@sissa.it"
-__status__ = "Beta"
+__status__ = "Production"
 __description__ = ("Command-line utility for searching into log files. "
                    "Produces matching outputs and reports.")
 LONG_DESCRIPTION =\
