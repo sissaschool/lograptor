@@ -31,7 +31,7 @@ from lograptor.exceptions import ConfigError
 logger = logging.getLogger('lograptor')
 
 
-class LogParser:
+class LogParser(object):
     """
     Base class to parse log lines.
     """

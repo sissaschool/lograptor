@@ -137,18 +137,20 @@ class TestLograptor(object):
         """
         self.set_cmdheader()
         tests = {
-            'postfix' : r'Total log events matched: 3\n',
-            'dovecot' : r'Total log events matched: 6\n',
-            '' : r'65791\nTotal log events matched: 9\n',
+            ('postfix', True, None) : r'Total log events matched: 3\n',
+            ('dovecot', True, None) : r'Total log events matched: 6\n',
+            ('', True, None) : r'65791\nTotal log events matched: 9\n',
+            ('postfix', False, ("from=brunato.*",)) : r'(Sep .*\n){5}(.*\n){3}.* 93561\nTotal log events matched: 1\s*\n'
         }
-        for app in tests:
+        for app, count, filters in tests:
             args = get_args_for_apps(app)
             options = {
                 'apps' : app,
-                'count' : True,
+                'count' : count,
                 'patterns' : [u'brunato'],
                 'thread': True,
                 'max_count': 3,
+                'filters' : filters,
             }
             cmdline = u'-e \'brunato\' -t -a \'{0}\' -c -m {1} {2}'.format(app, 3, u' '.join(args))
             print("--- Test threaded matching for '{0}' app ---\n".format(app))
@@ -156,7 +158,7 @@ class TestLograptor(object):
             retval = self.run_lograptor(options, args)
             out, err = capsys.readouterr()
             print(u"\n{0}".format(out))
-            assert retval and re.search(tests[app], out) is not None
+            assert retval and re.search(tests[(app, count, filters)], out) is not None
 
     @pytest.mark.pattern
     def test_basic_pattern(self, capsys):
@@ -381,7 +383,7 @@ class TestLograptor(object):
             ('postfix', ("from=brunato.*",)): r'93561\s*\nTotal log events matched: 1\s*\n',
             ('postfix', ("rcpt=brunato.*",)): r'93561\s*\nTotal log events matched: 74\s*\n',
             ('postfix', ("from=brunato.*", "rcpt=brunato.*",)): r'93561\s*\nTotal log events matched: 75\s*\n',
-            ('', ("user=brunato.*",)): r'238030\s*\nTotal log events matched: 746\s*\n',
+            ('', ("user=brunato.*",)): r'238030\s*\nTotal log events matched: 292\s*\n',
         }
         for app, filters in tests:
             args = get_args_for_apps(app)

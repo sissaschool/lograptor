@@ -67,7 +67,7 @@ NILVALUE = '-'
 PURGE_THREADS_LIMIT = 1000
 
 
-class Lograptor:
+class Lograptor(object):
     """
     This is the main class of Lograptor package.
       - options: contains options. Should be passed with an object (optparse)
@@ -519,7 +519,8 @@ class Lograptor:
                 del self.apps[app]
                 continue
 
-            if not self.apps[app].rules:
+            if not self.apps[app].rules or \
+                    (self.config['filters'] is not None and not self.apps[app].has_filters):
                 if self.config['filters'] is not None:
                     logger.warning('Skip app "{0}": disabled by filters!'.format(app))
                     del self.apps[app]
@@ -748,7 +749,8 @@ class Lograptor:
             'tot_lines': tot_lines,
             'tot_unparsed': tot_unparsed,
             'logfiles': ', '.join(logfiles),
-            'unknown_tags': set([ tag for tag in self.extra_tags if tag not in self.known_tags ]),
+            'unknown_tags': set([ tag for tag in self.extra_tags
+                                  if tag not in self.known_tags and not tag.isdigit() ]),
         }
 
         # If final report is requested then purge all unmatched threads and set time stamps.
@@ -882,7 +884,16 @@ class Lograptor:
                         counter += repeat
                     if useapps:
                         apptag = prev_data.apptag
-                        app = tagmap[apptag]
+                        try:
+                            app = tagmap[apptag]
+                        except KeyError as e:
+                            # Try the partial match
+                            for tag in tagmap:
+                                if apptag.startswith(tag):
+                                    app = tagmap[tag]
+                                    break
+                            else:
+                                raise KeyError(e)
                         app.increase_last(repeat)
                         app.counter += 1
                         if app_thread is not None:

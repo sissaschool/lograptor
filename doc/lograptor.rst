@@ -141,6 +141,8 @@ Output Control:
 
     Stop reading a file after NUM matching lines. When -c/--count option is also used,
     lograptor does not output a count greater than NUM.
+    When using `-t/--thread option <lograptor.html#cmdoption-t>`_ the limit is related
+    to the number of threads and not to the number of lines matched.
 
 .. option:: -q, --quiet
 

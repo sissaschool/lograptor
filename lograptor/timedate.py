@@ -124,7 +124,7 @@ def parse_date(date):
     return (date1, date2)
 
 
-class TimeRange:
+class TimeRange(object):
     """
     A simple class to manage time range intervals
     """

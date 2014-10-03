@@ -38,7 +38,7 @@ except ImportError:
     from lograptor.backports.ordereddict import OrderedDict
     
 
-class CacheEntry:
+class CacheEntry(object):
     """
     Simple container class for cache entries
     """
@@ -50,7 +50,7 @@ class CacheEntry:
         self.start_time = self.end_time = event_time
 
 
-class LineCache:
+class LineCache(object):
     """
     A class to manage line caching
     """
@@ -93,7 +93,6 @@ class LineCache:
 
                 if cache[thread].buffer:
                     if print_out_lines:
-                        print(len(cache[thread].buffer))
                         for line in cache[thread].buffer:
                             print(line, end='')
                         print('--')

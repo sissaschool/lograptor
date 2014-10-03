@@ -466,7 +466,7 @@ class ReportItem(UserDict):
         return self._reprule_regexp.search(self.data[opt])
 
 
-class Subreport:
+class Subreport(object):
     """
     Class to manage subreports
     """
@@ -511,7 +511,6 @@ class Subreport:
                         else:
                             total = str(total)
 
-                        print("Total: ", total)
                         repitem.results.append( tuple([total, itemtitle]) )
 
                 elif repitem.function == 'top':
@@ -600,7 +599,7 @@ class Subreport:
                 self.repitems.pop(i)
 
                 
-class Report:
+class Report(object):
     """
     This helper class holds the contents of a report before it is
     published using publisher classes.

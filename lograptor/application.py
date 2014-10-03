@@ -55,7 +55,7 @@ import lograptor.configmap
 logger = logging.getLogger("lograptor")
 
 
-class AppRule:
+class AppRule(object):
     """
     Class to manage application rules. The rules are used to
     parse the log lines and to store matching results.
@@ -64,20 +64,21 @@ class AppRule:
         - name: the rule option name in the app configuration file
         - regexp : re.compile object for rule pattern
         - results : dictionary of rule results
-        - is_filter : True if the rule is connected to a filter option
+        - filter_keys: the filtering keys (all regex groups connected
+            to those keys must be not Non to matching a rule)
+        - full_match: determine if a rule match represents a full matching
+                      for the line (needed for thread matching mode)
         - used_by_report : True if is used by a report rule
         - key_gids : map from gid to result key tuple index
     """
 
-    def __init__(self, name, pattern, is_filter):
+    def __init__(self, name, pattern, filter_keys=None):
         """
         Initialize AppRule. Arguments passed include:
 
-            - name: the configuration option name
-            - pattern: the option value that rapresent the search pattern
-            - is_filter: a flag that indicate if the rule is a filter
-            - thread_matching: indicate when thread matching is active
-
+        :param name: the configuration option name
+        :param pattern: the option value that rapresent the search pattern
+        :param filter_keys: the filtering keys dictionary if the rule is a filter
         """
         try:
             self.regexp = re.compile(pattern)
@@ -87,7 +88,8 @@ class AppRule:
 
         self.name = name
         self.results = dict()
-        self.is_filter = self.full_match = is_filter
+        self.filter_keys = filter_keys
+        self.full_match = filter_keys is not None
         self.used_by_report = False
         
         key_gids = ['host']
@@ -308,14 +310,14 @@ class AppRule:
         return reslist
 
 
-class AppLogParser:
+class AppLogParser(object):
     """
     Class to manage application log rules and results
     """
 
     # Class internal processing attributes
-    _filters = None
-    _filter_keys = None     # Admitted filter options
+    _filters = None         # Program instance filter options
+    _filter_options = None  # Admitted filter options
     _report = None          # Report flag
     _thread = None          # Thread flag
     outmap = None           # Output mapping
@@ -349,7 +351,7 @@ class AppLogParser:
 
         AppLogParser.outmap = outmap
         AppLogParser._filters = copy.deepcopy(filters)
-        AppLogParser._filter_keys = tuple([
+        AppLogParser._filter_options = tuple([
             key for key in config.options('filters')
         ])
         AppLogParser._report = config['report']
@@ -453,21 +455,21 @@ class AppLogParser:
             logger.debug('Purge unused rules for "{0}" app.'.format(self.name))
             self.rules = [
                 rule for rule in self.rules
-                if rule.is_filter or rule.used_by_report or
+                if rule.filter_keys is not None or rule.used_by_report or
                 (self._thread and 'thread' in rule.regexp.groupindex)
             ]
 
         # If the app has filters, reorder rules putting filters first.
         if self.has_filters:
-            self.rules = sorted(self.rules, key=lambda x: not x.is_filter)
+            self.rules = sorted(self.rules, key=lambda x: x.filter_keys is None)
         else:
             for rule in self.rules:
                 rule.full_match = True
 
         logger.info('Valid filters for app "{0}": {1}'
-                    .format(self.name, len([rule.name for rule in self.rules if rule.is_filter])))
+                    .format(self.name, len([rule.name for rule in self.rules if rule.filter_keys is not None])))
         logger.info('Base rule set for app "{0}": {1}'
-                    .format(self.name, [rule.name for rule in self.rules if not rule.is_filter]))
+                    .format(self.name, [rule.name for rule in self.rules if rule.filter_keys is None]))
 
         # Set threads cache using finally rules list
         if self._thread:
@@ -489,9 +491,9 @@ class AppLogParser:
             # There are no filters, then adds each rule once substituting
             # the filter keys with the corresponding patterns.
             if not self._filters:
-                for opt in self._filter_keys:
+                for opt in self._filter_options:
                     pattern = string.Template(pattern).safe_substitute({opt: config[opt]})
-                self.rules.append(AppRule(option, pattern, is_filter=False))
+                self.rules.append(AppRule(option, pattern))
                 logger.debug('Add rule "{0}": {1}'.format(option, pattern))
                 logger.debug('Rule "{0}" gids : {1}'.format(option, self.rules[-1].key_gids))
                 continue
@@ -507,16 +509,20 @@ class AppLogParser:
                         filter_keys.append(fltname)
                     new_pattern = next_pattern
 
-                # Exclude rule if not related to all filters of the group
-                if len(filter_keys) < len(filter_group):
-                    continue
-
                 # Substitute not used filters with default pattern matching string
-                for opt in self._filter_keys:
+                for opt in self._filter_options:
                     new_pattern = string.Template(new_pattern).safe_substitute({opt: config[opt]})
 
+                # Exclude rule if not related to all filters of the group
+                if len(filter_keys) < len(filter_group):
+                    if self._thread:
+                        self.rules.append(AppRule(option, new_pattern))
+                        logger.debug('Add rule "{0}": {1}'.format(option, pattern))
+                        logger.debug('Rule "{0}" gids : {1}'.format(option, self.rules[-1].key_gids))
+                    continue
+
                 # Adding to app rules
-                self.rules.append(AppRule(option, new_pattern, is_filter=True))
+                self.rules.append(AppRule(option, new_pattern, filter_keys))
                 self.has_filters = True
                 logger.debug('Add filter rule "{0}" ({1}): {2}'
                              .format(option, u', '.join(filter_keys), new_pattern))
@@ -538,7 +544,7 @@ class AppLogParser:
             for idx in rule.results:
                 thread = idx[pos]
                 if thread in cache:
-                    if not (cache[thread].pattern_match and cache[thread].filter_match) and \
+                    if not (cache[thread].pattern_match and cache[thread].full_match) and \
                             (abs(event_time - cache[thread].end_time) > 3600):
                         purge_list.append(idx)
                 
@@ -590,11 +596,17 @@ class AppLogParser:
 
                 if self._thread and 'thread' in rule.regexp.groupindex:
                     thread = match.group('thread')
+                    if rule.filter_keys is not None and \
+                            any([ values[key] is None for key in rule.filter_keys ]):
+                        return False, None, None, None
                     if self._report:
                         rule.add_result(values)
                     return (True, rule.full_match, thread, map_dict)
                 else:
-                    if self._report or (rule.is_filter or not self.has_filters):
+                    if rule.filter_keys is not None and \
+                            any([ values[key] is None for key in rule.filter_keys ]):
+                        return False, None, None, None
+                    elif self._report or (rule.filter_keys is not None or not self.has_filters):
                         rule.add_result(values)
                     return (True, rule.full_match, None, map_dict)
 
