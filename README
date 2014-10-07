@@ -13,7 +13,7 @@ restrict the search field and retrieve the relevant informations from log
 files. You could specify parameters like hostname, application, date,
 time range, plus a set of filters on message data.
 
-Lograptor can also produce reports and publish them in a directory or send
+Lograptor can also produce reports and publish them into a directory or send
 them by e-mail. The report may be a general or a specific report tailored
 for some accounts or hosts.
 
@@ -48,7 +48,7 @@ INSTALL
 -------
 Easiest way is to get and install the RPM/DEB package. To installing from
 source uncompact the tarball into a directory.
-Then cd into the directory and type:
+Then cd in the directory and type:
 
   python setup.py build install
 

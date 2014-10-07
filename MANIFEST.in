@@ -1,4 +1,6 @@
+include MANIFEST.in
 include LICENSE
+include README
 include doc/Lograptor.pdf
 recursive-include lograptor  *.py
 recursive-include etc/lograptor *.conf *.txt *.html

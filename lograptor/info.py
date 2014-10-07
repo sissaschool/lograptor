@@ -39,7 +39,7 @@ LONG_DESCRIPTION =\
 
 Pattern matching's searches can be performed together with filtering
 rules and scope delimitation options. Each run can produce
-a report that can be easily sent by e-mail or saved in a file system
+a report that can be easily sent by e-mail or saved into a file system
 directory.
 The program can parse logs written in RFC 3164 and RFC 5424 formats.
 Lograptor require Python >= 2.6, and is provided with a base configuration for a set

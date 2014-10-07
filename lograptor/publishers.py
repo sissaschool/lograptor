@@ -34,6 +34,7 @@ import logging
 
 from string import Template
 
+import lograptor
 from lograptor.exceptions import ConfigError
 from lograptor.info import __version__
 from lograptor.utils import mail_sendmail, mail_smtp, do_chunked_gzip
@@ -265,7 +266,7 @@ class MailPublisher(BasePublisher):
 
         root_part['Subject'] = title
         root_part['To'] = ', '.join(self.mailto)
-        root_part['X-Mailer'] = __version__
+        root_part['X-Mailer'] = u'{0}-{1}'.format(lograptor.Lograptor.__name__, __version__)
         
         logger.debug('Creating the message as string')
         msg = root_part.as_string()
@@ -432,7 +433,7 @@ class FilePublisher(BasePublisher):
 
             eml['Subject'] = '{0} (report notification)'.format(title)
             eml['To'] = ', '.join(self.notify)
-            eml['X-Mailer'] = __version__
+            eml['X-Mailer'] = u'{0}-{1}'.format(lograptor.Lograptor.__name__, __version__)
 
             msg = eml.as_string()
 
