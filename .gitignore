@@ -10,8 +10,7 @@ etc/lograptor/conf.d/testapp.conf
 !etc/lograptor/lograptor.conf
 exclude-list.txt
 package-build
-runtests.sh
-usb-sync
+project-sync.py
 build/
 deb_dist/
 dist/
@@ -20,7 +19,6 @@ doc/*.pdf
 man/*.html
 man/*.gz
 packages/
-samples/
 scripts/
 test_samples/
 var/

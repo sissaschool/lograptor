@@ -308,7 +308,7 @@ FILE PUBLISHER SECTIONS
 
     These are the masks to be used for the created directories and
     files. For format values look at strftime documentation here:
-    `http://www.python.org/doc/current/lib/module-time.html <http://www.python.org/doc/current/lib/module-time.html>`_
+    `https://docs.python.org/2/library/time.html <https://docs.python.org/2/library/time.html#time.strftime>`_
 
 .. py:attribute:: save_rawlogs
 
