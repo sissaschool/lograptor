@@ -78,6 +78,11 @@ class my_bdist_rpm(distutils.command.bdist_rpm.bdist_rpm):
         spec_file.append('%config(noreplace) /etc/lograptor/conf.d/*.conf')
         return spec_file
 
+    def initialize_options(self):
+        distutils.command.bdist_rpm.bdist_rpm.initialize_options(self)
+        distro = platform.linux_distribution()
+        self.distribution_name = "{0} {1}".format(distro[0], distro[1].split('.')[0])
+
     def run(self):
         distutils.command.bdist_rpm.bdist_rpm.run(self)
 
@@ -86,20 +91,21 @@ class my_bdist_rpm(distutils.command.bdist_rpm.bdist_rpm):
         os.chdir('dist')
         filelist = glob.glob('*-[1-9].noarch.rpm') + glob.glob('*-[1-9][0-9].noarch.rpm') 
 
-        distro = platform.dist()
-        if distro[0] in ['centos', 'redhat']:
+        distro = platform.linux_distribution(full_distribution_name=False)
+        distro_name = distro[0].lower()
+        if distro_name in ['centos', 'redhat']:
             tag = '.el' + distro[1].split('.')[0]
-        elif distro[0] == 'fedora':
+        elif distro_name == 'fedora':
             tag = '.fc' + distro[1].split('.')[0]
-        elif distro[0] == 'Ubuntu':
+        elif distro_name == 'ubuntu':
             tag = 'ubuntu1'
         
-        if distro[0] in ['centos', 'redhat', 'fedora']:
+        if distro_name in ['centos', 'redhat', 'fedora']:
             for filename in filelist:
                 newname = filename[:-11] + tag + filename[-11:]
                 print(msg.format(filename, newname))
                 os.rename(filename, newname)
-        elif distro[0] in ['Ubuntu', 'debian']:
+        elif distro_name in ['ubuntu', 'debian']:
             for filename in filelist:
                 print('alien -k {0}'.format(filename))
                 os.system('/usr/bin/alien -k {0}'.format(filename))

@@ -12,24 +12,35 @@ BASIC PATTERN SEARCH
 
 Search a pattern in specific log file::
 
-    lograptor -e "hello" /var/log/messages
+    lograptor -e 'hello' /var/log/messages
 
 Same search but ignoring characters case::
 
-    lograptor -i -e "hello" /var/log/messages
+    lograptor -i -e 'hello' /var/log/messages
 
 Search a string in Postfix's log files of the last 3 days::
 
-    lograptor --last=3d -a postfix -e "example.com"
+    lograptor --last=3d -a postfix -e 'example.com'
 
 
 SEARCHING WITH FILTERS
 ----------------------
 
-Search of mails sent by an address, with match at connection thread level::
+Search of e-mails sent by an address, with match at connection thread level::
 
     lograptor -t -F from=user@example.com /var/log/maillog
 
+Search of e-mail messages sent by a domain::
+
+    lograptor -F from=.*@example.com /var/log/maillog
+
+Search of e-mail messages sent by a domain to another domain::
+
+    lograptor -t -F from=.*@example.com -e 'to=<.*@example.org>' /var/log/maillog
+
+Search of e-mail messages sent by a domain to another domain::
+
+    lograptor -t -F from=.*@example.com -e 'to=<.*@(?!example.org>)' /var/log/maillog
 
 GENERATING REPORTS
 ------------------
