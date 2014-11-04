@@ -349,10 +349,10 @@ class Lograptor(object):
             self.print_out_lines = False
             self.print_out_status = False
         elif self.config['count']:
-            logger.info('Count option provided: disabling output and status')
+            logger.info('Count option provided: disabling output')
             self.print_out_lines = False
-            self.print_out_status = False
-        elif self.filters is None and len(self.patterns) == 0:
+            self.print_out_status = True
+        elif not self.filters and len(self.patterns) == 0:
             self.print_out_lines = not self.config['report']
             self.print_out_status = self.config['report']
         else:
