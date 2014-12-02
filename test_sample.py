@@ -47,14 +47,14 @@ LOG_SAMPLES = {
     'catalyst' : 'catalyst_sample.log',
     'cron' : 'cron_sample.log',
     'dovecot' : ['dovecot1_sample.log', 'dovecot2_sample.log'],
-    'postfix' : 'postfix_sample.log',
+    'postfix' : ['postfix_sample.log', 'postfix2_sample.log'],
     'radius' : 'radius_dhcp_ntp_sample.log',
     'rfc5424' : 'rfc5424_sample',
     'sshd' : 'sshd_sample.log',
     '': ['postfix_sample.log', 'dovecot1_sample.log', 'dovecot2_sample.log',],
 }
 
-APPLIST = ['sshd', 'dovecot', 'postfix',]
+APPLIST = ['sshd', 'dovecot', 'postfix']
 
 
 def pytest_report_header(config):
@@ -137,10 +137,10 @@ class TestLograptor(object):
         """
         self.set_cmdheader()
         tests = {
-            ('postfix', True, None) : r'Total log events matched: 3\n',
-            ('dovecot', True, None) : r'Total log events matched: 6\n',
+            ('postfix', True, None) : r'8000\nTotal log events matched: 6\n',
+            ('dovecot', True, None) : r'62791\nTotal log events matched: 6\n',
             ('', True, None) : r'65791\nTotal log events matched: 9\n',
-            ('postfix', False, ("from=brunato.*",)) : r'(Sep .*\n){5}(.*\n){3}.* 93561\nTotal log events matched: 1\s*\n'
+            ('postfix', False, ("from=brunato.*",)) : r'(Sep .*\n){5}(.*\n){3}.* 112054\nTotal log events matched: 1\s*\n'
         }
         for app, count, filters in tests:
             args = get_args_for_apps(app)
@@ -219,7 +219,7 @@ class TestLograptor(object):
             ('postfix', '1d') : r'\.log: 76\n',
         }
         for app, period in tests:
-            args = get_args_for_apps(app)
+            args = [get_args_for_apps(app)[0]]
             options = {
                 'apps' : app,
                 'count' : True,
@@ -297,7 +297,7 @@ class TestLograptor(object):
         tests = {
             'postfix' : r'\.log: 76\n',
             'dovecot' : r'83678\nTotal log events matched: 150\n',
-            '': r'179925\nTotal log events matched: 226\n',
+            '': r'179926\nTotal log events matched: 226\n',
         }
         period = u'20140901,20140930'
         for app in tests:
@@ -322,7 +322,7 @@ class TestLograptor(object):
         """
         self.set_cmdheader()
         tests = {
-            'postfix' : r': 2014\-09\-22 00:06:03\s*\nLast event: 2014\-09\-22 23:52:02\s*\n',
+            'postfix' : r': 2014\-09\-22 00:06:03\s*\nLast event: 2014-12-01 12:20:40\s*\n',
             'dovecot' : r': 2012\-06\-25 00:10:14\s*\nLast event: 2014\-09\-22 23:52:02\s*\n',
             '': (r'Applications: postfix\(93561\), dovecot\(144469\)\s*\n\s*\n'
                  r'First event: 2012\-06\-25 00:10:14\s*\nLast event: 2014\-09\-22 23:52:02\s*\n'),
@@ -380,9 +380,9 @@ class TestLograptor(object):
         """
         self.set_cmdheader()
         tests = {
-            ('postfix', ("from=brunato.*",)): r'93561\s*\nTotal log events matched: 1\s*\n',
-            ('postfix', ("rcpt=brunato.*",)): r'93561\s*\nTotal log events matched: 74\s*\n',
-            ('postfix', ("from=brunato.*", "rcpt=brunato.*",)): r'93561\s*\nTotal log events matched: 75\s*\n',
+            ('postfix', ("from=brunato.*",)): r'112054\s*\nTotal log events matched: 1\s*\n',
+            ('postfix', ("rcpt=brunato.*",)): r'112054\s*\nTotal log events matched: 84\s*\n',
+            ('postfix', ("from=brunato.*", "rcpt=brunato.*",)): r'112054\s*\nTotal log events matched: 85\s*\n',
             ('', ("user=brunato.*",)): r'238030\s*\nTotal log events matched: 292\s*\n',
         }
         for app, filters in tests:
@@ -435,7 +435,7 @@ class TestLograptor(object):
         """
         self.set_cmdheader()
         tests = {
-            ('postfix', r'brunato') : r'93561\s*\nTotal log events matched: 93485\s*\n',
+            ('postfix', r'brunato') : r'112054\s*\nTotal log events matched: 111965\s*\n',
             ('dovecot', r'dakjejakjeae'): r'144469\s*\nTotal log events matched: 144950\s*\n',
             ('', r'brunato.*'): r'238030\s*\nTotal log events matched: 238140\s*\n',
         }
@@ -462,9 +462,9 @@ class TestLograptor(object):
         """
         self.set_cmdheader()
         tests = {
-            ('postfix', r'BrUnaTo') : r'93561\s*\nTotal log events matched: 76\s*\n',
+            ('postfix', r'BrUnaTo') : r'112054\s*\nTotal log events matched: 89\s*\n',
             ('dovecot', r'dakjejakjeae'): r'144469\s*\nTotal log events matched: 0\s*\n',
-            #('', r'brunato.*'): r'93561\s*\nTotal log events matched: 1\s*\n',
+            #('', r'BrUnaTo.*'): r'238030\s*\nTotal log events matched: 371\s*\n',
         }
         for app, pattern in tests:
             args = get_args_for_apps(app)
@@ -489,7 +489,7 @@ class TestLograptor(object):
         """
         self.set_cmdheader()
         tests = {
-            ('postfix', 8) : r'10419\s*\nTotal log events matched: 8\s*\n',
+            ('postfix', 8) : r'20644\s*\nTotal log events matched: 16\s*\n',
             ('dovecot', 5): r'4931\s*\nTotal log events matched: 10\s*\n',
             ('', 13): r'35721\s*\nTotal log events matched: 39\s*\n',
         }
@@ -516,7 +516,7 @@ class TestLograptor(object):
         """
         self.set_cmdheader()
         tests = {
-            ('postfix', 'posta-01') : r'93561\s*\nTotal log events matched: 0\s*\n',
+            ('postfix', 'posta-01') : r'112054\s*\nTotal log events matched: 0\s*\n',
             ('dovecot', 'posta-02'): r'144469\s*\nTotal log events matched: 150\s*\n',
             ('', '*'): r'238030\s*\nTotal log events matched: 371\s*\n',
             ('', 'posta-0?'): r'238030\s*\nTotal log events matched: 371\s*\n',

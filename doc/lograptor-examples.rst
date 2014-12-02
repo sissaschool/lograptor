@@ -36,9 +36,9 @@ Search of e-mail messages sent by a domain::
 
 Search of e-mail messages sent by a domain to another domain::
 
-    lograptor -t -F from=.*@example.com -e 'to=<.*@example.org>' /var/log/maillog
+    lograptor -t -F from=.*@example.com -e 'to=<.*@example2.org>' /var/log/maillog
 
-Search of e-mail messages sent by a domain to another domain::
+Search of e-mail messages sent by our domain to external domains::
 
     lograptor -t -F from=.*@example.com -e 'to=<.*@(?!example.org>)' /var/log/maillog
 
