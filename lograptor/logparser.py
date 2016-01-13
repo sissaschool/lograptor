@@ -3,25 +3,28 @@
 This module classes and methods for parsing log headers.
 """
 ##
-# Copyright (C) 2011-2012 by SISSA
+# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
 #
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# This file is part of Lograptor.
 #
-# This program is distributed in the hope that it will be useful,
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
+# along with Lograptor; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 # 02111-1307, USA.
 #
 # @Author Davide Brunato <brunato@sissa.it>
-##  
+#
+##
 import re
 import logging
 from collections import namedtuple
@@ -44,20 +47,18 @@ class LogParser(object):
         self.LogData = namedtuple('LogData', self.parser.groupindex.keys())
         self.app = app
         self.fields = tuple(self.parser.groupindex.keys())
-                                    
-        try:
-            for field in ['month', 'day', 'ltime', 'message']:
-                idx = self.parser.groupindex[field]
-        except KeyError:
-            msg = '%s: missing mandatory named group "%s"' % (self.__class__.__name__, field)
-            raise ConfigError(msg)
+
+        for field in ('month', 'day', 'ltime', 'message'):
+            if field not in self.parser.groupindex:
+                msg = '%s: missing mandatory named group "%s"' % (self.__class__.__name__, field)
+                raise ConfigError(msg)
 
     def match(self, line):
         """Perform header pattern matching on log line."""
         return self.parser.match(line)
 
     
-class RFC3164_Parser(LogParser):
+class ParserRFC3164(LogParser):
     """
     Parser and extraction methods for BSD Syslog headers (RFC 3164).
     """
@@ -73,7 +74,7 @@ class RFC3164_Parser(LogParser):
             raise ConfigError(msg)
             
 
-class RFC5424_Parser(LogParser):
+class ParserRFC5424(LogParser):
     """
     Parser for IETF-syslog logs (RFC 5424) .
     """
@@ -88,4 +89,3 @@ class RFC5424_Parser(LogParser):
         if extra:
             msg = u'no RFC 5424 fields in pattern: {0}'.format(extra)
             raise ConfigError(msg)
-

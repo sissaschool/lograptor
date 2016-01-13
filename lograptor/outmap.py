@@ -4,24 +4,27 @@ This module contains class to handle output mapping and lookup
 internal caching for Lograptor's application class instances.
 """
 ##
-# Copyright (C) 2012 by SISSA
+# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
 #
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# This file is part of Lograptor.
 #
-# This program is distributed in the hope that it will be useful,
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
+# along with Lograptor; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 # 02111-1307, USA.
 #
 # @Author Davide Brunato <brunato@sissa.it>
+#
 ##
 from __future__ import print_function
 
@@ -33,6 +36,7 @@ try:
     import pwd
 except ImportError:
     pwd = None
+
 
 class OutMap(object):
     """
@@ -81,7 +85,7 @@ class OutMap(object):
             return u''.join([
                 value[:ip_match.start(1)],
                 self.gethost(ip_match.group(1)),
-                value[ip_match.end(1):],])
+                value[ip_match.end(1):]])
         elif (base_gid == 'user' or base_gid == 'uid') and self.uid_lookup:
             return self.getuname(value)
         else:

@@ -5,20 +5,23 @@ This module is used to build and publish the report produced by a run
 of Lograptor instance.
 """
 ##
-# Copyright (C) 2012 by SISSA
+# Copyright (C) 2003 by Duke University
+# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
 #
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# This file is part of Lograptor.
 #
-# This program is distributed in the hope that it will be useful,
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
+# along with Lograptor; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 # 02111-1307, USA.
 #
@@ -27,12 +30,14 @@ of Lograptor instance.
 ##
 from __future__ import print_function
 
+import logging
 import re
 import socket
 import time
-import logging
 from collections import namedtuple
 from string import Template
+
+from lograptor.utils import get_fmt_results
 
 try:
     from collections import UserDict
@@ -46,7 +51,6 @@ except ImportError:
     # Fall back for Python 2.x
     import ConfigParser as configparser
 
-#import lograptor
 import lograptor.info
 import lograptor.publishers
 import lograptor.tui
@@ -69,23 +73,21 @@ class ReportItem(UserDict):
     Class to manage the report items defined for an
     application's logs parsed by Lograptor.
     """
-    
     # RE fixed object to check and extract report table parameters
     _color_regexp = re.compile(r'^([a-z]+|\#[0-9a-f]{6})', re.IGNORECASE)
     _function_regexp = re.compile(r'^(?P<function>table|top|total)(\((\s*(?P<topnum>\d+)\s*,)?'
                                   r'\s*(?P<headers>(\"[^\"]*\"(\s*,\s*)?)+)\s*\)|)')
     _reprule_regexp = re.compile(r'^\(\s*(?P<condition>\*|(?P<field>(\w)+)(!=|==)\"[^\"]*\")\s*,'
                                  r'\s*(?P<fields>((\w|\"[^\"]*\")(\s*,\s*)?)+)'
-                                 r'(\s*:\s*(?P<add2res>\+)?(?P<valfld>\w+)(\[(?P<unit>(|K|M|G|T)(b|bits|B|Bytes))\])?)?\s*\)')
+                                 r'(\s*:\s*(?P<add2res>\+)?(?P<valfld>\w+)(\[(?P<unit>(|K|M|G|T)'
+                                 r'(b|bits|B|Bytes))\])?)?\s*\)')
     
     def __init__(self, section, section_items, subreports, rules):
         """
         Init the report item. Redefine UserDict dictionary as OrderedDict,
         so disable the call to parent class __init__ function.
         """
-        #UserDict.__init__(self)
         self.data = OrderedDict()
-
         self.name = section
         self.subreport = self.title = self.color = self.function = None
         self.rules = dict()
@@ -98,7 +100,7 @@ class ReportItem(UserDict):
         for opt, value in section_items:
             # Check fixed options
             if opt == 'subreport':
-                if not value in subreports:
+                if value not in subreports:
                     msg = '"{0}" is not a subreport!'.format(value)
                     raise lograptor.OptionError('subreport', msg)
                 self.subreport = value
@@ -174,12 +176,12 @@ class ReportItem(UserDict):
 
             # Report rule check by function
             if self.function == 'total':
-                if cond != "*" and not condfield in self.rules[opt].regexp.groupindex:
+                if cond != "*" and condfield not in self.rules[opt].regexp.groupindex:
                     msg = 'condition field "{0}" not in rule {1} gids'.format(condfield, opt)
                     raise lograptor.OptionError('function', msg)
-                if valfld is not None and not valfld in self.rules[opt].regexp.groupindex:
-                    msg = 'field "{0}" not in rule {1} gids'.format(valfld,opt)
-                    raise lograptor.OptionError(opt,msg)                    
+                if valfld is not None and valfld not in self.rules[opt].regexp.groupindex:
+                    msg = 'field "{0}" not in rule {1} gids'.format(valfld, opt)
+                    raise lograptor.OptionError(opt, msg)
                 if len(fields) > 1:
                     msg = 'multiple row descriptions!'
                     raise lograptor.OptionError(opt, msg)
@@ -188,8 +190,8 @@ class ReportItem(UserDict):
                     raise lograptor.OptionError(opt, msg)
 
             elif self.function == 'top':
-                if valfld is not None and not valfld in self.rules[opt].regexp.groupindex:
-                    msg = 'field "{0}" not in rule {1} gids'.format(valfld,opt)
+                if valfld is not None and valfld not in self.rules[opt].regexp.groupindex:
+                    msg = 'field "{0}" not in rule {1} gids'.format(valfld, opt)
                     raise lograptor.OptionError(opt, msg)                    
                 if len(fields) != 1 or fields[0][0] == '"':
                     msg = 'missing field specification!'
@@ -199,8 +201,8 @@ class ReportItem(UserDict):
                 if valfld is not None:
                     msg = 'syntax error in report rule'
                     raise lograptor.OptionError(opt, msg)
-                if cond != "*" and not condfield in self.rules[opt].regexp.groupindex:
-                    msg = 'filter field "{0}" not in rule {1} gids'.format(condfield,opt)
+                if cond != "*" and condfield not in self.rules[opt].regexp.groupindex:
+                    msg = 'filter field "{0}" not in rule {1} gids'.format(condfield, opt)
                     raise lograptor.OptionError('function', msg)
 
             # Checking report rule's fields
@@ -210,7 +212,7 @@ class ReportItem(UserDict):
                     continue
                 if field == "host":
                     continue
-                if not field in self.rules[opt].regexp.groupindex:
+                if field not in self.rules[opt].regexp.groupindex:
                     msg = 'field "{0}" not in rule gids'.format(field)
                     raise lograptor.OptionError(opt, msg)
 
@@ -240,19 +242,19 @@ class ReportItem(UserDict):
         """
         Make the text representation of a report element as plain text.
         """
-        def mformat(reslist, filling):
+        def mformat(reslist):
             plaintext = ""
-            buffer = reslist[0]
+            _buffer = reslist[0]
             for j in range(1, len(reslist)):
-                if (buffer=="") or (len(buffer) + len(reslist[j])) <= (width - len(filling)):
+                if (_buffer == "") or (len(_buffer) + len(reslist[j])) <= (width - len(filling)):
                     if reslist[j][0] == '[' and reslist[j][-1] == ']':
-                        buffer = '{0} {1}'.format(buffer, reslist[j])
+                        _buffer = '{0} {1}'.format(_buffer, reslist[j])
                     else:
-                        buffer = '{0}, {1}'.format(buffer, reslist[j])
+                        _buffer = '{0}, {1}'.format(_buffer, reslist[j])
                 else:
-                    plaintext = '{0}{1}\n{2}'.format(plaintext, buffer, filling)
-                    buffer = reslist[j]
-            plaintext = '{0}{1}'.format(plaintext, buffer)
+                    plaintext = '{0}{1}\n{2}'.format(plaintext, _buffer, filling)
+                    _buffer = reslist[j]
+            plaintext = '{0}{1}'.format(plaintext, _buffer)
             return plaintext
 
         text = '\n----- {0} -----\n\n'.format(self.title.strip())
@@ -264,20 +266,19 @@ class ReportItem(UserDict):
                 text = '{0}{1}{2}| {3}\n'.format(text, res[0], padding, res[1])
                 
         elif self.function == 'top':
-            header = self.headers.strip('"')
             if self.results[0] is not None:
                 width1 = max(len(res[0]) for res in self.results if res is not None)
                 width2 = min([width-width1-4,
                               max(len(', '.join(res[1])) for res in self.results if res is not None)])
 
                 text = '{0}{1} | {2}\n'.format(text, ' ' * width1, self.headers.strip('"'))
-                text = '{0}{1}-+-{2}-\n'.format(text, '-' * width1, '-' * width2 )
+                text = '{0}{1}-+-{2}-\n'.format(text, '-' * width1, '-' * width2)
 
                 for res in self.results:
                     if res is not None:
                         padding = ' ' * (width1 - len(res[0]) + 1)
                         filling = '{0}| '.format(' ' * (width1 + 1))
-                        lastcol = mformat(res[1], filling)
+                        lastcol = mformat(res[1])
                         text = '{0}{1}{2}| {3}\n'.format(text, res[0], padding, lastcol)
             else:
                 text = '{0} {1}\n'.format(text, 'None')
@@ -287,7 +288,7 @@ class ReportItem(UserDict):
 
             colwidth = []
             for i in range(len(headers)-1):
-                colwidth.append(max([len(headers[i]),max(len(res[i]) for res in self.results)]) )
+                colwidth.append(max([len(headers[i]), max(len(res[i]) for res in self.results)]))
 
             for i in range(len(headers)-1):
                 text = '{0}{1}{2}| '\
@@ -300,11 +301,11 @@ class ReportItem(UserDict):
             for i in range(len(headers)-1):
                 filling = '{0}{1}| '.format(filling, ' ' * colwidth[i])
             
-            for res in sorted(self.results, key=lambda x:x[0]):
+            for res in sorted(self.results, key=lambda x: x[0]):
                 for i in range(len(headers)-1):
-                    text = '{0}{1}{2}| '.format(text, res[i], ' ' * (colwidth[i]-len(res[i])) )
-                lastcol = self.get_fmt_results(res[-1], limit=5)
-                text = '{0}{1}\n'.format(text, mformat(lastcol, filling))
+                    text = '{0}{1}{2}| '.format(text, res[i], ' ' * (colwidth[i]-len(res[i])))
+                lastcol = get_fmt_results(res[-1], limit=5)
+                text = '{0}{1}\n'.format(text, mformat(lastcol))
         self.plain_text = text
 
     def make_text_html(self):
@@ -321,7 +322,7 @@ class ReportItem(UserDict):
             for res in self.results:
                 text = u'{0}<tr><td valign="top" align="right">{1}</td>'\
                        '<td valign="top" width="90%">{2}</td></tr>'\
-                       .format(text, res[0], res[1] )
+                       .format(text, res[0], res[1])
 
         elif self.function == 'top':
             text = u'<table border="0" width="100%" rules="cols" cellpadding="2">\n'\
@@ -355,7 +356,7 @@ class ReportItem(UserDict):
             
             oddflag = False
             lastval = ""            
-            for res in sorted(self.results, key=lambda x:x[0]):
+            for res in sorted(self.results, key=lambda x: x[0]):
                 if lastval != res[0]:
                     oddflag = not oddflag
                     if oddflag:
@@ -374,9 +375,9 @@ class ReportItem(UserDict):
                     text = u'{0}<td valign="top" width="15%">&nbsp;</td>'.format(text)
                 lastval = res[0]
                 
-                for i in range(1,len(headers)-1):
+                for i in range(1, len(headers)-1):
                     text = u'{0}<td valign="top" width="15%">{1}</td>'.format(text, res[i])
-                lastcol = self.get_fmt_results(res[-1], limit=10, fmt=u'<font color="darkred">{0}</font>')
+                lastcol = get_fmt_results(res[-1], limit=10, fmt=u'<font color="darkred">{0}</font>')
 
                 if lastcol[-1].find(u" more skipped]") > -1:
                     text = u'{0}<td valign="top" width="{1}%">{2} {3}</td></tr>\n'\
@@ -408,21 +409,19 @@ class ReportItem(UserDict):
             writer.writerows(self.results)                
 
         elif self.function == 'top':
-            rows = []
-            rows.append(['Value', self.headers.strip('"')])
-            if self.results[0] is not None:                
+            rows = [['Value', self.headers.strip('"')]]
+            if self.results[0] is not None:
                 for res in self.results:
                     if res is not None:
                         rows.append(tuple([res[0], ','.join(res[1])]))
                 writer.writerows(rows)
                 
         elif self.function == 'table':
-            rows = []
-            rows.append([header.strip('"') for header in re.split('\s*,\s*', self.headers)])
-            
-            for res in sorted(self.results, key=lambda x:x[0]):
+            rows = [[header.strip('"') for header in re.split('\s*,\s*', self.headers)]]
+
+            for res in sorted(self.results, key=lambda x: x[0]):
                 row = list(res[:-1])
-                lastcol = self.get_fmt_results(res[-1], limit=10)
+                lastcol = get_fmt_results(res[-1], limit=10)
                 if lastcol[-1][0] == '[' and lastcol[-1][-1] == ']':
                     row.append(u'{0} {1}'.format(u', '.join(lastcol[:-1]), lastcol[-1]))
                 else:
@@ -432,35 +431,6 @@ class ReportItem(UserDict):
             writer.writerows(rows)
 
         self.csv_text = out.getvalue()
-
-    def get_fmt_results(self, resdict, limit=5, sep='::', fmt=None):
-        """
-        Return a list of formatttes strings representation on a result dictionary.
-        The elements of the key are divided by a separator string. The result is
-        appended after the key beetween parentheses. Apply a format transformation
-        to odd elements of the key if a fmt parameter is passed.
-        """
-        reslist = []
-        for key in sorted(resdict, key=lambda x:resdict[x], reverse=True):
-            if len(reslist) >= limit and resdict[key]<=1:
-                break
-            if fmt is not None:
-                fmtkey = []
-                for i in range(len(key)):
-                    if i % 2 == 1:
-                        fmtkey.append(fmt.format(key[i]))
-                    else:
-                        fmtkey.append(key[i])
-                reslist.append(u'{0}({1})'.format(sep.join(fmtkey), resdict[key]))
-            else:
-                reslist.append(u'{0}({1})'.format(sep.join(key), resdict[key]))
-        else:
-            return reslist
-        if fmt is not None:
-            reslist.append(fmt.format(u'[%d more skipped]' % (len(resdict)-len(reslist))))
-        else:
-            reslist.append(u'[%d more skipped]' % (len(resdict)-len(reslist)))
-        return reslist
 
     def parse_report_rule(self, opt):
         return self._reprule_regexp.search(self.data[opt])
@@ -478,13 +448,13 @@ class Subreport(object):
         self.reptext = ""
 
     def __bool__(self):
-        return len(self.repitems)>0
+        return len(self.repitems) > 0
 
     def make(self, apps):
         """
         Make of subreport items from results
         """
-        for (appname, app) in sorted(apps.items(), key=lambda x:(x[1].priority,x[0])):
+        for (appname, app) in sorted(apps.items(), key=lambda x: (x[1].priority, x[0])):
             logger.info('Getting report results from "{0}"'.format(appname))
             
             for repitem in app.repitems:
@@ -511,7 +481,7 @@ class Subreport(object):
                         else:
                             total = str(total)
 
-                        repitem.results.append( tuple([total, itemtitle]) )
+                        repitem.results.append(tuple([total, itemtitle]))
 
                 elif repitem.function == 'top':
                     k = int(repitem.topnum)
@@ -531,8 +501,7 @@ class Subreport(object):
                         match = repitem.parse_report_rule(opt)
                         cond = match.group('condition')
                         fields = re.split('\s*,\s*', match.group('fields'))
-                        tablelist = repitem.rules[opt]\
-                                    .list_events(cond, cols, fields)
+                        tablelist = repitem.rules[opt].list_events(cond, cols, fields)
                         repitem.results.extend(tablelist)
 
                 if repitem.results:
@@ -542,7 +511,7 @@ class Subreport(object):
         for repitem in self.repitems:
             if repitem.function == 'top':
                 # Sort values
-                repitem.results = sorted(repitem.results, key=lambda x:x[0], reverse=True) 
+                repitem.results = sorted(repitem.results, key=lambda x: x[0], reverse=True)
 
                 # Get the unit if any and convert numeric results to strings
                 unit = None
@@ -563,8 +532,6 @@ class Subreport(object):
         """
         Make subreport text in a specified format         
         """
-        
-        self.reptexts = ""
         if not self.repitems:
             return
         
@@ -587,15 +554,15 @@ class Subreport(object):
             if i in items_to_del:
                 continue
             if self.repitems[i].function[0:5] == 'table':
-                for j in range(i+1,len(self.repitems)):
+                for j in range(i+1, len(self.repitems)):
                     if self.repitems[j].function[0:5] == 'table':
                         if self.repitems[i] == self.repitems[j]:
-                            logger.debug('Merge of 2 identical report tables: {0}'\
+                            logger.debug('Merge of 2 identical report tables: {0}'
                                          .format(self.repitems[i].title)) 
                             items_to_del.add(j)
                             self.repitems[i].results.extend(self.repitems[j].results)
         if items_to_del:
-            for i in reversed(sorted(items_to_del, key=lambda x:x)):
+            for i in reversed(sorted(items_to_del, key=lambda x: x)):
                 self.repitems.pop(i)
 
                 
@@ -613,6 +580,7 @@ class Report(object):
         # stats         : statistics of lograptor's run       
         self.publishers = []
         self.subreports = []
+        self.formats = []
         self.stats = dict()
         
         self.runtime = time.localtime()
@@ -623,7 +591,7 @@ class Report(object):
         # Initalize the subreports structure
         for subreport in config.parser.options('subreports'):
             logger.debug('Add "{0}" to subreports.'.format(subreport))
-            self.subreports.append( Subreport(name=subreport,title=config[subreport]) )
+            self.subreports.append(Subreport(name=subreport, title=config[subreport]))
 
         # Read the parameters from config files
         self.title = config['title']
@@ -631,18 +599,18 @@ class Report(object):
         self.text_template = config['text_template'].strip()
 
         self.filters = {
-            'user' : config['user'] if not config.is_default('user') else "",
-            'from' : config['from'] if not config.is_default('from') else "",
-            'rcpt' : config['rcpt'] if not config.is_default('rcpt') else "",
-            'client' : config['client'] if not config.is_default('client') else "",
-            'pid' : config['pid'] if not config.is_default('pid') else ""
+            'user': config['user'] if not config.is_default('user') else "",
+            'from': config['from'] if not config.is_default('from') else "",
+            'rcpt': config['rcpt'] if not config.is_default('rcpt') else "",
+            'client': config['client'] if not config.is_default('client') else "",
+            'pid': config['pid'] if not config.is_default('pid') else ""
             }
         
         self.unparsed = config['unparsed']
 
         titlevars = {
-            'localhost' : socket.gethostname(),
-            'localtime' : time.strftime('%c', self.runtime)
+            'localhost': socket.gethostname(),
+            'localtime': time.strftime('%c', self.runtime)
         }
 
         logger.debug('Before title={0}'.format(self.title))
@@ -722,7 +690,7 @@ class Report(object):
         """
         for key, value in stats.items():
             self.stats[key] = value
-            logger.debug('{0}={1}'.format(key,value))
+            logger.debug('{0}={1}'.format(key, value))
 
     def publish(self, apps, rawfh):
         """
@@ -735,19 +703,19 @@ class Report(object):
         logger.info('Retrieve parameters and run\'s statistics')
 
         valumap = {
-            'title'         : self.title,
-            'localhost'     : socket.gethostname(),
-            'patterns'      : [ pattern.pattern for pattern in self.patterns],
-            'pattern_file'  : self.config['pattern_file'],
-            'hosts'         : self.config['hosts'],
-            'apps'          : u', '.join([u'%s(%d)' % (app.name, app.counter)
-                                          for app in apps.values() if app.counter > 0]),
-            'version'       : lograptor.info.__version__
+            'title': self.title,
+            'localhost': socket.gethostname(),
+            'patterns': [pattern.pattern for pattern in self.patterns],
+            'pattern_file': self.config['pattern_file'],
+            'hosts': self.config['hosts'],
+            'apps': u', '.join([u'%s(%d)' % (app.name, app.counter)
+                                for app in apps.values() if app.counter > 0]),
+            'version': lograptor.info.__version__
             }
 
         logger.debug('Provide filtering informations')
         filters = ''
-        for key,flt in self.filters.items():
+        for key, flt in self.filters.items():
             if flt != '':
                 filters = '{0}--{1}="{2}", '.format(filters, key, flt)
         
@@ -773,7 +741,7 @@ class Report(object):
                 report_parts.append(self.make_html_page(valumap))
             elif fmt == 'csv':
                 logger.info('Creating a list of csv files')
-                report_parts.extend(self.make_csv_tables(valumap))
+                report_parts.extend(self.make_csv_tables())
         
         if self.publishers:
             print(u'\n--- Publishing report ---')
@@ -851,26 +819,13 @@ class Report(object):
 
         return TextPart("Lograptor report", endpage, 'txt')
 
-    def make_csv_tables(self, valumap):
+    def make_csv_tables(self):
         """
         Builds the report as a list of csv tables with titles.
         """
-
-        logger.info('Making csv report tables')
-
-        logger.info('Reading in the template file "{0}"'.format(self.text_template))
-        fh = open(self.text_template)
-        template = fh.read()
-        fh.close()
-
-        valumap['subreports'] = ""
-        valumap['unparsed_strings'] = ""
-        
-        logger.info('Create the parameter and statistic page')
-        statpage = Template(template).safe_substitute(valumap)
+        logger.info('Adding csv report tables as attachments')
 
         report_parts = []
-
         for subrep in self.subreports:
             if subrep.repitems:
                 for repitem in subrep.repitems:

@@ -2,24 +2,27 @@
 This module contain core classes and methods for Lograptor package.
 """
 ##
-# Copyright (C) 2011-2014 by SISSA and Davide Brunato
+# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
 #
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# This file is part of Lograptor.
 #
-# This program is distributed in the hope that it will be useful,
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
+# along with Lograptor; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 # 02111-1307, USA.
 #
 # @Author Davide Brunato <brunato@sissa.it>
+#
 ##
 from __future__ import print_function
 
@@ -40,7 +43,7 @@ from sre_constants import error as RegexpCompileError
 from lograptor.application import AppLogParser
 from lograptor.configmap import ConfigMap
 from lograptor.exceptions import ConfigError, FileMissingError, FormatError, OptionError, RuleMissingError
-from lograptor.logparser import LogParser, RFC3164_Parser, RFC5424_Parser
+from lograptor.logparser import LogParser, ParserRFC3164, ParserRFC5424
 from lograptor.logmap import LogMap
 from lograptor.outmap import OutMap
 from lograptor.report import Report
@@ -51,14 +54,12 @@ from lograptor.utils import set_logger
 logger = logging.getLogger('lograptor')
 
 # Map for month field from any admitted representation to numeric.
-MONTHMAP = { 'Jan':'01', 'Feb':'02', 'Mar':'03',
-             'Apr':'04', 'May':'05', 'Jun':'06',
-             'Jul':'07', 'Aug':'08', 'Sep':'09',
-             'Oct':'10', 'Nov':'11', 'Dec':'12',
-             '01':'01', '02':'02', '03':'03',
-             '04':'04', '05':'05', '06':'06',
-             '07':'07', '08':'08', '09':'09',
-             '10':'10', '11':'11', '12':'12' }
+MONTHMAP = {
+    'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06',
+    'Jul': '07', 'Aug': '08', 'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12',
+    '01': '01', '02': '02', '03': '03', '04': '04', '05': '05', '06': '06',
+    '07': '07', '08': '08', '09': '09', '10': '10', '11': '11', '12': '12'
+}
 
 # The RFC5424 no-value
 NILVALUE = '-'
@@ -431,8 +432,8 @@ class Lograptor(object):
 
         # Set the parsers iterator with admitted formats.
         # TODO: Extend with other syslog formats using base LogParser class
-        parsers = [RFC3164_Parser(self.config['rfc3164_pattern']),
-                   RFC5424_Parser(self.config['rfc5424_pattern'])]
+        parsers = [ParserRFC3164(self.config['rfc3164_pattern']),
+                   ParserRFC5424(self.config['rfc5424_pattern'])]
         self.parsers = itertools.cycle(parsers)
         self._num_parsers = len(parsers)
         self._parser = next(self.parsers)
@@ -631,8 +632,8 @@ class Lograptor(object):
         if not self._debug and tot_unparsed > 0:
             summary = u'{0}\nWARNING: Found {1} unparsed log header lines'.format(summary, tot_unparsed)
         if self._useapps:
-            if any([ app.counter > 0 for app in self.apps.values() ]):
-                proc_apps = [ app for app in self.apps.values() if app.counter > 0 ]
+            if any([app.counter > 0 for app in self.apps.values()]):
+                proc_apps = [app for app in self.apps.values() if app.counter > 0]
                 summary = u'{0}\nTotal log events for apps: {1}'.format(summary, u', '.join([
                     u'%s(%d)' % (app.name, app.counter)
                     for app in proc_apps
@@ -641,7 +642,7 @@ class Lograptor(object):
                 if len(proc_apps) == 1 and self._count:
                     rule_counters = dict()
                     for rule in proc_apps[0].rules:
-                        rule_counters[rule.name] = sum( [ val for val in rule.results.values() ] )
+                        rule_counters[rule.name] = sum([val for val in rule.results.values()])
                     summary = u'{0}\nApp rules counters: {1}'.format(
                         summary,
                         u', '.join([
@@ -651,7 +652,7 @@ class Lograptor(object):
             if unknown_tags:
                 summary = u'{0}\nFound unknown app\'s tags: {1}'.format(summary, u', '.join(unknown_tags))
 
-            if any([ app.unparsed_counter > 0 for app in self.apps.values() ]):
+            if any([app.unparsed_counter > 0 for app in self.apps.values()]):
                 summary = u'{0}\nFound unparsed log lines for apps: {1}'.format(summary, u', '.join([
                     u'%s(%d)' % (app.name, app.unparsed_counter)
                     for app in self.apps.values() if app.unparsed_counter > 0
@@ -749,8 +750,8 @@ class Lograptor(object):
             'tot_lines': tot_lines,
             'tot_unparsed': tot_unparsed,
             'logfiles': ', '.join(logfiles),
-            'unknown_tags': set([ tag for tag in self.extra_tags
-                                  if tag not in self.known_tags and not tag.isdigit() ]),
+            'unknown_tags': set([tag for tag in self.extra_tags
+                                 if tag not in self.known_tags and not tag.isdigit()]),
         }
 
         # If final report is requested then purge all unmatched threads and set time stamps.
@@ -948,7 +949,7 @@ class Lograptor(object):
             # Check the hostname. If log line format don't
             # include host information, the host is None and consider the line as matched.
             host = getattr(logdata, 'host', None)
-            if not all_hosts_flag and host is not None and not host in hostlist:
+            if not all_hosts_flag and host is not None and host not in hostlist:
                 for regex in regex_hosts:
                     if regex.search(host) is not None:
                         hostlist.append(host)
@@ -973,7 +974,7 @@ class Lograptor(object):
                                 app = tagmap[tag]
                                 break
                         else:
-                            #Tag unmatched, skip the line
+                            # Tag unmatched, skip the line
                             extra_tags.add(apptag)
                             prev_data = None
                             if debug:

@@ -4,24 +4,28 @@
 Module to manage Lograptor applications
 """
 ##
-# Copyright (C) 2012 by SISSA
+# Copyright (C) 2003 by Duke University
+# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
 #
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# This file is part of Lograptor.
 #
-# This program is distributed in the hope that it will be useful,
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
+# along with Lograptor; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 # 02111-1307, USA.
 #
 # @Author Davide Brunato <brunato@sissa.it>
+#
 ##
 
 import copy
@@ -40,7 +44,7 @@ except ImportError:
 try:
     from collections import OrderedDict
 except ImportError:
-    # Backport for Python 2.4-2.6 (from PyPI)
+    # Backport for Python 2.6 (from PyPI)
     from lograptor.backports.ordereddict import OrderedDict
 
 try:
@@ -254,7 +258,6 @@ class AppRule(object):
 
         # Set local variables
         results = self.results
-        events = []
         pos = [self.key_gids.index(gid) for gid in fields if gid[0] != '"']
         has_cond = cond != "*"
 
@@ -325,11 +328,11 @@ class AppLogParser(object):
     # Default values for application config files
     default_config = {
         'main': {
-        'desc': u'${appname}',
-        'tags': u'${appname}',
-        'files': u'${logdir}/messages',
-        'enabled': True,
-        'priority': 1,
+            'desc': u'${appname}',
+            'tags': u'${appname}',
+            'files': u'${logdir}/messages',
+            'enabled': True,
+            'priority': 1,
         }
     }
 
@@ -587,9 +590,9 @@ class AppLogParser(object):
                     map_dict = {
                         'host': values['host'],
                         'message': outmap.map2str(gids, match, values),
-                        }
+                    }
                 else:
-                    values = { 'host': logdata.host }
+                    values = {'host': logdata.host}
                     for gid in gids:
                         values[gid] = match.group(gid)
                     map_dict = None
@@ -597,18 +600,18 @@ class AppLogParser(object):
                 if self._thread and 'thread' in rule.regexp.groupindex:
                     thread = match.group('thread')
                     if rule.filter_keys is not None and \
-                            any([ values[key] is None for key in rule.filter_keys ]):
+                            any([values[key] is None for key in rule.filter_keys]):
                         return False, None, None, None
                     if self._report:
                         rule.add_result(values)
-                    return (True, rule.full_match, thread, map_dict)
+                    return True, rule.full_match, thread, map_dict
                 else:
                     if rule.filter_keys is not None and \
-                            any([ values[key] is None for key in rule.filter_keys ]):
+                            any([values[key] is None for key in rule.filter_keys]):
                         return False, None, None, None
                     elif self._report or (rule.filter_keys is not None or not self.has_filters):
                         rule.add_result(values)
-                    return (True, rule.full_match, None, map_dict)
+                    return True, rule.full_match, None, map_dict
 
         # No rule match: the application log message is unparsable
         # by enabled rules.

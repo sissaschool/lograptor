@@ -4,7 +4,7 @@
 Search utility for syslog files. Try `lograptor --help' for more information.
 """
 ##
-# Copyright (C) 2011-2014 by SISSA and Davide Brunato
+# Copyright (C) 2011-2016 by SISSA and Davide Brunato
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -38,6 +38,7 @@ CFGFILE_DEFAULT = '/etc/lograptor/lograptor.conf'
 # Stdout redirection
 #####################################
 
+
 class DummyFile(object):
     def write(self, x):
         pass
@@ -67,7 +68,7 @@ def parse_args(cli_parser):
     %prog [options] [ -e PATTERN | -f FILE ] [FILE ...]
     Try `%prog --help' for more information.""")
 
-    ### Define the options for the group "General Options"                      
+    # Options of the group "General Options"
     group = optparse.OptionGroup(cli_parser, "General Options")
     group.add_option("--conf", dest="cfgfile", type="string",
                      default=CFGFILE_DEFAULT, metavar="<CONFIG_FILE>",
@@ -83,7 +84,7 @@ def parse_args(cli_parser):
                      "critical errors, higher levels show more informations.")
     cli_parser.add_option_group(group)
 
-    ### Define the options for the group "Scope Options"                      
+    # Options of the group "Scope Options"
     group = optparse.OptionGroup(cli_parser, "Scope Options")
     group.add_option("-H", "--hosts", metavar="HOST/IP[,HOST/IP...]",
                      action="store", type="string", dest="hosts", default='*',
@@ -111,7 +112,7 @@ def parse_args(cli_parser):
                      help="Restrict search scope to a time range.")
     cli_parser.add_option_group(group)
 
-    ### Define the options for the group "Matching Control"                      
+    # Options of the group "Matching Control"
     group = optparse.OptionGroup(cli_parser, "Matching Control")
     group.add_option("-e", "--regexp", dest="patterns", default=None, action="append",
                      help="The search pattern. Use the option more times to specify multiple "
@@ -136,7 +137,7 @@ def parse_args(cli_parser):
                           "is incompatible with filters (option -F")
     cli_parser.add_option_group(group)
 
-    ### Define the options for the group "Output Control"
+    # Options of the group "Output Control"
     group = optparse.OptionGroup(cli_parser, "Output Control")
     group.add_option("-c", "--count", action="store_true", default=False,
                      help="Suppress normal output; instead print a count of matching "
@@ -176,7 +177,7 @@ def parse_args(cli_parser):
                           "overrides --ip, --uid.")
     cli_parser.add_option_group(group)
 
-    ### Define the options for the group "Report Control"
+    # Options of the group "Report Control"
     group = optparse.OptionGroup(cli_parser, "Report Control")
     group.add_option("-r", "--report", dest="report", action="store_true", default=False,
                      help="Make a formatted text report at the end of processing "
@@ -221,7 +222,7 @@ def main(is_batch):
         if not is_batch and (
                 len(sys.argv) == 1 or
                 (len(sys.argv) == 2 and sys.argv[1].startswith('--conf=')) or
-                (len(sys.argv) == 3 and sys.argv[1] == '--conf') ):
+                (len(sys.argv) == 3 and sys.argv[1] == '--conf')):
             print(my_raptor.get_configuration())
             my_raptor.cleanup()
             sys.exit(0)

@@ -20,13 +20,14 @@ import lograptor.info
 
 
 distro_tags = {
-    'centos' : 'el',
-    'redhat' : 'el',
-    'Ubuntu' : 'ubuntu1'
+    'centos': 'el',
+    'redhat': 'el',
+    'Ubuntu': 'ubuntu1'
     }
 
 MAN_SOURCE_DIR = 'doc/_build/man/'
 PDF_SOURCE_DIR = 'doc/_build/latex/'
+
 
 class my_sdist(distutils.command.sdist.sdist):
     """
@@ -122,8 +123,8 @@ class my_install(distutils.command.install.install):
 
     def run(self):
         distutils.command.install.install.run(self)
-        #os.system('cat INSTALLED_FILES | grep -v "/etc/lograptor" > INSTALLED_FILES.new')
-        #os.system('mv INSTALLED_FILES.new INSTALLED_FILES')
+        # os.system('cat INSTALLED_FILES | grep -v "/etc/lograptor" > INSTALLED_FILES.new')
+        # os.system('mv INSTALLED_FILES.new INSTALLED_FILES')
 
 setup(name='lograptor',
       version=lograptor.info.__version__,
@@ -137,16 +138,17 @@ setup(name='lograptor',
       packages=['lograptor', 'lograptor.backports'],
       platform='linux2',
       package_data={
-          'lograptor': ['README',
-                        'LICENSE',
-                        'doc/Lograptor.pdf',
-                        'etc/lograptor/lograptor.conf',
-                        'etc/lograptor/report_template.html',
-                        'etc/lograptor/report_template.txt',
-                        'etc/lograptor/conf.d/*.conf',
-                        'man/lograptor*.gz',
-                        'lograptor/*.py',
-                        'scripts/lograptor'
+          'lograptor': [
+              'README',
+              'LICENSE',
+              'doc/Lograptor.pdf',
+              'etc/lograptor/lograptor.conf',
+              'etc/lograptor/report_template.html',
+              'etc/lograptor/report_template.txt',
+              'etc/lograptor/conf.d/*.conf',
+              'man/lograptor*.gz',
+              'lograptor/*.py',
+              'scripts/lograptor'
           ],
           'lograptor.backports': ['lograptor/backports/*.py']
       },
@@ -154,16 +156,19 @@ setup(name='lograptor',
                   ('/usr/share/man/man5', ['man/lograptor.conf.5.gz']),
                   ('/usr/share/man/man5', ['man/lograptor-apps.5.gz']),
                   ('/usr/share/man/man8', ['man/lograptor-examples.8.gz']),
-                  ('/etc/lograptor', ['etc/lograptor/lograptor.conf',
-                                     'etc/lograptor/report_template.html',
-                                     'etc/lograptor/report_template.txt']),
+                  ('/etc/lograptor', [
+                      'etc/lograptor/lograptor.conf',
+                      'etc/lograptor/report_template.html',
+                      'etc/lograptor/report_template.txt']),
                   ('/etc/lograptor/conf.d', glob.glob('etc/lograptor/conf.d/*.conf'))],
       scripts=['scripts/lograptor'],
-      requires = ['python (>=2.6)'],
-      cmdclass = {"sdist": my_sdist,
-                  "build_scripts": my_build_scripts,
-                  "install" : my_install,
-                  "bdist_rpm" : my_bdist_rpm},
+      requires=['python (>=2.6)'],
+      cmdclass={
+          "sdist": my_sdist,
+          "build_scripts": my_build_scripts,
+          "install": my_install,
+          "bdist_rpm": my_bdist_rpm
+      },
       classifiers=[
           'Development Status :: 5 - Production/Stable',
           'Environment :: Console',
@@ -175,5 +180,5 @@ setup(name='lograptor',
           'Topic :: Internet :: Log Analysis',
           'Topic :: System :: Systems Administration',
           'Topic :: Text Processing :: Filters',
-          'Topic :: Utilities',]
-      )
+          'Topic :: Utilities'
+      ])

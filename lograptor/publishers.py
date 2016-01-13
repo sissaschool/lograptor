@@ -5,20 +5,23 @@ This module is used to publish the report produced by a run of
 Lograptor instance.
 """
 ##
-# Copyright (C) 2012 by SISSA
+# Copyright (C) 2003 by Duke University
+# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
 #
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# This file is part of Lograptor.
 #
-# This program is distributed in the hope that it will be useful,
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
+# along with Lograptor; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 # 02111-1307, USA.
 #
@@ -49,7 +52,7 @@ class BasePublisher(object):
 
     def __init__(self, section, config):
         self.section = section
-        self.formats = list(set(re.split('\s*,\s*', config.getstr(section,'formats'))))
+        self.formats = list(set(re.split('\s*, \s*', config.getstr(section, 'formats'))))
         logger.debug('Formats ={0}'.format(self.formats))
 
     def has_format(self, ext):
@@ -68,7 +71,7 @@ class MailPublisher(BasePublisher):
         self.fromaddr = config['fromaddr']
         self.smtpserv = config['smtpserv']
 
-        self.mailto = list(set(re.split('\s*,\s*', config.getstr(section,'mailto'))))
+        self.mailto = list(set(re.split('\s*, \s*', config.getstr(section, 'mailto'))))
         logger.debug('Recipients list ={0}'.format(self.mailto))
 
         self.rawlogs = config.getboolean(section, 'include_rawlogs')
@@ -80,7 +83,7 @@ class MailPublisher(BasePublisher):
         logger.debug('rawlogs={0}'.format(self.rawlogs))
         logger.debug('rawlogs_limit={0}'.format(self.rawlogs_limit))
 
-        self.gpg_encrypt = config.getstr(section,'gpg_encrypt')
+        self.gpg_encrypt = config.getstr(section, 'gpg_encrypt')
         if self.gpg_encrypt:
             self.gpg_keyringdir = config.get['gpg_keyringdir']
 
@@ -108,17 +111,15 @@ class MailPublisher(BasePublisher):
         return u'{0}({1}: mailto={2})'.format(self.section, self.name, u','.join(self.mailto))
 
     def publish(self, title, report_parts, rawfh):
-        
-        logger.info('Creating an email message')
+        """
+        Publish by sending the report by e-mail
+        """
+        from email.mime.base import MIMEBase
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        from email.utils import formatdate, make_msgid
 
-        try:
-            from email.mime.base      import MIMEBase
-            from email.mime.text      import MIMEText
-            from email.mime.multipart import MIMEMultipart
-        except ImportError:
-            from email.MIMEBase       import MIMEBase
-            from email.MIMEText       import MIMEText
-            from email.MIMEMultipart  import MIMEMultipart
+        logger.info('Creating an email message')
 
         logger.debug('Creating a main header')
         root_part = MIMEMultipart('mixed')
@@ -143,7 +144,7 @@ class MailPublisher(BasePublisher):
 
         if self.rawlogs:
             try:
-                import cStringIO
+                import cStringIOcd
                 out = cStringIO.StringIO()
             except ImportError:
                 import io
@@ -187,7 +188,7 @@ class MailPublisher(BasePublisher):
                 logger.debug(msg)
                 logger.debug('----Cleartext ends----')
 
-                cleartext  = StringIO(msg)
+                cleartext = StringIO(msg)
                 ciphertext = StringIO()
 
                 ctx = gpgme.Context()
@@ -195,7 +196,7 @@ class MailPublisher(BasePublisher):
                 ctx.armor = True
 
                 recipients = []
-                signers    = []
+                signers = []
 
                 logger.debug('gpg_recipients={0}'.format(self.gpg_recipients))
                 logger.debug('gpg_signers={0}'.format(self.gpg_signers))
@@ -234,14 +235,14 @@ class MailPublisher(BasePublisher):
                 logger.debug('Creating the MIME envelope for PGP')
 
                 gpg_envelope_part = MIMEMultipart('encrypted')
-                gpg_envelope_part.set_param('protocol', 
-                    'application/pgp-encrypted', header='Content-Type')
-                gpg_envelope_part.preamble = ('This is an OpenPGP/MIME '
-                    'encrypted message (RFC 2440 and 3156)')
+                gpg_envelope_part.set_param('protocol',
+                                            'application/pgp-encrypted', header='Content-Type')
+                gpg_envelope_part.preamble = ('This is an OpenPGP/MIME encrypted message '
+                                              '(RFC 2440 and 3156)')
 
                 gpg_mime_version_part = MIMEBase('application', 'pgp-encrypted')
-                gpg_mime_version_part.add_header('Content-Disposition', 
-                     'PGP/MIME version identification')
+                gpg_mime_version_part.add_header('Content-Disposition',
+                                                 'PGP/MIME version identification')
                 gpg_mime_version_part.set_payload('Version: 1')
 
                 gpg_payload_part = MIMEBase('application', 'octet-stream', 
@@ -264,8 +265,12 @@ class MailPublisher(BasePublisher):
                 logger.error('Not mailing the report out of caution.')
                 return
 
-        root_part['Subject'] = title
+        # Define headers
+        root_part['Date'] = formatdate()
+        root_part['From'] = self.fromaddr
         root_part['To'] = ', '.join(self.mailto)
+        root_part['Subject'] = title
+        root_part['Message-Id'] = make_msgid()
         root_part['X-Mailer'] = u'{0}-{1}'.format(lograptor.Lograptor.__name__, __version__)
         
         logger.debug('Creating the message as string')
@@ -308,7 +313,7 @@ class FilePublisher(BasePublisher):
 
         try: 
             self.filename = time.strftime(self.filemask, time.localtime())
-        except: 
+        except TypeError:
             ConfigError(maskmsg.format('filemask', self.filemask))
 
         self.rawlogs = config.getboolean(section, 'save_rawlogs')       
@@ -318,21 +323,21 @@ class FilePublisher(BasePublisher):
         self.notify = []
 
         try:
-            notify = config.getstr(section,'notify')
-            if len(notify) > 0:
+            notify = config.getstr(section, 'notify')
+            if notify:
                 for addy in notify.split(','):
                     addy = addy.strip()
                     logger.info('Will notify: {0}'.format(addy))
                     self.notify.append(addy)
-        except : 
+        except TypeError:
             pass
 
-        self.fromaddr  = config['fromaddr']
+        self.fromaddr = config['fromaddr']
         self.smtpserv = config['smtpserv']
 
         if self.notify:
             try:
-                self.pubroot = config.getstr(section,'pubroot')
+                self.pubroot = config.getstr(section, 'pubroot')
                 logger.debug('pubroot={0}'.format(self.pubroot))
             except:
                 msg = 'File publisher requires a pubroot when notify is set'
@@ -447,7 +452,7 @@ class FilePublisher(BasePublisher):
 
         if self.rawlogs:
             logfilen = '{0}.log'.format(self.filename)
-            logfile  = os.path.join(workdir, '{0}.gz'.format(logfilen))
+            logfile = os.path.join(workdir, '{0}.gz'.format(logfilen))
 
             logger.info('Gzipping logs and writing them to {0}'.format(logfilen))
             outfh = open(logfile, 'w+b')

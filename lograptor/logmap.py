@@ -3,24 +3,27 @@
 This module contains classes and methods to handle a map of log files.
 """
 ##
-# Copyright (C) 2012 by SISSA
+# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
 #
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# This file is part of Lograptor.
 #
-# This program is distributed in the hope that it will be useful,
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
+# along with Lograptor; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 # 02111-1307, USA.
 #
 # @Author Davide Brunato <brunato@sissa.it>
+#
 ##
 
 import datetime 
@@ -43,10 +46,10 @@ class LogMap(object):
     """
     
     datesub = {
-        'year' : re.compile(r"(?<!%)(%Y)"),
-        'month' : re.compile(r"(?<!%)(%m)"),
-        'day' : re.compile(r"(?<!%)(%d)"),
-        'perc' : re.compile(r"(%%)")
+        'year': re.compile(r"(?<!%)(%Y)"),
+        'month': re.compile(r"(?<!%)(%m)"),
+        'day': re.compile(r"(?<!%)(%d)"),
+        'perc': re.compile(r"(%%)")
         }
     
     def __init__(self, initial_datetime, final_datetime):
@@ -66,19 +69,19 @@ class LogMap(object):
         """
         logger.debug("Start LogMap iteration ...")        
         logger.debug(self.__logmap)
-        self.__ordmap = sorted(self.__logmap, key=lambda x:(self.__logmap[x][0],x))
+        self.__ordmap = sorted(self.__logmap, key=lambda x: (self.__logmap[x][0], x))
         logger.debug(self.__ordmap)
         
         for logfile in self.__ordmap:
-            logfile_by_args = (self.__logmap[logfile][1]=="*")
-            applist = sorted(self.__logmap[logfile][1:], key=lambda x:(self.__appmap[x],x))
+            logfile_by_args = (self.__logmap[logfile][1] == "*")
+            applist = sorted(self.__logmap[logfile][1:], key=lambda x: (self.__appmap[x], x))
             logger.debug(applist)
             
             sub_year = self.datesub['day'].search(logfile) is not None
             sub_month = self.datesub['month'].search(logfile) is not None
             sub_day = self.datesub['year'].search(logfile) is not None
             sub_perc = self.datesub['perc'].search(logfile) is not None
-            if ( sub_year or sub_month or sub_day ):
+            if sub_year or sub_month or sub_day:
                 logger.debug('Expand logfile set {0}'.format(logfile))
 
                 dt = self.dt1
@@ -88,9 +91,9 @@ class LogMap(object):
                     if sub_year:
                         newpath = self.datesub['year'].sub(str(dt.year), newpath)
                     if sub_month:
-                        newpath = self.datesub['month'].sub(format(dt.month,'02d'), newpath)
+                        newpath = self.datesub['month'].sub(format(dt.month, '02d'), newpath)
                     if sub_day:
-                        newpath = self.datesub['day'].sub(format(dt.day,'02d'), newpath)
+                        newpath = self.datesub['day'].sub(format(dt.day, '02d'), newpath)
                     if sub_perc:
                         newpath = self.datesub['perc'].sub("%", newpath)
                     if lastpath is None or lastpath != newpath:
@@ -117,7 +120,6 @@ class LogMap(object):
                         yield (filename, applist)
                 if filename is None and self.__logmap[logfile][1] == "*":
                     logger.error('No file corresponding to path {0}'.format(logfile))
-
 
     def check_logfile_stat(self, logfile, outerrs=False):
         """
@@ -155,13 +157,13 @@ class LogMap(object):
         statinfo = os.stat(logfile)
         dt = datetime.datetime.fromtimestamp(statinfo.st_mtime)
         logger.info('Log file: {0}; {1}'.format(logfile, dt))
-        check = ( dt >= self.dt1 ) and ( dt <= self.dt2 )
-        if (not check) and outerrs:
-            if not ((self.dt1-dt).days == 0 or (dt-self.dt2).days == 0):  
+        check = self.dt1 <= dt <= self.dt2
+        if not check and outerrs:
+            if not ((self.dt1-dt).days == 0 or (dt-self.dt2).days == 0):
                 logger.error('Log file ({0}) not in datetime range!!'.format(logfile))
         return check
     
-    def add(self, appname, fileset, priority=0 ):
+    def add(self, appname, fileset, priority=0):
         """
         Add a list of logfiles from an app configuration, replacing variables to host and
         dates with specific wildcards.
