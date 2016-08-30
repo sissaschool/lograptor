@@ -20,6 +20,6 @@ man/*.html
 man/*.gz
 packages/
 scripts/
-test_samples/
+tests/tests_extra/
 var/
 .idea/

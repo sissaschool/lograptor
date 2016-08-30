@@ -1,0 +1,15 @@
+#
+# Test files for Lograptor
+#
+# Add or comment out the existing ones to add a test.
+#
+# The first word of the file must match with application name.
+#
+
+# apache2_sample.log apache
+# catalyst_sample.log
+sshd_sample.log
+# apache2_ssl_error_sample.log
+# apache2_ssl_access_sample.log
+postfix_sample.log postfix
+dovecot_sample.log dovecot
