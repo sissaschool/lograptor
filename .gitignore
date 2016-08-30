@@ -5,8 +5,7 @@
 *~
 MANIFEST
 lograptor.conf
-logmarker.py
-etc/lograptor/conf.d/testapp.conf
+etc/lograptor/conf.d/test*.conf
 !etc/lograptor/lograptor.conf
 exclude-list.txt
 package-build
@@ -20,6 +19,8 @@ man/*.html
 man/*.gz
 packages/
 scripts/
-test_samples/
+tests/tests_extra/
 var/
 .idea/
+.cache/
+.vagrant/
