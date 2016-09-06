@@ -20,6 +20,7 @@ man/*.html
 man/*.gz
 packages/
 scripts/
-tests/tests_extra/
+lograptor/tests/extra/
 var/
 .idea/
+.cache/

@@ -1,35 +1,23 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 This module is used to build and publish the report produced by a run
 of Lograptor instance.
 """
-##
-# Copyright (C) 2003 by Duke University
-# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
+#
+# Copyright (C), 2011-2016, by Davide Brunato and
+# SISSA (Scuola Internazionale Superiore di Studi Avanzati).
 #
 # This file is part of Lograptor.
 #
-# Lograptor is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
-#
-# Lograptor is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Lograptor; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
-# 02111-1307, USA.
+# Lograptor is free software: you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# See the file 'LICENSE' in the root directory of the present
+# distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-##
-from __future__ import print_function
-
 import logging
 import re
 import socket
@@ -571,7 +559,7 @@ class Report(object):
     This helper class holds the contents of a report before it is
     published using publisher classes.
     """
-    def __init__(self, patterns, apps, config):
+    def __init__(self, patterns, apps, args, config):
         logger.info('Starting Report object initialization')
 
         ##
@@ -586,6 +574,7 @@ class Report(object):
         self.runtime = time.localtime()
         self.patterns = patterns
         self.apps = apps
+        self.args = args
         self.config = config
 
         # Initalize the subreports structure
@@ -606,7 +595,7 @@ class Report(object):
             'pid': config['pid'] if not config.is_default('pid') else ""
             }
         
-        self.unparsed = config['unparsed']
+        self.unparsed = args.unparsed
 
         titlevars = {
             'localhost': socket.gethostname(),
@@ -622,17 +611,17 @@ class Report(object):
         logger.debug('filters={0}'.format(self.filters))
         logger.debug('unparsed={0}'.format(self.unparsed))
 
-        if config['publish'] is not None:
-            logger.debug('publishers={0}'.format(config['publish']))
+        if args.publish is not None:
+            logger.debug('publishers={0}'.format(args.publish))
             logger.info('Initializing publishers')
 
-            for sec in config['publish'].split(','):
+            for sec in args.publish.split(','):
                 sec = sec.strip()
                 try:
                     method = config.getstr(sec, 'method')
                 except configparser.NoSectionError:
                     msg = 'section for "{0}" not found'.format(sec)
-                    if config['publish'] is not None:
+                    if args.publish is not None:
                         raise lograptor.OptionError('--publish', msg)
                     else:                        
                         raise lograptor.ConfigError(msg)
@@ -706,8 +695,8 @@ class Report(object):
             'title': self.title,
             'localhost': socket.gethostname(),
             'patterns': [pattern.pattern for pattern in self.patterns],
-            'pattern_file': self.config['pattern_file'],
-            'hosts': self.config['hosts'],
+            'pattern_file': self.args.pattern_file,
+            'hosts': self.args.hosts,
             'apps': u', '.join([u'%s(%d)' % (app.name, app.counter)
                                 for app in apps.values() if app.counter > 0]),
             'version': lograptor.info.__version__

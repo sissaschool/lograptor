@@ -1,32 +1,22 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Module to manage Lograptor applications
 """
-##
-# Copyright (C) 2003 by Duke University
-# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
+#
+# Copyright (C), 2011-2016, by Davide Brunato and
+# SISSA (Scuola Internazionale Superiore di Studi Avanzati).
 #
 # This file is part of Lograptor.
 #
-# Lograptor is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
-#
-# Lograptor is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Lograptor; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
-# 02111-1307, USA.
+# Lograptor is free software: you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# See the file 'LICENSE' in the root directory of the present
+# distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-##
 
 import copy
 import os
@@ -337,7 +327,7 @@ class AppLogParser(object):
     }
 
     @staticmethod
-    def set_options(config, filters, outmap):
+    def set_options(args, config, filters, outmap):
         """
         Set class variables with runtime options. First check
         pattern rules related to provided filter options.
@@ -357,10 +347,10 @@ class AppLogParser(object):
         AppLogParser._filter_options = tuple([
             key for key in config.options('filters')
         ])
-        AppLogParser._report = config['report']
-        AppLogParser._thread = config['thread']
+        AppLogParser._report = args.report
+        AppLogParser._thread = args.thread
 
-    def __init__(self, name, appcfgfile, config):
+    def __init__(self, name, appcfgfile, args, config):
         """
         Create a app object reading the configuration from file
         """
@@ -384,7 +374,7 @@ class AppLogParser(object):
         self._last_rule = self._last_idx = None
 
         extra_options = {'appname': self.name, 'logdir': config['logdir']}
-        hostnames = list(set(re.split('\s*,\s*', config['hosts'].strip())))
+        hostnames = list(set(re.split('\s*,\s*', args.hosts.strip())))
         if len(hostnames) == 1:
             extra_options.update({'host': hostnames[0]})
 
@@ -399,7 +389,7 @@ class AppLogParser(object):
         # Check if application is explicitly enabled or enabled by 'apps' option.
         # Exit if the application is not enabled at the end of checks.
         if not self.enabled:
-            if config['apps'] != '':
+            if args.apps != '':
                 self.enabled = True
                 logger.debug('App "{0}" is enabled by option'.format(self.name))
             else:
@@ -454,7 +444,7 @@ class AppLogParser(object):
 
         # If 'unparsed' matching is disabled and there are filter rules then restrict
         # the set of rules to the minimal set useful for processing.
-        if not config['unparsed'] and self.has_filters:
+        if not args.unparsed and self.has_filters:
             logger.debug('Purge unused rules for "{0}" app.'.format(self.name))
             self.rules = [
                 rule for rule in self.rules

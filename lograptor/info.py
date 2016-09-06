@@ -1,40 +1,31 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 This module contain general info about Lograptor package.
 """
-##
-# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
+#
+# Copyright (C), 2011-2016, by Davide Brunato and
+# SISSA (Scuola Internazionale Superiore di Studi Avanzati).
 #
 # This file is part of Lograptor.
 #
-# Lograptor is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
-#
-# Lograptor is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Lograptor; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
-# 02111-1307, USA.
+# Lograptor is free software: you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# See the file 'LICENSE' in the root directory of the present
+# distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-##
 
 __author__ = "Davide Brunato"
-__copyright__ = "Copyright 2011-2014, SISSA"
+__copyright__ = "Copyright 2011-2016, SISSA"
 __credits__ = ["Davide Brunato"]
 __license__ = "GPLv2+"
-__version__ = "1.0"
+__version__ = "1.1"
 __maintainer__ = "Davide Brunato"
 __email__ = "brunato@sissa.it"
-__status__ = "Production"
+__status__ = "Development"
 __description__ = ("Command-line utility for searching into log files. "
                    "Produces matching outputs and reports.")
 LONG_DESCRIPTION =\

@@ -1,33 +1,23 @@
-#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 This module contains class to handle output mapping and lookup
 internal caching for Lograptor's application class instances.
 """
-##
-# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
+#
+# Copyright (C), 2011-2016, by Davide Brunato and
+# SISSA (Scuola Internazionale Superiore di Studi Avanzati).
 #
 # This file is part of Lograptor.
 #
-# Lograptor is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
-#
-# Lograptor is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Lograptor; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
-# 02111-1307, USA.
+# Lograptor is free software: you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# See the file 'LICENSE' in the root directory of the present
+# distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-##
-from __future__ import print_function
-
 import re
 import socket
 import string
@@ -43,14 +33,15 @@ class OutMap(object):
     Output mapping class: translate matching groups for output.
     """
 
-    def __init__(self, config):
+    def __init__(self, args, config):
         self.mapexp = config['mapexp']
         self.mapmax = 10 ** self.mapexp
-        self.ip_lookup = config['ip_lookup']
-        self.uid_lookup = config['uid_lookup']
-        self.anonymyze = config['anonymize']
+        self.ip_lookup = args.ip_lookup
+        self.uid_lookup = args.uid_lookup
+        self.anonymyze = args.anonymize
         self.maps = dict()
-        for flt in set(['host', 'thread', 'uid'] + config.options('filters')):
+        filters = args.filters or []
+        for flt in set(filters + ['host', 'thread', 'uid']):
             self.maps[flt] = {}
         self.hostsmap = self.maps['host']
         self.uidsmap = self.maps['uid']

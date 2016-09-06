@@ -1,31 +1,22 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 This module contains classes and methods to handle Lograptor configurations.
 """
-##
-# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
+#
+# Copyright (C), 2011-2016, by Davide Brunato and
+# SISSA (Scuola Internazionale Superiore di Studi Avanzati).
 #
 # This file is part of Lograptor.
 #
-# Lograptor is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
-#
-# Lograptor is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Lograptor; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
-# 02111-1307, USA.
+# Lograptor is free software: you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# See the file 'LICENSE' in the root directory of the present
+# distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-##
 
 import os
 import logging
@@ -43,11 +34,7 @@ except ImportError:
     # Fall back for Python 2.x
     import ConfigParser as configparser
 
-try:
-    from collections import OrderedDict
-except ImportError:
-    # Backport for Python 2.4-2.6 (from PyPI)
-    from lograptor.backports.ordereddict import OrderedDict
+from collections import OrderedDict
 
 from lograptor.exceptions import ConfigError, FileMissingError, FormatError
 from lograptor.publishers import FilePublisher, MailPublisher
@@ -57,10 +44,10 @@ logger = logging.getLogger('lograptor')
 
 class ConfigMap(UserDict):
     """
-    This is a container class to manage environment configuration and options.
+    This is a container class to manage structured configurations.
     """
 
-    def __init__(self, cfgfile=None, default_config=None, extra_options=None, ):
+    def __init__(self, cfgfile, default_config=None, extra_options=None):
         UserDict.__init__(self)
 
         # Setting defaults. Don't allows duplicates for default keys.
@@ -127,9 +114,9 @@ class ConfigMap(UserDict):
         # file options)
         logger.debug('Reading entries from extra options')
         if extra_options is not None:
-            if isinstance(extra_options, dict):
+            try:
                 self.data.update(extra_options)
-            else:
+            except TypeError:
                 self.data.update(vars(extra_options))
 
         # Interpolation for all strings. Also the default strings
