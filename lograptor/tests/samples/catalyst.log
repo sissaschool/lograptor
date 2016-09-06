@@ -1,8 +1,0 @@
-Apr  1 04:03:42 raptor.dinos.test 4985: Apr  1 03:03:41.950: %SEC-6-IPACCESSLOGS: list VTY_ACCESS-ACL denied 192.168.187.170 1 packet
-Apr  1 04:24:17 raptor.dinos.test 4986: Apr  1 03:24:16.749: %SEC-6-IPACCESSLOGS: list VTY_ACCESS-ACL denied 192.168.192.126 1 packet
-Apr  1 04:44:20 raptor.dinos.test 4987: Apr  1 03:44:19.488: %SEC-6-IPACCESSLOGS: list VTY_ACCESS-ACL denied 192.168.106.170 1 packet
-Apr  1 04:50:03 raptor.dinos.test 4988: Apr  1 03:50:02.411: %SEC-6-IPACCESSLOGP: list INGRESS_ANTISPOOF-ACL denied tcp 192.168.146.34(80) -> 192.168.88.55(1234), 1 packet
-Apr  1 05:22:58 raptor.dinos.test 4989: Apr  1 04:22:57.248: %SEC-6-IPACCESSLOGS: list VTY_ACCESS-ACL denied 192.168.14.119 1 packet
-Apr  1 05:38:58 raptor.dinos.test 4990: Apr  1 04:38:57.460: %SEC-6-IPACCESSLOGS: list VTY_ACCESS-ACL denied 192.168.132.224 1 packet
-Apr  1 05:43:42 raptor.dinos.test 4991: Apr  1 04:43:41.404: %SEC-6-IPACCESSLOGP: list INGRESS_ANTISPOOF-ACL denied udp 192.168.180.101(5069) -> 192.168.88.55(5060), 1 packet
-Apr  1 05:48:55 raptor.dinos.test 4992: Apr  1 04:48:54.856: %SEC-6-IPACCESSLOGP: list INGRESS_ANTISPOOF-ACL denied tcp 192.168.200.183(6000) -> 192.168.88.55(3306), 1 packet
