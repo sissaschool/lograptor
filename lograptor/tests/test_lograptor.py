@@ -24,7 +24,7 @@ import os
 import re
 import sys
 import pytest
-
+import tarfile
 
 # Move into the test directory and adds the path of the package that contains the test.
 os.chdir(os.path.dirname(__file__))
@@ -33,6 +33,11 @@ if sys.path[0] != pkg_search_path:
     sys.path.insert(0, pkg_search_path)
 
 from lograptor.cli import create_argument_parser, exec_lograptor
+
+# Extract sample files
+tar = tarfile.open('samples.tar', "r:")
+tar.extractall()
+tar.close()
 
 
 def pytest_report_header(config):
