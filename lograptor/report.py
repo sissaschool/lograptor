@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-This module is used to build and publish the report produced by a run
-of Lograptor instance.
+This module define classes for building the report produced by a program run.
 """
 #
 # Copyright (C), 2011-2016, by Davide Brunato and
@@ -22,10 +21,8 @@ import logging
 import re
 import socket
 import time
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from string import Template
-
-from lograptor.utils import get_fmt_results
 
 try:
     from collections import UserDict
@@ -39,19 +36,14 @@ except ImportError:
     # Fall back for Python 2.x
     import ConfigParser as configparser
 
+from lograptor.utils import get_fmt_results
 import lograptor.info
-import lograptor.publishers
+import lograptor.channels
 import lograptor.tui
 import lograptor.utils
 
-try:
-    from collections import OrderedDict
-except ImportError:
-    # Backport for Python 2.4-2.6 (from PyPI)
-    from lograptor.backports.ordereddict import OrderedDict
 
-
-logger = logging.getLogger('lograptor')
+logger = logging.getLogger(__name__)
 
 TextPart = namedtuple('TextPart', 'title text ext')
 
@@ -557,16 +549,14 @@ class Subreport(object):
 class Report(object):
     """
     This helper class holds the contents of a report before it is
-    published using publisher classes.
+    sent to selected channels.
     """
     def __init__(self, patterns, apps, args, config):
-        logger.info('Starting Report object initialization')
-
-        ##
-        # publishers    : list of publisher objects
-        # subreports    : list of subreports
-        # stats         : statistics of lograptor's run       
-        self.publishers = []
+        """
+        :param channels: the list of output channels
+        :param subreports: list of subreports
+        :param stats: statistics about the program's run
+        """
         self.subreports = []
         self.formats = []
         self.stats = dict()
@@ -611,38 +601,11 @@ class Report(object):
         logger.debug('filters={0}'.format(self.filters))
         logger.debug('unparsed={0}'.format(self.unparsed))
 
-        if args.publish is not None:
-            logger.debug('publishers={0}'.format(args.publish))
-            logger.info('Initializing publishers')
-
-            for sec in args.publish.split(','):
-                sec = sec.strip()
-                try:
-                    method = config.getstr(sec, 'method')
-                except configparser.NoSectionError:
-                    msg = 'section for "{0}" not found'.format(sec)
-                    if args.publish is not None:
-                        raise lograptor.OptionError('--publish', msg)
-                    else:                        
-                        raise lograptor.ConfigError(msg)
-                except configparser.NoOptionError:
-                    raise lograptor.ConfigError('Publishing method not defined in "{0}" section!'
-                                                .format(sec))
-                if method == 'file':
-                    publisher = lograptor.publishers.FilePublisher(sec, config)
-                elif method == 'mail':
-                    publisher = lograptor.publishers.MailPublisher(sec, config)
-                else:
-                    raise lograptor.ConfigError('Publishing method "{0}" not supported'
-                                                .format(method))
-                logger.debug('Add {0} publisher \'{1}\''.format(method, sec))
-                self.publishers.append(publisher)
-
     def need_rawlogs(self):
         """
-        Check if rawlogs are requested by almost one report's publisher.
+        Check if rawlogs are requested by almost one report's channels.
         """
-        return any([publisher.rawlogs for publisher in self.publishers])
+        return any([channel.rawlogs for channel in self.channels])
 
     def make(self):
         """
@@ -681,16 +644,15 @@ class Report(object):
             self.stats[key] = value
             logger.debug('{0}={1}'.format(key, value))
 
-    def publish(self, apps, rawfh):
+    def send(self, apps, rawfh):
         """
-        Publishes the report with attachments or files, using all enabled publishers.
+        Send the report with attachments or files, using all enabled channels.
         """
         if self.is_empty():
-            logger.info("The report is empty: skip publishing.")
+            logger.info("the report is empty: skip sending to channels")
             return
 
         logger.info('Retrieve parameters and run\'s statistics')
-
         valumap = {
             'title': self.title,
             'localhost': socket.gethostname(),
@@ -732,11 +694,11 @@ class Report(object):
                 logger.info('Creating a list of csv files')
                 report_parts.extend(self.make_csv_tables())
         
-        if self.publishers:
-            print(u'\n--- Publishing report ---')
-            for publisher in self.publishers:
-                logger.info('Invoking publisher "{0}"'.format(publisher.name))
-                publisher.publish(self.title, report_parts, rawfh)
+        if self.channels:
+            print(u'\n--- Sending report ---')
+            for channel in self.channels:
+                logger.info('output to channel %r' % channel.name)
+                channel.send(self.title, report_parts, rawfh)
         elif self.formats[0] == 'plain':
             print('\n{0}'.format(report_parts[0].text))
 

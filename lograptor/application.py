@@ -32,12 +32,6 @@ except ImportError:
     import ConfigParser as configparser
 
 try:
-    from collections import OrderedDict
-except ImportError:
-    # Backport for Python 2.6 (from PyPI)
-    from lograptor.backports.ordereddict import OrderedDict
-
-try:
     import pwd
 except ImportError:
     pwd = None
@@ -78,7 +72,7 @@ class AppRule(object):
             self.regexp = re.compile(pattern)
         except RegexpCompileError:
             msg = 'Illegal pattern for app\'rule: "{0}"'.format(name)
-            raise lograptor.ConfigError(msg)
+            raise lograptor.LograptorConfigError(msg)
 
         self.name = name
         self.results = dict()
@@ -93,7 +87,7 @@ class AppRule(object):
         self.key_gids = tuple(key_gids)
 
         if not self.key_gids:
-            raise lograptor.ConfigError("Rule gids set empty!")
+            raise lograptor.LograptorConfigError("Rule gids set empty!")
 
         self._last_idx = None
 
@@ -316,7 +310,7 @@ class AppLogParser(object):
     outmap = None           # Output mapping
 
     # Default values for application config files
-    default_config = {
+    DEFAULT_CONFIG = {
         'main': {
             'desc': u'${appname}',
             'tags': u'${appname}',
@@ -345,17 +339,16 @@ class AppLogParser(object):
         AppLogParser.outmap = outmap
         AppLogParser._filters = copy.deepcopy(filters)
         AppLogParser._filter_options = tuple([
-            key for key in config.options('filters')
+            key for key in config.options('fields')
         ])
         AppLogParser._report = args.report
         AppLogParser._thread = args.thread
 
-    def __init__(self, name, appcfgfile, args, config):
+    def __init__(self, name, cfgfile, args, config):
         """
         Create a app object reading the configuration from file
         """
-        logger.info('Initializing app "{0}" from configuration file {1}'
-                    .format(name, appcfgfile))
+        logger.info('Initializing app %r from configuration file %r.', name, cfgfile)
 
         # Check if class variables are initialized
         if self._filters is None:
@@ -363,7 +356,7 @@ class AppLogParser(object):
         
         # Setting class instance variables
         self.name = name            # Application name
-        self.cfgfile = appcfgfile   # Complete path to app config file
+        self.cfgfile = cfgfile   # Complete path to app config file
         self.rules = []             # Regexp rules for the app
         self.has_filters = False    # True if the app has filters 
         self.repitems = []          # Report items read from configuration
@@ -374,27 +367,17 @@ class AppLogParser(object):
         self._last_rule = self._last_idx = None
 
         extra_options = {'appname': self.name, 'logdir': config['logdir']}
-        hostnames = list(set(re.split('\s*,\s*', args.hosts.strip())))
+        hostnames = list(set(args.hostnames))
         if len(hostnames) == 1:
             extra_options.update({'host': hostnames[0]})
 
-        appconfig = lograptor.configmap.ConfigMap(appcfgfile, self.default_config, extra_options)
+        appconfig = lograptor.configmap.ConfigMap(cfgfile, self.DEFAULT_CONFIG, extra_options)
 
         self.desc = appconfig['desc']
         self.tags = appconfig['tags']
         self.files = list(set(re.split('\s*,\s*', appconfig['files'])))
         self.enabled = appconfig['enabled']
         self.priority = appconfig['priority']
-
-        # Check if application is explicitly enabled or enabled by 'apps' option.
-        # Exit if the application is not enabled at the end of checks.
-        if not self.enabled:
-            if args.apps != '':
-                self.enabled = True
-                logger.debug('App "{0}" is enabled by option'.format(self.name))
-            else:
-                logger.debug('App "{0}" is not enabled: ignore.'.format(self.name))
-                return
 
         # Expand application's fileset if many hostsnames are provided
         if len(hostnames) > 1:
@@ -405,18 +388,18 @@ class AppLogParser(object):
                                  .safe_substitute({'host': host}))
             self.files = list(filelist)
 
-        logger.info('App "{0}" run fileset: {1}'.format(self.name, self.files))
+        logger.info('App %r run fileset: %r', self.name, self.files)
 
         # Read app rules from configuration file. An app is disabled
         # when it doesn't have almost a rule.
-        logger.debug('Load rules for app "{0}"'.format(self.name))
+        logger.debug('Load rules for app %r', self.name)
         try:
             rules = appconfig.parser.items('rules')
         except configparser.NoSectionError:
-            raise lograptor.ConfigError('No section [rules] in config file of app "{0}"'.format(self.name))
+            raise lograptor.LograptorConfigError('No section [rules] in config file of app "{0}"'.format(self.name))
         if not rules:
             msg = 'an application must have at least a rule!'
-            raise lograptor.ConfigError(msg.format(self.name))
+            raise lograptor.LograptorConfigError(msg.format(self.name))
         
         self.add_rules(rules, config)
         
@@ -426,16 +409,17 @@ class AppLogParser(object):
         sections.remove('main')
         sections.remove('rules')
         
-        for sect in sections:
+        for sect in filter(lambda x: x.startswith('report.'), sections):
+            _sect = sect.partition('.')[2]
             try:
-                repitem = lograptor.report.ReportItem(sect, appconfig.parser.items(sect),
+                repitem = lograptor.report.ReportItem(_sect, appconfig.parser.items(sect),
                                                       config.options('subreports'), self.rules)
             except lograptor.OptionError as msg:
-                raise lograptor.ConfigError('section "{0}" of "{1}": {2}'
-                                            .format(sect, os.path.basename(appcfgfile), msg))
+                raise lograptor.LograptorConfigError('section "{0}" of "{1}": {2}'
+                                                     .format(sect, os.path.basename(cfgfile), msg))
             except configparser.NoOptionError as msg:
-                raise lograptor.ConfigError('No option "{0}" in section "{1}" of configuration '
-                                            'file "{1}"'.format(msg, sect, appcfgfile))
+                raise lograptor.LograptorConfigError('No option "{0}" in section "{1}" of configuration '
+                                            'file "{1}"'.format(msg, sect, cfgfile))
             except lograptor.RuleMissingError as msg:
                 logger.info(msg)
                 continue
@@ -445,7 +429,7 @@ class AppLogParser(object):
         # If 'unparsed' matching is disabled and there are filter rules then restrict
         # the set of rules to the minimal set useful for processing.
         if not args.unparsed and self.has_filters:
-            logger.debug('Purge unused rules for "{0}" app.'.format(self.name))
+            logger.debug('Purge unused rules for %r app.', self.name)
             self.rules = [
                 rule for rule in self.rules
                 if rule.filter_keys is not None or rule.used_by_report or
@@ -459,10 +443,10 @@ class AppLogParser(object):
             for rule in self.rules:
                 rule.full_match = True
 
-        logger.info('Valid filters for app "{0}": {1}'
-                    .format(self.name, len([rule.name for rule in self.rules if rule.filter_keys is not None])))
-        logger.info('Base rule set for app "{0}": {1}'
-                    .format(self.name, [rule.name for rule in self.rules if rule.filter_keys is None]))
+        logger.info('Valid filters for app %r: %d', self.name,
+                    len([rule.name for rule in self.rules if rule.filter_keys is not None]))
+        logger.info('Base rule set for app %r: %d', self.name,
+                    [rule.name for rule in self.rules if rule.filter_keys is None])
 
         # Set threads cache using finally rules list
         if self._thread:
@@ -477,8 +461,8 @@ class AppLogParser(object):
             pattern = pattern.replace('\n', '')
 
             if len(pattern) == 0:
-                logger.debug('Rule "{0}" is empty'.format(option))
-                raise lograptor.ConfigError('Error in app "{0}" configuration: '
+                logger.debug('Rule %r is empty', option)
+                raise lograptor.LograptorConfigError('Error in app "{0}" configuration: '
                                             'empty rules not admitted!'.format(option))
 
             # There are no filters, then adds each rule once substituting
@@ -487,8 +471,8 @@ class AppLogParser(object):
                 for opt in self._filter_options:
                     pattern = string.Template(pattern).safe_substitute({opt: config[opt]})
                 self.rules.append(AppRule(option, pattern))
-                logger.debug('Add rule "{0}": {1}'.format(option, pattern))
-                logger.debug('Rule "{0}" gids : {1}'.format(option, self.rules[-1].key_gids))
+                logger.debug('Add rule %r: %d', option, pattern)
+                logger.debug('Rule %r gids : %r', option, self.rules[-1].key_gids)
                 continue
 
             # Iterate over filter list. Each item is a set of filtering rules
@@ -510,16 +494,15 @@ class AppLogParser(object):
                 if len(filter_keys) < len(filter_group):
                     if self._thread:
                         self.rules.append(AppRule(option, new_pattern))
-                        logger.debug('Add rule "{0}": {1}'.format(option, pattern))
-                        logger.debug('Rule "{0}" gids : {1}'.format(option, self.rules[-1].key_gids))
+                        logger.debug('Add rule %r: %r', option, pattern)
+                        logger.debug('Rule %r gids : %r', option, self.rules[-1].key_gids)
                     continue
 
                 # Adding to app rules
                 self.rules.append(AppRule(option, new_pattern, filter_keys))
                 self.has_filters = True
-                logger.debug('Add filter rule "{0}" ({1}): {2}'
-                             .format(option, u', '.join(filter_keys), new_pattern))
-                logger.debug('Rule "{0}" gids : {1}'.format(option, self.rules[-1].key_gids))
+                logger.debug('Add filter rule %r (%r): %r', option, u', '.join(filter_keys), new_pattern)
+                logger.debug('Rule %r gids : %r', option, self.rules[-1].key_gids)
 
     def purge_unmatched_threads(self, event_time=0):
         """
@@ -569,7 +552,7 @@ class AppLogParser(object):
         for rule in self.rules:
             match = rule.regexp.search(logdata.message)
             if match is not None:
-                logger.debug('Rule "{0}" match'.format(rule.name))
+                logger.debug('Rule %r match', rule.name)
                 gids = rule.regexp.groupindex
                 self._last_rule = rule
 

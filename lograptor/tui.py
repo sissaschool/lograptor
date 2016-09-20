@@ -18,15 +18,8 @@ user interface (TUI).
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import print_function
-
-import logging
 import os
 import sys
-
-logger = logging.getLogger('lograptor')
-
-__all__=['getTerminalSize', 'ProgressBar']
 
 
 def getTerminalSize():
@@ -38,34 +31,33 @@ def getTerminalSize():
     import platform
    
     current_os = platform.system()
-    tuple_xy=None
+    tuple_xy = None
     if current_os == 'Windows':
         tuple_xy = _getTerminalSize_windows()
         if tuple_xy is None:
             tuple_xy = _getTerminalSize_tput()
             # needed for window's python in cygwin's xterm!
-    if current_os == 'Linux' or current_os == 'Darwin' or  current_os.startswith('CYGWIN'):
+    if current_os == 'Linux' or current_os == 'Darwin' or current_os.startswith('CYGWIN'):
         tuple_xy = _getTerminalSize_linux()
     if tuple_xy is None:
-        print("default")
-        tuple_xy = (80, 25)      # default value
+        tuple_xy = (80, 25)  # default value
     return tuple_xy
 
 
 def _getTerminalSize_windows():
-    res=None
+    from ctypes import windll, create_string_buffer
+
+    # stdin handle is -10
+    # stdout handle is -11
+    # stderr handle is -12
+    handle = windll.kernel32.GetStdHandle(-12)
+
     try:
-        from ctypes import windll, create_string_buffer
-
-        # stdin handle is -10
-        # stdout handle is -11
-        # stderr handle is -12
-
-        h = windll.kernel32.GetStdHandle(-12)
         csbi = create_string_buffer(22)
-        res = windll.kernel32.GetConsoleScreenBufferInfo(h, csbi)
-    except:
+        res = windll.kernel32.GetConsoleScreenBufferInfo(handle, csbi)
+    except (IOError, OSError):
         return None
+
     if res:
         import struct
         (bufx, bufy, curx, cury, wattr,
@@ -80,40 +72,42 @@ def _getTerminalSize_windows():
 def _getTerminalSize_tput():
     # get terminal width
     # src: http://stackoverflow.com/questions/263890/how-do-i-find-the-width-height-of-a-terminal-window
+    import subprocess
     try:
-       import subprocess
-       proc=subprocess.Popen(["tput", "cols"],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
-       output=proc.communicate(input=None)
-       cols=int(output[0])
-       proc=subprocess.Popen(["tput", "lines"],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
-       output=proc.communicate(input=None)
-       rows=int(output[0])
-       return (cols,rows)
-    except:
-       return None
+        proc = subprocess.Popen(["tput", "cols"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        output = proc.communicate(input=None)
+        cols = int(output[0])
+        proc = subprocess.Popen(["tput", "lines"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        output = proc.communicate(input=None)
+        rows = int(output[0])
+        return cols, rows
+    except (IOError, OSError):
+        return None
 
 
 def _getTerminalSize_linux():
-    env = os.environ
+
     def ioctl_GWINSZ(fd):
         try:
-            import fcntl, termios, struct, os
-            cr = struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ,'1234'))
-        except:
+            import fcntl
+            import termios
+            import struct
+            return struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ, '1234'))
+        except (IOError, OSError):
             return None
-        return cr
+
     cr = ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2)
     if not cr:
         try:
-            f = os.open(os.ctermid(), os.O_RDONLY)
+            f = open(os.ctermid())
             cr = ioctl_GWINSZ(f.fileno())
             f.close()
-        except:
+        except (IOError, OSError):
             pass
     if not cr:
         try:
-            cr = (env['LINES'], env['COLUMNS'])
-        except:
+            cr = (os.environ['LINES'], os.environ['COLUMNS'])
+        except KeyError:
             return None
     return int(cr[1]), int(cr[0])
 
@@ -131,7 +125,7 @@ class ProgressBar(object):
         self.output = output
         self.suffix = suffix
         
-        self.step_perc = max(1,min(int(100000/maxval),5))
+        self.step_perc = max(1, min(int(100000/maxval), 5))
         self.barwidth = int(0.3 * getTerminalSize()[0])
         self.nextperc = 0
 
@@ -140,7 +134,7 @@ class ProgressBar(object):
             raise ValueError("Maximum value of a progress bar must be positive number.")
 
         self.output.write('[{0}] {1} {2}'.format(" " * self.barwidth,
-                                                 format(0,'1d'), self.suffix))
+                                                 format(0, '1d'), self.suffix))
         self._width = self.barwidth + 4 + len(self.suffix)
         self.output.flush()
         self.initialized = True
@@ -149,7 +143,7 @@ class ProgressBar(object):
         """
         Redraw the progress bar with a value and a counter.
         """
-        if self.initialized == False:
+        if self.initialized is False:
             return
         if value < 0:
             raise ValueError("Size of a progress bar must be a non negative value")
@@ -159,7 +153,7 @@ class ProgressBar(object):
             fill = min(self.barwidth, int(self.barwidth * perc / 100))
             counter = str(counter) if counter > 0 else str(value)
             
-            sys.stdout.write("\b" * self._width) # return to start of line, after '['
+            sys.stdout.write("\b" * self._width)  # return to start of line, after '['
             sys.stdout.write('{0}{1}] {2} {3}'
                              .format("#" * fill, " " * (self.barwidth-fill),
                                      counter, self.suffix))
@@ -170,4 +164,3 @@ class ProgressBar(object):
             else:
                 sys.stdout.write("\n")
                 self.initialized = False
-                

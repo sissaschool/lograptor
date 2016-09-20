@@ -22,201 +22,266 @@ import os
 import sys
 import contextlib
 import argparse
-from .core import Lograptor
+import time
+
+from .core import exec_lograptor
 from .info import __version__, __description__
-from .exceptions import (ConfigError, OptionError, FormatError, FileMissingError, FileAccessError)
+from .exceptions import (
+    LograptorConfigError, OptionError, FormatError, FileMissingError, FileAccessError, LograptorArgumentError
+)
+from .timedate import get_interval, parse_date, parse_last, TimeRange
 
 
-def create_argument_parser(cfgfile_default):
+def positive_integer(string):
+    value = int(string)
+    if value <= 0:
+        msg = "%r is not a positive integer" % string
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
+def filter_spec(string):
+    _filter = dict()
+    for flt in string.split(','):
+        try:
+            key, value = flt.split('=', 1)
+            key, value = key.lower(), value.strip('\'"')
+            if not key:
+                raise argparse.ArgumentTypeError('filter %r: empty field name!' % flt)
+            elif not value:
+                raise argparse.ArgumentTypeError('filter %r: empty pattern!' % flt)
+            else:
+                _filter[key] = value
+        except ValueError:
+            raise argparse.ArgumentTypeError('filter %r: wrong format!' % flt)
+    return _filter
+
+
+def comma_separated_string(string):
+    return [x.strip() for x in string.split(',')]
+
+
+def last_spec(string):
+    try:
+        diff = parse_last(string)
+    except TypeError:
+        raise argparse.ArgumentTypeError('wrong format: %r' % string)
+    return get_interval(int(time.time()), diff, 3600)
+
+
+def date_interval_spec(string):
+    try:
+        return parse_date(string)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError('%r: wrong format, use [YYYY]MMDD[,[YYYY]MMDD]' % string)
+
+
+def create_argument_parser():
     """
     Command line options and arguments parsing. This function return
     a list of options and the list of arguments (pattern, filenames).
     """
-    parser = argparse.ArgumentParser(prog='lograptor', description=__description__)
+    parser = argparse.ArgumentParser(prog='lograptor', description=__description__, add_help=False)
     parser.usage = """ %(prog)s [options] [PATTERN] [FILE ...]
     %(prog)s [options] [ -e PATTERN | -f FILE ] [FILE ...]
     Try '%(prog)s --help' for more information."""
-    parser.add_argument('--version', action='version', version=__version__)
 
-    # Options of the group "General Options"
-    group = parser.add_argument_group("General Options")
+    group = parser.add_argument_group("Matcher mode selection")
     group.add_argument(
-        "--conf", dest="cfgfile", type=str, default=cfgfile_default, metavar="<CONFIG_FILE>",
-        help="Use a specific configuration file for Lograptor, instead of the "
-             "default file located in {0}. Calling the program without other "
-             "options and arguments produce a dump of the configuration settings "
-             "to stdout.".format(cfgfile_default)
+        "-G", "--use-rules", action="store_true", default=False,
+        help="use patterns and application rules (default)"
     )
     group.add_argument(
-        "-d", dest="loglevel", default=2, type=int, metavar="[0-4]",
-        help="Logging level. The default is 2 (warning). Level 0 log only "
-             "critical errors, higher levels shows more information."
+        "-X", "--exclude-rules", action="store_true", default=False,
+        help="use patterns and skip application rules"
+    )
+    group.add_argument(
+        "-U", "--unparsed", action="store_true", default=False,
+        help="match the patterns, don't match any application rule"
     )
 
-    # Options of the group "Scope Options"
-    group = parser.add_argument_group("Scope Options")
+    group = parser.add_argument_group("Scope Selection")
     group.add_argument(
-        "-H", "--hosts", metavar="HOST/IP[,HOST/IP...]", action="store", dest="hosts", default='*',
-        help="Will analyze only log lines related to comma separated list of hostnames and/or "
-             "IP addresses. File path wildcards can be used for hostnames."
-    )
-    parser.set_defaults(apps='')
-    group.add_argument(
-        '-a', "--apps", metavar='APP[,APP...]', action="store", dest="apps",
-        help="Analyze only log lines related to a comma separated list of applications. "
-             "An app is valid when a configuration file is defined. For default the program "
-             "process all enabled apps."
+        "--apps", metavar='APP[,APP...]', type=comma_separated_string, dest="appnames",
+        default=[], help="process the log lines related to an application"
     )
     group.add_argument(
-        "-A", action="store_const", dest="apps", const=None,
-        help="Skip applications processing. The searches are performed only with pattern(s) "
-             "matching. This option is incompatible with report and matching options related "
-             "to app's rules."
+        "--hosts", metavar="HOSTNAME/IP[,HOSTNAME/IP...]", type=comma_separated_string,
+        dest="hostnames", default=[], help="process the log lines related to an hostname/IP"
     )
     group.add_argument(
-        "--last", action="store", dest="period", default=None,
+        "--filter", metavar="FIELD=PATTERN[,FIELD=PATTERN...]",
+        action="append", dest="filters", type=filter_spec, default=[],
+        help="process the log lines that match all the conditions for rule's field values"
+    )
+    group.add_argument(
+        "--time", metavar="HH:MM,HH:MM", type=TimeRange, action="store", dest="timerange",
+        help="process the log lines related to a time range"
+    )
+    group.add_argument(
+        "--date", metavar="[YYYY]MMDD[,[YYYY]MMDD]", action="store", dest="period",
+        type=date_interval_spec, help="restrict the search scope to a date or a date range"
+    )
+    group.add_argument(
+        "--last", action="store", dest="period", type=last_spec,
         metavar="[hour|day|week|month|Nh|Nd|Nw|Nm]",
-        help="Restrict search scope to a previous time period."
-    )
-    group.add_argument(
-        "--date", metavar="[YYYY]MMDD[,[YYYY]MMDD]", action="store", dest="period", default=None,
-        help="Restrict search scope to a date or an interval of dates."
-    )
-    group.add_argument(
-        "--time", metavar="HH:MM,HH:MM", action="store", dest="timerange", default=None,
-        help="Restrict search scope to a time range."
+        help="restrict the search scope to a previous time period"
     )
 
-    # Options of the group "Matching Control"
-    group = parser.add_argument_group("Matching Control")
+    group = parser.add_argument_group("Data control")
     group.add_argument(
-        "-e", "--regexp", dest="patterns", default=None, action="append",
-        help="The search pattern. Use the option more times to specify multiple "
-             "search patterns. Empty patterns are skipped."
+        "--report", metavar='NAME', nargs='?', default=None,
+        help="produce a report at the end of processing"
+
     )
     group.add_argument(
-        "-f", "--file", dest="pattern_file", default=None, metavar="FILE",
-        help="Obtain patterns from FILE, one per line. Empty patterns are skipped."
+        "--ip-lookup", action="store_true", default=False,
+        help="translate IP addresses to DNS names"
+    )
+    group.add_argument(
+        "--uid-lookup", action="store_true", default=False,
+        help="translate UIDs to usernames"
+    )
+    group.add_argument(
+        "--anonymize", action="store_true", default=False,
+        help="anonymize defined rule's fields value"
+    )
+    group.add_argument(
+        "--timestamps", action="store_true", default=False,
+        help="create and verify timestamps on input log files"
+    )
+
+    group = parser.add_argument_group("Regexp matching control")
+    group.add_argument(
+        "-e", "--regexp", metavar="PATTERN", dest="patterns", default=[],
+        action="append", help="use PATTERN for matching"
+    )
+    group.add_argument(
+        "-f", "--file", metavar="FILE", dest="pattern_files", default=[],
+        action="append", help="obtain patterns from FILE"
     )
     group.add_argument(
         "-i", "--ignore-case", action="store_true", dest="case", default=False,
-        help="Ignore case distinctions in matching."
+        help="ignore case distinctions"
     )
     group.add_argument(
-        "--invert-match", action="store_true", dest="invert", default=False,
-        help="Invert the sense of matching, to select non-matching lines."
+        "-v", "--invert-match", action="store_true", dest="invert", default=False,
+        help="invert the sense of regexp matching"
     )
     group.add_argument(
-        "-F", "--filter", metavar="FILTER=PATTERN[,FILTER=PATTERN...]",
-        action="append", dest="filters", default=None,
-        help="Refine the search with a comma separated list of filters. "
-             "The filters list are applied with logical disjunction (OR). "
-             "Providing more --filter options perform logical conjunction (AND)."
-    )
-    group.add_argument(
-        "-t", "--thread", dest="thread", action="store_true", default=False,
-        help="Perform matching at thread level, using the thread rules defined in "
-             "configuration files of each application."
-    )
-    group.add_argument(
-        "-u", "--unparsed", action="store_true", dest="unparsed", default=False,
-        help="Match lines that are unparsable by app's rules. Useful for finding anomalies and for "
-             "application's rules debugging. This option is incompatible with option -F/--filters"
+        "-w", "--word-regexp", action="store_true", dest="word", default=False,
+        help="force PATTERN to match only whole words"
     )
 
-    # Options of the group "Output Control"
-    group = parser.add_argument_group("Output Control")
+    group = parser.add_argument_group("Output control")
     group.add_argument(
-        "-c", "--count", action="store_true", default=False,
-        help="Suppress normal output; instead print a count of matching lines for each input file. "
-             "With  the  -v/--invert-match option, counts non-matching lines.")
-    group.add_argument(
-        "-m", "--max-count", metavar='NUM', action="store", type=int, dest="max_count", default=None,
-        help="Stop reading a file after NUM matching lines. When -c/--count option is also used, "
-             "the program does not output a count greater than NUM."
+        "--output", default=['stdout'], metavar='CHANNEL[,CHANNEL...]', dest='channels',
+        type=comma_separated_string, help="send output to channels (default: ['stdout'])"
     )
     group.add_argument(
-        "-q", "--quiet", action="store_true", default=None,
-        help="Quiet; do not write anything  to standard output. Exit immediately with zero status "
-             "when a match is found, even if an error was detected. See also the -s or --no-messages options."
+        "-m", "--max-count", metavar='NUM', action="store", type=positive_integer, default=None,
+        help="stop after NUM matches"
+    )
+    group.add_argument(
+        "-n", "--line-number", action="store_true", default=False,
+        help="print line number with output lines"
+    )
+    group.add_argument(
+        "-H", "--no-source", action="store_false", dest="print_filename", default=None,
+        help="print the file name for each match"
+    )
+    group.add_argument(
+        "-h", "--with-source", action="store_true", dest="print_filename", default=None,
+        help="suppress the file name prefix on output"
+    )
+    group.add_argument(
+        "-o", "--only-matching", action="store_true", default=False,
+        help="show only the part of a line matching PATTERN"
+    )
+    group.add_argument(
+        "-q", "--quiet", action="store_true", default=False, help="suppress all normal output"
+    )
+    group.add_argument(
+        "-r", "--recursive", action="store_true", default=False,
+        help="read all files under each directory, recursively"
+    )
+    group.add_argument(
+        "-R", "--dereference-recursive", action="store_true", default=False,
+        help="likewise, but follow all symlinks"
+    )
+    group.add_argument(
+        "--include", metavar='GLOB', help="search only files that match GLOB"
+    )
+    group.add_argument(
+        "--exclude", metavar='GLOB', help="skip files and directories matching GLOB"
+    )
+    group.add_argument(
+        "--exclude-from", metavar='FILE', help="skip files matching any file pattern from FILE"
+    )
+    group.add_argument(
+        "--exclude-dir", metavar='DIR', help="exclude directories matching the pattern DIR"
+    )
+    group.add_argument(
+        "-L", "--files-without-match", action="store_false", dest="files_with_match",
+        help="print only names of FILEs containing no match"
+    )
+    group.add_argument(
+        "-l", "--files-with-match", action="store_true", dest="files_with_match",
+        help="print only names of FILEs containing matches"
+    )
+    group.add_argument(
+        "-c", "--count", action="store_true", default=False,
+        help="print only a count of matching lines per FILE"
+    )
+    group.add_argument(
+        "--color", action="store_true", default=False,
+        help="use markers to highlight the matching strings"
+    )
+
+    group = parser.add_argument_group("Context control")
+    group.add_argument(
+        "-T", "--thread", action="store_true", default=False,
+        help="print the thread related context"
+    )
+    group.add_argument(
+        "-B", "--before-context", metavar='NUM', type=positive_integer, default=0,
+        help="print NUM lines of leading context"
+    )
+    group.add_argument(
+        "-A", "--after-context", metavar='NUM', type=positive_integer, default=0,
+        help="print NUM lines of trailing context"
+    )
+    group.add_argument(
+        "-C", "--context", metavar='NUM', type=positive_integer, default=0,
+        help="print NUM lines of output context"
+    )
+    group.add_argument(
+        "--group-separator", metavar='SEP', default='--', help="use SEP as a group separator"
+    )
+    group.add_argument(
+        "--no-group-separator", dest="group_separator", action="store_const", const='',
+        help="use empty string as a group separator"
+    )
+
+    group = parser.add_argument_group("Other options")
+    group.add_argument(
+        "--conf", dest="cfgfile", nargs=1, metavar="FILE",
+        default=['lograptor.conf', '/etc/lograptor/lograptor.conf'],
+        help="use a specific configuration file"
+    )
+    group.add_argument(
+        "-d", dest="loglevel", default=2, type=int, metavar="[0-4]", choices=range(5),
+        help="logging level (default is 2, use 4 for debug)"
     )
     group.add_argument(
         "-s", "--no-messages", action="store_true", default=False,
-        help="Suppress final run summary and error messages about nonexistent or unreadable files."
+        help="suppress error messages, equivalent to -d=0 option"
     )
-    group.add_argument(
-        "-o", "--with-filename", action="store_true", dest="print_filenames", default=None,
-        help="Print the filename for each matching line."
-    )
-    group.add_argument(
-        "-O", "--no-filename", action="store_false", dest="print_filenames", default=None,
-        help="Suppress the default headers with filenames on output. This is the default "
-             "behaviour for output also when searching in a single file."
-    )
-    group.add_argument(
-        "--ip", action="store_true", dest="ip_lookup", default=False,
-        help="Do a reverse lookup translation for the IP addresses for report data. Use a DNS local "
-             "caching to improve the speed of the lookups and reduce the network service's load."
-    )
-    group.add_argument(
-        "--uid", action="store_true", dest="uid_lookup", default=False,
-        help="Map numeric UIDs to usernames for report data. The configured local system authentication "
-             "is used for lookups, so it must be inherent to the UIDs that have to be resolved."
-    )
-    group.add_argument(
-        "--anonymize", action="store_true", dest="anonymize", default=False,
-        help="Anonymize output for values connected to provided filters. Translation tables are built "
-             "in volatile memory for each run. The anonymous tokens have the format FILTER_NN. "
-             "This option overrides --ip, --uid."
-    )
-
-    # Options of the group "Report Control"
-    group = parser.add_argument_group("Report Control")
-    group.add_argument(
-        "-r", "--report", dest="report", action="store_true", default=False,
-        help="Make a formatted text report at the end of processing and display it on console."
-    )
-    group.add_argument(
-        "--publish", dest="publish", default=None, metavar='PUBLISHER[,PUBLISHER...]',
-        help="Make a report and publish it using a comma separated list of publishers, choosed "
-             "from the ones defined in the configuration file. You have to define your publishers "
-             "in the main configuration file."
-    )
+    group.add_argument('-V', '--version', action='version', version=__version__)
+    group.add_argument('--help', action='help', help="show this help message and exit")
 
     parser.add_argument('files', metavar='[FILE...]', nargs='*', help="Input filename/s.")
     return parser
-
-
-def exec_lograptor(args, as_batch=False):
-    """
-    Main routine: parse command line, create the Lograptor instance, call
-    processing of log files and manage exception errors.
-    """
-    # If debug level choosed than activate the logger immediately
-    if args.loglevel == 4:
-        import lograptor.utils
-        lograptor.utils.set_logger(args.loglevel)
-
-    my_raptor = Lograptor(args, as_batch)
-
-    # Dump a configuration summary and exit when the program is called from the
-    # command line without options and arguments or with only the --conf option.
-    if not as_batch and (
-            len(sys.argv) == 1 or
-            (len(sys.argv) == 2 and sys.argv[1].startswith('--conf=')) or
-            (len(sys.argv) == 3 and sys.argv[1] == '--conf')):
-        print(my_raptor.get_configuration())
-        my_raptor.cleanup()
-        return 0
-
-    try:
-        retval = my_raptor.process()
-        if my_raptor.make_report():
-            my_raptor.publish_report()
-    finally:
-        my_raptor.cleanup()
-
-    return 0 if retval else 1
 
 
 class DummyFile(object):
@@ -241,14 +306,19 @@ def main():
         sys.stderr.write("You need python 2.7 or later to run this program\n")
         sys.exit(1)
 
-    cli_parser = create_argument_parser('/etc/lograptor/lograptor.conf')
+    cli_parser = create_argument_parser()
     args = cli_parser.parse_args()
+
     if os.isatty(sys.stdin.fileno()):
         try:
-            retval = exec_lograptor(args, as_batch=False)
-        except OptionError as e:
-            cli_parser.error(e)
-        except (ConfigError, FormatError, FileMissingError, FileAccessError) as e:
+            retval = exec_lograptor(args, is_batch=False)
+        except (LograptorArgumentError, OptionError) as e:
+            if e.message:
+                cli_parser.error(e)
+            else:
+                cli_parser.print_usage()
+                sys.exit(2)
+        except (LograptorConfigError, FormatError, FileMissingError, FileAccessError) as e:
             sys.exit(u"ERROR: {0}\nExiting ...".format(e))
         except KeyboardInterrupt:
             print("\nCtrl-C pressed, terminate the process ...")
@@ -256,8 +326,9 @@ def main():
     else:
         with nostdout():
             try:
-                retval = exec_lograptor(args, as_batch=True)
-            except (OptionError, ConfigError, FormatError, FileMissingError, FileAccessError) as e:
+                retval = exec_lograptor(args, is_batch=True)
+            except (LograptorArgumentError, OptionError, LograptorConfigError,
+                    FormatError, FileMissingError, FileAccessError) as e:
                 sys.exit(u"ERROR: {0}\nExiting ...".format(e))
     sys.exit(retval)
 

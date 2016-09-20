@@ -21,7 +21,7 @@ import re
 import logging
 from collections import namedtuple
 
-from lograptor.exceptions import ConfigError
+from lograptor.exceptions import LograptorConfigError
 
 logger = logging.getLogger('lograptor')
 
@@ -43,7 +43,7 @@ class LogParser(object):
         for field in ('month', 'day', 'ltime', 'message'):
             if field not in self.parser.groupindex:
                 msg = '%s: missing mandatory named group "%s"' % (self.__class__.__name__, field)
-                raise ConfigError(msg)
+                raise LograptorConfigError(msg)
 
     def match(self, line):
         """Perform header pattern matching on log line."""
@@ -63,7 +63,7 @@ class ParserRFC3164(LogParser):
         extra = set(self.fields) - set(rfc3164_fields)
         if extra:
             msg = u'no RFC 3164 fields in pattern: {0}'.format(extra)
-            raise ConfigError(msg)
+            raise LograptorConfigError(msg)
             
 
 class ParserRFC5424(LogParser):
@@ -80,4 +80,4 @@ class ParserRFC5424(LogParser):
         extra = set(self.fields) - set(rfc5424_fields)
         if extra:
             msg = u'no RFC 5424 fields in pattern: {0}'.format(extra)
-            raise ConfigError(msg)
+            raise LograptorConfigError(msg)

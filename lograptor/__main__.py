@@ -27,12 +27,13 @@ if not __package__:
     # $ python lograptor/__main__.py --> __package__ is None
     #
     # Refer to https://www.python.org/dev/peps/pep-0366/ for details.
-    import os, sys
+    import os
+    import sys
     pkg_search_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     if sys.path[0] != pkg_search_path:
         sys.path.insert(0, pkg_search_path)
     import lograptor
-    __package__ = 'lograptor'
+    __package__ = lograptor.__name__
 
 from .cli import main
 main()

@@ -17,8 +17,6 @@ This module contains classes and methods to handle Lograptor configurations.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-
-import os
 import logging
 import string
 
@@ -26,6 +24,7 @@ try:
     from collections import UserDict
 except ImportError:
     # Fall back for Python 2.x
+    # noinspection PyCompatibility
     from UserDict import IterableUserDict as UserDict
 
 try:
@@ -36,10 +35,9 @@ except ImportError:
 
 from collections import OrderedDict
 
-from lograptor.exceptions import ConfigError, FileMissingError, FormatError
-from lograptor.publishers import FilePublisher, MailPublisher
+from .exceptions import LograptorConfigError, FileMissingError, FormatError
 
-logger = logging.getLogger('lograptor')
+logger = logging.getLogger(__name__)
 
 
 class ConfigMap(UserDict):
@@ -47,7 +45,7 @@ class ConfigMap(UserDict):
     This is a container class to manage structured configurations.
     """
 
-    def __init__(self, cfgfile, default_config=None, extra_options=None):
+    def __init__(self, cfgfiles, default_config=None, extra_options=None):
         UserDict.__init__(self)
 
         # Setting defaults. Don't allows duplicates for default keys.
@@ -60,17 +58,15 @@ class ConfigMap(UserDict):
                         self.defaults[key] = value
                     else:
                         msg = "Duplicate key '{0}' in defaults!".format(key)
-                        raise ConfigError(msg)
+                        raise LograptorConfigError(msg)
 
         # Create the config parser instance, read & parse configuration file
         self.parser = configparser.RawConfigParser(dict_type=OrderedDict)
         try:
-            if not os.path.isfile(cfgfile):
-                msg = "Configuration file {0} not found!".format(cfgfile)
-                raise FileMissingError(msg)
-            self.parser.read(cfgfile)
-        except configparser.ParsingError:
-            raise FormatError('Could not parse configuration file %s!' % cfgfile)
+            if not self.parser.read(cfgfiles):
+                raise FileMissingError("No configuration file found in paths: %r" % cfgfiles)
+        except configparser.ParsingError as err:
+            raise FormatError('Could not parse configuration file %r' % err)
 
         # Read configuration from file
         logger.debug('Reading other entries from configuration file')
@@ -239,35 +235,5 @@ class ConfigMap(UserDict):
         """    
         return self.parser.options(section)
 
-    def get_all_publishers(self):
-        """
-        Get available publisher sections as a list. Skip publisher sections with
-        configuration errors.
-
-        :param config: Program configuration
-        :return:
-        """
-        publishers = []
-        for sec in self.parser.sections():
-            sec = sec.strip()
-            if sec in ['main', 'patterns', 'filters', 'report', 'subreports', 'options']:
-                continue
-
-            try:
-                method = self.getstr(sec, 'method')
-            except configparser.NoOptionError:
-                logger.debug('Skip no-publisher section "{0}"'.format(sec))
-
-            try:
-                if method == 'file':
-                    publishers.append(FilePublisher(sec, self))
-                elif method == 'mail':
-                    publishers.append(MailPublisher(sec, self))
-                else:
-                    logger.debug('Wrong value for option "method": {0}. '
-                                 'Skip publisher section "{0}"'.format(method, sec))
-            except ConfigError as msg:
-                logger.debug('Configuration Error: {0}. '
-                             'Skip publisher section "{0}"'.format(msg, sec))
-            logger.debug('Added {0} publisher "{1}".'.format(method, sec))
-        return publishers
+    def sections(self):
+        return self.parser.sections()

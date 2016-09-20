@@ -17,44 +17,63 @@ This module contains various utility functions for Lograptor.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-
 import sys
 import os
 import logging
-import errno
- 
-import lograptor.tui
 
-logger = logging.getLogger('lograptor')
+from .tui import ProgressBar
 
 GZIP_CHUNK_SIZE = 8192
 
 
-def set_logger(loglevel):
+def set_logger(name, loglevel=1, logfile=None):
     """
     Setup a basic logger with an handler and a formatter, using a
-    classic numerical range [0..5]. If a logger is already defined
-    do nothing.
+    corresponding numerical range [0..4], where a higher value means
+    a more verbose logging. The loglevel value is mapped to correspondent
+    logging module's value:
+
+    LOG_CRIT=0 (syslog.h value is 2) ==> logging.CRITICAL
+    LOG_ERR=1 (syslog.h value is 3) ==> logging.ERROR
+    LOG_WARNING=2 (syslog.h value is 4) ==> logging.WARNING
+    LOG_INFO=3 (syslog.h value is 6) ==> logging.INFO
+    LOG_DEBUG=4 (syslog.h value is 7) ==> logging.DEBUG
+
+    If a logfile name is passed then writes logs to file, instead of
+    send logs to the standard output.
+
+    :param name: logger name
+    :param loglevel: Simplified POSIX's syslog like logging level index
+    :param logfile: Logfile name for non-scripts runs
     """
-    if logger.handlers:
-        return
-    
-    loglevel = max(logging.DEBUG, logging.CRITICAL - loglevel * 10)
+    logger = logging.getLogger(name)
+    print("name", name)
 
-    logger.setLevel(loglevel)
-    lh = logging.StreamHandler()
-    lh.setLevel(loglevel)
-    
-    if loglevel <= logging.DEBUG:
-        formatter = logging.Formatter("[%(levelname)s:%(module)s:%(funcName)s: "
-                                      "%(lineno)s] %(message)s")
-    elif loglevel <= logging.INFO:
-        formatter = logging.Formatter("[%(levelname)s:%(module)s] %(message)s")
+    # Higher or lesser argument values are also mapped to DEBUG or CRITICAL
+    effective_level = max(logging.DEBUG, logging.CRITICAL - loglevel * 10)
+
+    logger.setLevel(effective_level)
+
+    # Add the first new handler
+    if not logger.handlers:
+        if logfile is None:
+            lh = logging.StreamHandler()
+        else:
+            lh = logging.FileHandler(logfile)
+        lh.setLevel(effective_level)
+
+        if effective_level <= logging.DEBUG:
+            formatter = logging.Formatter("[%(levelname)s:%(module)s:%(funcName)s: %(lineno)s] %(message)s")
+        elif effective_level <= logging.INFO:
+            formatter = logging.Formatter("[%(levelname)s:%(module)s] %(message)s")
+        else:
+            formatter = logging.Formatter("%(levelname)s: %(message)s")
+
+        lh.setFormatter(formatter)
+        logger.addHandler(lh)
     else:
-        formatter = logging.Formatter("%(levelname)s: %(message)s")
-
-    lh.setFormatter(formatter)
-    logger.addHandler(lh)
+        for handler in logger.handlers:
+            handler.setLevel(effective_level)
 
 
 def do_chunked_gzip(infh, outfh, filename):
@@ -72,8 +91,7 @@ def do_chunked_gzip(infh, outfh, filename):
     sys.stdout.write('Gzipping {0}: '.format(filename))
 
     infh.seek(0)
-    progressbar = lograptor.tui.ProgressBar(sys.stdout, os.stat(infh.name).st_size,
-                                            "bytes gzipped")
+    progressbar = ProgressBar(sys.stdout, os.stat(infh.name).st_size, "bytes gzipped")
     while True:
         chunk = infh.read(GZIP_CHUNK_SIZE)
         if not chunk:
@@ -87,7 +105,6 @@ def do_chunked_gzip(infh, outfh, filename):
             
         readsize += len(chunk)
         progressbar.redraw(readsize)
-        logger.debug('Wrote {0} bytes'.format(len(chunk)))
 
     gzfh.close()
 
@@ -98,8 +115,6 @@ def mail_smtp(smtpserv, fromaddr, toaddr, msg):
     """
     import smtplib
 
-    logger.info('Mailing via SMTP server {0}'.format(smtpserv))
-
     server = smtplib.SMTP(smtpserv)
     server.sendmail(fromaddr, toaddr, msg)
     server.quit()
@@ -109,8 +124,6 @@ def mail_sendmail(sendmail, msg):
     """
     Send mail using sendmail.
     """
-    logger.info('Mailing the message via sendmail')
-
     p = os.popen(sendmail, 'w')
     p.write(msg)
     p.close()

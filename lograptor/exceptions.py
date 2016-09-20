@@ -22,6 +22,10 @@ import logging
 logger = logging.getLogger('lograptor')
 
 
+class LograptorException(Exception):
+    pass
+
+
 class FormatError(Exception):
     """
     This exception is raised when there are errors with the
@@ -32,7 +36,7 @@ class FormatError(Exception):
         logger.debug('!FormatError: {0}'.format(message))
 
 
-class ConfigError(Exception):
+class LograptorConfigError(Exception):
     """
     This exception is raised when there are errors in a configuration
     file or when there are misconfiguration problems.
@@ -40,6 +44,15 @@ class ConfigError(Exception):
     def __init__(self, message):
         Exception.__init__(self, message)
         logger.debug('!ConfigError: {0}'.format(message))
+
+
+class LograptorArgumentError(LograptorException):
+    def __init__(self, argument=None, message=None):
+        if message is None:
+            message = 'syntax error for argument {0}'.format(argument)
+        else:
+            message = 'argument {0}: {1}'.format(argument, message)
+        Exception.__init__(self, message)
 
 
 class OptionError(Exception):

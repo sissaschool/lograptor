@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-This module is used to publish the report produced by a run of
-Lograptor instance.
+This module defines communication channels for the program.
 """
 #
 # Copyright (C), 2011-2016, by Davide Brunato and
@@ -26,41 +25,59 @@ import time
 import shutil
 import logging
 
-from string import Template
-
-import lograptor
-from lograptor.exceptions import ConfigError
-from lograptor.info import __version__
-from lograptor.utils import mail_sendmail, mail_smtp, do_chunked_gzip
-
-logger = logging.getLogger('lograptor')
+from .exceptions import LograptorConfigError
+from .info import __version__
+from .utils import mail_sendmail, mail_smtp, do_chunked_gzip
 
 
-class BasePublisher(object):
+logger = logging.getLogger(__name__)
+
+
+class BaseChannel(object):
     """
-    Base class for Lograptor's publishers, grouping common attributes and methods.
+    Base class for Lograptor's channels.
     """
 
-    def __init__(self, section, config):
-        self.section = section
-        self.formats = list(set(re.split('\s*, \s*', config.getstr(section, 'formats'))))
+    def __init__(self, name, config):
+        self.name = name
+        self.formats = list(set(re.split('\s*, \s*', config.getstr('channel.%s' % name, 'formats'))))
         logger.debug('Formats ={0}'.format(self.formats))
 
     def has_format(self, ext):
         return (ext == 'txt' and 'plain' in self.formats) or ext in self.formats
 
+    def has_format2(self, fmt):
+        return fmt in self.formats
+        #return (ext == 'txt' and 'plain' in self.formats) or ext in self.formats
 
-class MailPublisher(BasePublisher):
+    @staticmethod
+    def get_line_printer():
+        """
+        Return the printer function for send macthed lines to channel.
+        :return:
+        """
+        raise NotImplementedError(
+            "%r: you must provide a concrete get_line_printer() method"
+        )
+
+
+class StdoutChannel(BaseChannel):
     """
-    This publisher sends the results of an Lograptor run as an email message.
+    Channel for standard output.
     """
-    
-    name = 'Mail Publisher'
-    
+    @staticmethod
+    def get_line_printer():
+        return print
+
+
+class MailChannel(BaseChannel):
+    """
+    Channel type to send results with SMTP.
+    """
     def __init__(self, section, config):
-        super(MailPublisher, self).__init__(section, config)
-        self.fromaddr = config['fromaddr']
-        self.smtpserv = config['smtpserv']
+        super(MailChannel, self).__init__(section, config)
+        self.email_address = config['email_address']
+        self.smtp_server = config['smtp_server']
 
         self.mailto = list(set(re.split('\s*, \s*', config.getstr(section, 'mailto'))))
         logger.debug('Recipients list ={0}'.format(self.mailto))
@@ -101,7 +118,7 @@ class MailPublisher(BasePublisher):
     def __repr__(self):
         return u'{0}({1}: mailto={2})'.format(self.section, self.name, u','.join(self.mailto))
 
-    def publish(self, title, report_parts, rawfh):
+    def send(self, title, report_parts, rawfh):
         """
         Publish by sending the report by e-mail
         """
@@ -121,7 +138,7 @@ class MailPublisher(BasePublisher):
         logger.debug('Creating the text/"text_type" parts')
         for text_part in report_parts:
 
-            # Skip report formats not related with this publisher
+            # Skip report formats not related with this channel
             if not self.has_format(text_part.ext):
                 continue
 
@@ -135,7 +152,7 @@ class MailPublisher(BasePublisher):
 
         if self.rawlogs:
             try:
-                import cStringIOcd
+                import cStringIO
                 out = cStringIO.StringIO()
             except ImportError:
                 import io
@@ -258,11 +275,11 @@ class MailPublisher(BasePublisher):
 
         # Define headers
         root_part['Date'] = formatdate()
-        root_part['From'] = self.fromaddr
+        root_part['From'] = self.email_address
         root_part['To'] = ', '.join(self.mailto)
         root_part['Subject'] = title
         root_part['Message-Id'] = make_msgid()
-        root_part['X-Mailer'] = u'{0}-{1}'.format(lograptor.Lograptor.__name__, __version__)
+        root_part['X-Mailer'] = u'{0}-{1}'.format(Lograptor.__name__, __version__)
         
         logger.debug('Creating the message as string')
         msg = root_part.as_string()
@@ -273,23 +290,23 @@ class MailPublisher(BasePublisher):
 
         logger.info('Figuring out if we are using sendmail or smtplib')
 
-        if re.compile('^/').search(self.smtpserv):
-            mail_sendmail(self.smtpserv, msg)
+        if re.compile('^/').search(self.smtp_server):
+            mail_sendmail(self.smtp_server, msg)
         else:   
-            mail_smtp(self.smtpserv, self.fromaddr, self.mailto, msg)
+            mail_smtp(self.smtp_server, self.email_address, self.mailto, msg)
 
         print('Mailed the report to: {0}'.format(','.join(self.mailto)))
 
 
-class FilePublisher(BasePublisher):
+class FileChannel(BaseChannel):
     """
-    FilePublisher publishes the results of an Lograptor run into a set of files
+    FileChannel save results of a run into a set of files
     and directories on the hard drive.
     """
-    name = 'File Publisher'
+    name = 'file'
 
     def __init__(self, section, config):
-        super(FilePublisher, self).__init__(section, config)
+        super(FileChannel, self).__init__(section, config)
         self.expire = config.getint(section, 'expire_in')
         self.dirmask = config.getstr(section, 'dirmask')
         self.filemask = config.getstr(section, 'filemask')
@@ -300,12 +317,12 @@ class FilePublisher(BasePublisher):
         try: 
             self.dirname = time.strftime(self.dirmask, time.localtime())
         except: 
-            raise ConfigError(maskmsg.format('dirmask', self.dirmask))
+            raise LograptorConfigError(maskmsg.format('dirmask', self.dirmask))
 
         try: 
             self.filename = time.strftime(self.filemask, time.localtime())
         except TypeError:
-            ConfigError(maskmsg.format('filemask', self.filemask))
+            LograptorConfigError(maskmsg.format('filemask', self.filemask))
 
         self.rawlogs = config.getboolean(section, 'save_rawlogs')       
         if self.rawlogs:
@@ -323,16 +340,16 @@ class FilePublisher(BasePublisher):
         except TypeError:
             pass
 
-        self.fromaddr = config['fromaddr']
-        self.smtpserv = config['smtpserv']
+        self.fromaddr = config['email_address']
+        self.smtp_server = config['smtp_server']
 
         if self.notify:
             try:
                 self.pubroot = config.getstr(section, 'pubroot')
                 logger.debug('pubroot={0}'.format(self.pubroot))
             except:
-                msg = 'File publisher requires a pubroot when notify is set'
-                raise ConfigError(msg)
+                msg = 'File channel requires a pubroot when notify is set'
+                raise LograptorConfigError(msg)
         
         logger.debug('path={0}'.format(self.pubdir))
         logger.debug('filename={0}'.format(self.filename))
@@ -379,11 +396,11 @@ class FilePublisher(BasePublisher):
 
         logger.info('Finished with pruning')
         
-    def publish(self, title, report_parts, rawfh):
+    def send(self, title, report_parts, rawfh):
         """
         Publish the report parts to local files. Each report part is a text
-        with a title and specific extension. For html and plaintext publishing
-        the report part is unique, for csv publishing the stats and unparsed
+        with a title and specific extension. For html and plaintext sending
+        the report part is unique, for csv send also the stats and unparsed
         string are plain text and report items are csv texts.
         """
         logger.info('Checking and creating the report directories')
@@ -395,9 +412,7 @@ class FilePublisher(BasePublisher):
             try: 
                 os.makedirs(workdir)
             except OSError as e:
-                logger.error('Error creating directory "{0}": {0}'.format(
-                             workdir, e))
-                logger.error('File publisher exiting.')
+                logger.error('Error creating directory "{0}": {0}'.format(workdir, e))
                 return
 
         fmtname = '{0}-{1}-{2}.{3}' if len(report_parts) > 1 else '{0}.{3}'
@@ -405,7 +420,7 @@ class FilePublisher(BasePublisher):
         for i in range(len(report_parts)):
             ext = report_parts[i].ext
 
-            # Skip report formats not related with this publisher
+            # Skip report formats not related with this channel
             if not self.has_format(ext):
                 continue
 
@@ -429,15 +444,15 @@ class FilePublisher(BasePublisher):
 
             eml['Subject'] = '{0} (report notification)'.format(title)
             eml['To'] = ', '.join(self.notify)
-            eml['X-Mailer'] = u'{0}-{1}'.format(lograptor.Lograptor.__name__, __version__)
+            eml['X-Mailer'] = u'{0}-{1}'.format(Lograptor.__name__, __version__)
 
             msg = eml.as_string()
 
             logger.info('Figuring out if we are using sendmail or smtplib')
-            if self.smtpserv[0] == '/':
-                mail_sendmail(self.smtpserv, msg)
+            if self.smtp_server[0] == '/':
+                mail_sendmail(self.smtp_server, msg)
             else:
-                mail_smtp(self.smtpserv, self.fromaddr, self.notify, msg)
+                mail_smtp(self.smtp_server, self.fromaddr, self.notify, msg)
 
             print('Notification mailed to: {0}'.format(','.join(self.notify)))
 

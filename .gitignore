@@ -1,11 +1,8 @@
 *.pyc
 *.pyo
-*/*.pyc
-*/*.pyo
 *~
 MANIFEST
 lograptor.conf
-logmarker.py
 etc/lograptor/conf.d/testapp.conf
 !etc/lograptor/lograptor.conf
 exclude-list.txt
@@ -16,6 +13,8 @@ deb_dist/
 dist/
 doc/_build/
 doc/*.pdf
+doc/_static/
+doc/_templates/
 man/*.html
 man/*.gz
 packages/
@@ -24,3 +23,8 @@ lograptor/tests/samples/
 var/
 .idea/
 .cache/
+.vagrant/
+__pycache__/
+lograptor/__pycache__/
+lograptor/tests/__pycache__/
+
