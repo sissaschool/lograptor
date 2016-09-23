@@ -19,13 +19,7 @@ This module contains classes and methods to handle Lograptor configurations.
 #
 import logging
 import string
-
-try:
-    from collections import UserDict
-except ImportError:
-    # Fall back for Python 2.x
-    # noinspection PyCompatibility
-    from UserDict import IterableUserDict as UserDict
+import copy
 
 try:
     import configparser
@@ -34,206 +28,159 @@ except ImportError:
     import ConfigParser as configparser
 
 from collections import OrderedDict
-
-from .exceptions import LograptorConfigError, FileMissingError, FormatError
+from .exceptions import NoSectionError, NoOptionError, FileMissingError, FormatError
 
 logger = logging.getLogger(__name__)
 
 
-class ConfigMap(UserDict):
+def _interpolate(configdict, env):
+    """
+    Make string interpolation of a two-level configuration
+    dictionary using an environment dict.
+
+    :param configdict: The configuration dictionary.
+    :param env: The environment dictionary.
+    """
+    while True:
+        changed = False
+        for sect in configdict.values():
+            for opt, value in filter(lambda x: isinstance(x[1], str), sect.items()):
+                if string.Template(value).safe_substitute({opt: value}) == value:
+                    new = string.Template(value).safe_substitute(env)
+                    if new != value:
+                        sect[opt] = new
+                        changed = True
+        if not changed:
+            break
+
+
+class ConfigMap(object):
     """
     This is a container class to manage structured configurations.
+    It uses a default 2-level dictionary to store default values and
+    to determine the option types. String type values are stripped by quotes and
+    spaces. The base_sections and the env keywords arguments defines the values
+    considered for the interpolation, considering the options of the sections passed.
     """
+    def __init__(self, cfgfiles, defaults=None, base_sections=None, **env):
+        defaults = defaults or {}
+        base_sections = base_sections or {}
 
-    def __init__(self, cfgfiles, default_config=None, extra_options=None):
-        UserDict.__init__(self)
-
-        # Setting defaults. Don't allows duplicates for default keys.
-        self.defaults = {}
-        if default_config is not None:
-            logger.debug('Setting configuration defaults')
-            for sect_defaults in default_config.values():
-                for key, value in sect_defaults.items():
-                    if key not in self.defaults:
-                        self.defaults[key] = value
-                    else:
-                        msg = "Duplicate key '{0}' in defaults!".format(key)
-                        raise LograptorConfigError(msg)
-
-        # Create the config parser instance, read & parse configuration file
+        self.config = {}
+        self.defaults = copy.deepcopy(defaults)
         self.parser = configparser.RawConfigParser(dict_type=OrderedDict)
+        self.base_sections = base_sections
+        self.env = env
+
         try:
             if not self.parser.read(cfgfiles):
-                raise FileMissingError("No configuration file found in paths: %r" % cfgfiles)
+                raise FileMissingError("no configuration file found in paths: %r" % cfgfiles)
         except configparser.ParsingError as err:
-            raise FormatError('Could not parse configuration file %r' % err)
+            raise FormatError('could not parse configuration file %r' % err)
 
-        # Read configuration from file
-        logger.debug('Reading other entries from configuration file')
-        for sect, sect_options in default_config.items():
-            # Skip unnamed (None) section
-            if sect is None:
-                continue
-
-            for opt, value in sect_options.items():
-                logger.debug("Get option '%s' from section '%s'" % (opt, sect))
+        # Read default sections from configuration file
+        for sect, options in defaults.items():
+            self.config[sect] = dict()
+            for opt, value in options.items():
                 try:
                     if isinstance(value, bool):
-                        self.data[opt] = self.parser.getboolean(sect, opt)
+                        self.config[sect][opt] = self.parser.getboolean(sect, opt)
                     elif isinstance(value, int):
-                        self.data[opt] = self.parser.getint(sect, opt)
+                        self.config[sect][opt] = self.parser.getint(sect, opt)
                     elif isinstance(value, float):
-                        self.data[opt] = self.parser.getfloat(sect, opt)
+                        self.config[sect][opt] = self.parser.getfloat(sect, opt)
                     else:
-                        self.data[opt] = self.parser.get(sect, opt).strip('\'"').replace('\n', '')
+                        self.config[sect][opt] = self.parser.get(sect, opt).strip('\'"').replace('\n', '')
                 except (configparser.NoSectionError, configparser.NoOptionError):
                     # If missing section/option then use default value
                     if not self.parser.has_section(sect):
                         self.parser.add_section(sect)
-                    self.parser.set(sect, opt, self.defaults[opt])
-                    self.data[opt] = self.defaults[opt]
+                    self.parser.set(sect, opt, self.defaults[sect][opt])
+                    self.config[sect][opt] = self.defaults[sect][opt]
 
-            # Read additional options from cfgfile.
-            if self.parser.has_section(sect):
-                for opt in self.parser.options(sect):
-                    if opt in sect_options:
-                        continue
-                    if opt not in self.data:
-                        logger.debug("Add option '%s' from section '%s'" % (opt, sect))
-                        self.data[opt] = self.parser.get(sect, opt).strip('\'"').replace('\n', '')
-                    else:
-                        # Don't allows duplicates in configuration file to avoid errors
-                        msg = "Duplicate option '{0}' in configuration file!".format(opt)
-                        raise KeyError(msg)
-
-        # Update data with extra options (allows override of configuration
-        # file options)
-        logger.debug('Reading entries from extra options')
-        if extra_options is not None:
-            try:
-                self.data.update(extra_options)
-            except TypeError:
-                self.data.update(vars(extra_options))
+            if sect in base_sections:
+                self.env.update(options)
 
         # Interpolation for all strings. Also the default strings
         # are interpolated to mantain the equality comparisons.
-        while True:
-            changed = False
-            for opt in self.data:
-                if isinstance(self.data[opt], str):
-                    new = self._interpolate(self.data[opt])
-                    if new != self.data[opt]:
-                        self.data[opt] = new
-                        changed = True
-            if not changed:
-                break
+        _interpolate(self.config, self.env)
+        _interpolate(self.defaults, self.env)
 
-        for opt, value in self.defaults.items():
-            if isinstance(value, str):
-                self.defaults[opt] = self._interpolate(value)
+    @staticmethod
+    def _get(config, section, option):
+        try:
+            sect = config[section]
+        except KeyError:
+            try:
+                sect = config['%s.default' % section.split('.', 1)[0]]
+            except KeyError:
+                raise NoSectionError(section)
 
-    def _interpolate(self, option):
-        """
-        Make an option interpolation using UserDict data dictionary
-        """
-        return string.Template(option).safe_substitute(self.data)
-        
-    def __setitem__(self, option, value):
-        """
-        Setting an option. Do nothing if the option's value is None, so
-        an option with a default value not None, cannot be assigned with
-        None.
-        """
-        if value is None:
-            return
-        if option in self:
-            del self[option]
+        try:
+            return sect[option]
+        except KeyError as err:
+            raise NoOptionError(section, err)
+
+    def get_default(self, section, option):
+        return self._get(self.defaults, section, option)
+
+    def is_default(self, section, option):
+        default = self.get_default(section, option)
+        if default is None:
+            return self.config[option] is None
         else:
-            raise KeyError("Key {0} not in options".format(option))
-        UserDict.__setitem__(self, option, value)
-
-    def is_default(self, option):
-        """
-        Compare key value with the default
-        """
-        if option in self.defaults:
-            if self.defaults[option] is None:
-                return self.data[option] is None
-            return self.data[option] == self.defaults[option]
-        else:
-            raise KeyError('Option "{0}" is not in defaults'.format(option))
-
-    def get_default(self, option):
-        """
-        Get the default value of an option
-        """
-        if option in self.defaults:
-            return self.defaults[option]
-        else:
-            raise KeyError('Option "{0}" is not in defaults'.format(option))
+            return self.config[section][option] == default
 
     def getstr(self, section, option):
-        """
-        Get an option from a section of configuration file
-        """
+        default = self.get_default(section, option)
+        if not isinstance(default, str) and not isinstance(default, type(u'')):
+            raise TypeError("option %r of section %r: not a string!" % (option, section))
         try:
-            return self.parser.get(section, option).strip('\'"').replace('\n', '')
-        except configparser.NoOptionError:
-            default = self.get_default(option) 
+            value = self._get(self.config, section, option)
+            return value.strip('\'"').replace('\n', '')
+        except (NoOptionError, NoSectionError):
             if default is None:
-                raise configparser.NoOptionError(option, section)
-            return default        
+                raise
+            return default
 
-    def getboolean(self, section, option):
-        """
-        Get a boolean option from a section of configuration file 
-        """
-        if not isinstance(self.defaults[option], bool):
-            raise TypeError('"{0}" not a boolean option!!'.format(option))
-
+    def getbool(self, section, option):
+        default = self.get_default(section, option)
+        if not isinstance(default, bool):
+            raise TypeError("option %r of section %r: not a boolean!" % (option, section))
         try:
-            return self.parser.getboolean(section, option)
-        except configparser.NoOptionError:
-            default = self.get_default(option) 
+            return bool(self._get(self.config, section, option))
+        except (NoOptionError, NoSectionError):
             if default is None:
-                raise configparser.NoOptionError(option, section)
+                raise
             return default
 
     def getint(self, section, option):
-        """
-        Get an integer option from a section of configuration file 
-        """
-        if not isinstance(self.defaults[option], int):
-            raise TypeError('"{0}" not an integer option!!'.format(option))
-
+        default = self.get_default(section, option)
+        if not isinstance(default, int):
+            raise TypeError("option %r of section %r: not an integer!" % (option, section))
         try:
-            return self.parser.getint(section, option)
-        except configparser.NoOptionError:
-            default = self.get_default(option) 
+            return int(self._get(self.config, section, option))
+        except (NoOptionError, NoSectionError):
             if default is None:
-                raise configparser.NoOptionError(option, section)
+                raise
             return default
 
     def getfloat(self, section, option):
-        """
-        Get a floating point option from a section of configuration file 
-        """
-        if not isinstance(self.defaults[option], float):
-            raise TypeError('"{0}" not a floating point option!!'.format(option))
-
+        default = self.get_default(section, option)
+        if not isinstance(default, float):
+            raise TypeError("option %r of section %r: not a string!" % (option, section))
         try:
-            return self.parser.getfloat(section, option)
-        except configparser.NoOptionError:
-            default = self.get_default(option) 
+            return float(self._get(self.config, section, option))
+        except (NoOptionError, NoSectionError):
             if default is None:
-                raise configparser.NoOptionError(option, section)
+                raise
             return default
 
     def options(self, section):
-        """
-        Get the options list for a section of configuration file
-        """    
         return self.parser.options(section)
 
     def sections(self):
         return self.parser.sections()
+
+    def items(self, section):
+        return self.parser.items(section)

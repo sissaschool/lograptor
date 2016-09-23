@@ -23,6 +23,8 @@ import sys
 import contextlib
 import argparse
 import time
+import re
+import sre_constants
 
 from .core import exec_lograptor
 from .info import __version__, __description__
@@ -44,14 +46,17 @@ def filter_spec(string):
     _filter = dict()
     for flt in string.split(','):
         try:
-            key, value = flt.split('=', 1)
-            key, value = key.lower(), value.strip('\'"')
-            if not key:
+            field, pattern = flt.split('=', 1)
+            field, pattern = field.lower(), pattern.strip('\'"')
+            if not field:
                 raise argparse.ArgumentTypeError('filter %r: empty field name!' % flt)
-            elif not value:
+            elif not pattern:
                 raise argparse.ArgumentTypeError('filter %r: empty pattern!' % flt)
-            else:
-                _filter[key] = value
+
+            try:
+                _filter[field] = re.compile(pattern)
+            except sre_constants.error:
+                raise argparse.ArgumentTypeError("wrong regex pattern in filter %r" % flt)
         except ValueError:
             raise argparse.ArgumentTypeError('filter %r: wrong format!' % flt)
     return _filter

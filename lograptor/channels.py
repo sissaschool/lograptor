@@ -43,12 +43,18 @@ class BaseChannel(object):
         self.formats = list(set(re.split('\s*, \s*', config.getstr('channel.%s' % name, 'formats'))))
         logger.debug('Formats ={0}'.format(self.formats))
 
+    def __repr__(self):
+        return u"<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
+
     def has_format(self, ext):
         return (ext == 'txt' and 'plain' in self.formats) or ext in self.formats
 
     def has_format2(self, fmt):
         return fmt in self.formats
         #return (ext == 'txt' and 'plain' in self.formats) or ext in self.formats
+
+    def is_raw(self):
+        return True
 
     @staticmethod
     def get_line_printer():

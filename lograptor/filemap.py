@@ -121,14 +121,14 @@ class FileMap(object):
         Iterate into the file map, with filename glob expansion.
         """
         if self.start_dt is None:
-            for filename, values in self._filemap.iglob():
-                namelist = [i for sublist in values for i in sublist]
-                yield filename, sorted(namelist, key=lambda x: (self._priority[x], x))
+            for filename, items in self._filemap.iglob():
+                items = [i for sublist in items for i in sublist]
+                yield filename, sorted(items, key=lambda x: self._priority[x])
         else:
-            for filename, values in self._filemap.iglob(mapfunc=strftimegen(self.start_dt, self.end_dt)):
-                namelist = [i for sublist in values for i in sublist]
+            for filename, items in self._filemap.iglob(mapfunc=strftimegen(self.start_dt, self.end_dt)):
+                items = [i for sublist in items for i in sublist]
                 if self.check_stat(filename):
-                    yield filename, sorted(namelist, key=lambda x: (self._priority[x], x))
+                    yield filename, sorted(items, key=lambda x: self._priority[x])
 
     def check_stat(self, path):
         """

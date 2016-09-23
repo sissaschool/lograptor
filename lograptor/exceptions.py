@@ -26,7 +26,7 @@ class LograptorException(Exception):
     pass
 
 
-class FormatError(Exception):
+class FormatError(LograptorException):
     """
     This exception is raised when there are errors with the
     format of syslog file processed.
@@ -36,7 +36,7 @@ class FormatError(Exception):
         logger.debug('!FormatError: {0}'.format(message))
 
 
-class LograptorConfigError(Exception):
+class LograptorConfigError(LograptorException):
     """
     This exception is raised when there are errors in a configuration
     file or when there are misconfiguration problems.
@@ -55,7 +55,17 @@ class LograptorArgumentError(LograptorException):
         Exception.__init__(self, message)
 
 
-class OptionError(Exception):
+class NoSectionError(LograptorException):
+    def __init__(self, section):
+        Exception.__init__(self, "No section: %r" % section)
+
+
+class NoOptionError(LograptorException):
+    def __init__(self, section, option):
+        Exception.__init__(self, "No option %r in section: %r" % (option, section))
+
+
+class OptionError(LograptorException):
     """
     This exception is raised when there is a wrong option values or
     when there are conflicts between options.
@@ -69,7 +79,7 @@ class OptionError(Exception):
         logger.debug('!OptionError: {0}'.format(message))
 
 
-class RuleMissingError(Exception):
+class RuleMissingError(LograptorException):
     """
     This exception is raised when a rule definition is missing.
     """
@@ -78,7 +88,7 @@ class RuleMissingError(Exception):
         logger.debug('!RuleMissingError: {0}'.format(message))
 
 
-class FileMissingError(Exception):
+class FileMissingError(LograptorException):
     """
     This exception is raised when a file is missing.
     """
@@ -87,7 +97,7 @@ class FileMissingError(Exception):
         logger.debug('!FileMissingError: {0}'.format(message))
 
 
-class FileAccessError(Exception):
+class FileAccessError(LograptorException):
     """
     This exception is raised when Lograptor has problem to access to a file.
     """

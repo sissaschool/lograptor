@@ -19,6 +19,7 @@ This module contains various utility functions for Lograptor.
 #
 import sys
 import os
+import string
 import logging
 
 from .tui import ProgressBar
@@ -198,3 +199,22 @@ def get_fmt_results(resdict, limit=5, sep='::', fmt=None):
     else:
         reslist.append(u'[%d more skipped]' % (len(resdict)-len(reslist)))
     return reslist
+
+
+def field_multisub(strings, field, values):
+    result = set()
+    for s in strings:
+        result.update(
+            [string.Template(s).safe_substitute({field: v}) for v in values]
+        )
+    return list(result)
+
+
+def exact_sub(s, mapping):
+    fields = list()
+    for key, value in mapping.items():
+        new_s = string.Template(s).safe_substitute({key: value})
+        if new_s != s:
+            fields.append(key)
+            s = new_s
+    return s, fields

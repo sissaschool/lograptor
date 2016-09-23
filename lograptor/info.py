@@ -22,14 +22,14 @@ __author__ = "Davide Brunato"
 __copyright__ = "Copyright 2011-2016, SISSA"
 __credits__ = ["Davide Brunato"]
 __license__ = "GPLv2+"
-__version__ = "2.0a"
+__version__ = "1.1a"
 __maintainer__ = "Davide Brunato"
 __email__ = "brunato@sissa.it"
 __status__ = "Development"
 __description__ = ("Command-line utility for processing log files. "
                    "Produces matching outputs, data and reports.")
-LONG_DESCRIPTION =\
-"""Lograptor is a tool which provides a command-line interface for system logs processing.
+LONG_DESCRIPTION = """
+Lograptor is a tool which provides a command-line interface for system logs processing.
 
 Pattern matching's searches can be performed together with filtering
 rules and scope delimitation options. Each run can produce data and

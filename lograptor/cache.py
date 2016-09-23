@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-This module contains class to handle output mapping and lookup
-internal caching for Lograptor's application class instances.
+This module contains class to handle caching for Lograptor's
+application class instances.
 """
 #
 # Copyright (C), 2011-2016, by Davide Brunato and
@@ -18,9 +18,12 @@ internal caching for Lograptor's application class instances.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import print_function
+
 import re
 import socket
 import string
+from collections import OrderedDict
 
 try:
     import pwd
@@ -28,9 +31,102 @@ except ImportError:
     pwd = None
 
 
-class OutMap(object):
+class CacheEntry(object):
     """
-    Output mapping class: translate matching groups for output.
+    Simple container class for cache entries
+    """
+    def __init__(self, event_time):
+        self.pattern_match = False
+        self.full_match = False
+        self.counted = False
+        self.buffer = list()
+        self.start_time = self.end_time = event_time
+
+
+class LineCache(object):
+    """
+    A class to manage line caching
+    """
+    
+    def __init__(self):
+        self.data = OrderedDict()
+
+    def add_line(self, line, thread, pattern_match, full_match, event_time):
+        try:
+            cache_entry = self.data[thread]
+        except KeyError:
+            cache_entry = self.data[thread] = CacheEntry(event_time)
+        
+        if pattern_match:
+            cache_entry.pattern_match = True
+        if full_match:
+            cache_entry.full_match = True
+        cache_entry.buffer.append(line)
+        cache_entry.end_time = event_time
+        
+    def flush_cache(self, event_time, print_out_lines, max_threads=None):
+        """
+        Flush the cache to output. Only matched threads are printed.
+        Delete cache entries older (last updated) than 1 hour. Return
+        the total lines of matching threads.
+        """
+        cache = self.data
+        counter = 0
+        
+        for thread in cache.keys():
+            if cache[thread].pattern_match and cache[thread].full_match:
+                if max_threads is not None:
+                    max_threads -= 1
+                    if max_threads < 0:
+                        break
+
+                if not cache[thread].counted:
+                    counter += 1
+                    cache[thread].counted = True
+
+                if cache[thread].buffer:
+                    if print_out_lines:
+                        for line in cache[thread].buffer:
+                            print(line, end='')
+                        print('--')
+                    cache[thread].buffer = []
+            if abs(event_time - cache[thread].end_time) > 3600:
+                del cache[thread]
+        return counter
+    
+    def flush_old_cache(self, event_time, print_out_lines, max_threads=None):
+        """
+        Flush the older cache to output. Only matched threads are printed.
+        Delete cache entries older (last updated) than 1 hour. Return the
+        total lines of old matching threads.
+        """
+        cache = self.data
+        counter = 0
+        for thread in cache.keys():
+            if abs(event_time - cache[thread].end_time) > 3600:
+                if cache[thread].pattern_match and cache[thread].full_match:
+                    if max_threads is not None:
+                        max_threads -= 1
+                        if max_threads < 0:
+                            break
+
+                    if not cache[thread].counted:
+                        counter += 1
+                        cache[thread].counted = True
+
+                    if print_out_lines and cache[thread].buffer:
+                        for line in cache[thread].buffer:
+                            print(line, end='')
+                        print('--')
+                del cache[thread]
+        return counter
+
+
+class RenameCache(object):
+    """
+    Name cache for names, that map IPs to DNS names, UIDs to usernames.
+    The names can be mapped into random generated values for obfuscate
+    the input names maintaining a correspondance for the entire process.
     """
 
     def __init__(self, args, config):
@@ -147,7 +243,7 @@ class OutMap(object):
 
     def getuname(self, uid):
         """
-        Get username for a given uid
+        Get the username of a given uid.
         """
         uid = int(uid)
         try:

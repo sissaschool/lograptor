@@ -21,14 +21,6 @@ and date values for Lograptor package.
 import datetime
 import re
 
-# Map for month field from any admitted representation to numeric.
-MONTHMAP = {
-    'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06',
-    'Jul': '07', 'Aug': '08', 'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12',
-    '01': '01', '02': '02', '03': '03', '04': '04', '05': '05', '06': '06',
-    '07': '07', '08': '08', '09': '09', '10': '10', '11': '11', '12': '12'
-}
-
 
 DATE_FORMATS = (
     ('%%', re.compile(r"(%%)")),        # a literal %
