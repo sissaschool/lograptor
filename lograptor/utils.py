@@ -48,7 +48,6 @@ def set_logger(name, loglevel=1, logfile=None):
     :param logfile: Logfile name for non-scripts runs
     """
     logger = logging.getLogger(name)
-    print("name", name)
 
     # Higher or lesser argument values are also mapped to DEBUG or CRITICAL
     effective_level = max(logging.DEBUG, logging.CRITICAL - loglevel * 10)
@@ -218,3 +217,23 @@ def exact_sub(s, mapping):
             fields.append(key)
             s = new_s
     return s, fields
+
+
+def build_dispatcher(objects, func_name):
+    _functions = [getattr(obj, func_name) for obj in objects]
+    if not all([callable(f) for f in _functions]):
+        raise TypeError('%r: not a callable for all objects %r' % (func_name, objects))
+
+    def dummy_dispatcher(*args, **kwargs):
+        pass
+
+    def multi_dispatcher(*args, **kwargs):
+        for f in _functions:
+            f(*args, **kwargs)
+
+    if not objects:
+        return dummy_dispatcher
+    elif len(objects) == 1:
+        return getattr(objects[0], func_name)
+    else:
+        return multi_dispatch

@@ -184,7 +184,7 @@ def create_argument_parser():
         type=comma_separated_string, help="send output to channels (default: ['stdout'])"
     )
     group.add_argument(
-        "-m", "--max-count", metavar='NUM', action="store", type=positive_integer, default=None,
+        "-m", "--max-count", metavar='NUM', action="store", type=positive_integer, default=0,
         help="stop after NUM matches"
     )
     group.add_argument(
@@ -192,11 +192,11 @@ def create_argument_parser():
         help="print line number with output lines"
     )
     group.add_argument(
-        "-H", "--no-source", action="store_false", dest="print_filename", default=None,
+        "-H", "--with-filename", action="store_true", dest="with_filename", default=None,
         help="print the file name for each match"
     )
     group.add_argument(
-        "-h", "--with-source", action="store_true", dest="print_filename", default=None,
+        "-h", "--no-filename", action="store_false", dest="with_filename", default=None,
         help="suppress the file name prefix on output"
     )
     group.add_argument(
@@ -239,7 +239,7 @@ def create_argument_parser():
         help="print only a count of matching lines per FILE"
     )
     group.add_argument(
-        "--color", action="store_true", default=False,
+        "--color", default='auto', nargs='?', choices=['auto', 'always', 'never'],
         help="use markers to highlight the matching strings"
     )
 

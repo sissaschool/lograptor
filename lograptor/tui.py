@@ -120,11 +120,11 @@ class ProgressBar(object):
 
     def __init__(self, output, maxval=0, suffix=""):
         """
-        Create and initialize the progress bar 
+        Create and initialize the progress bar
         """
         self.output = output
         self.suffix = suffix
-        
+
         self.step_perc = max(1, min(int(100000/maxval), 5))
         self.barwidth = int(0.3 * getTerminalSize()[0])
         self.nextperc = 0
@@ -138,7 +138,7 @@ class ProgressBar(object):
         self._width = self.barwidth + 4 + len(self.suffix)
         self.output.flush()
         self.initialized = True
-    
+
     def redraw(self, value, counter=0):
         """
         Redraw the progress bar with a value and a counter.
@@ -147,19 +147,19 @@ class ProgressBar(object):
             return
         if value < 0:
             raise ValueError("Size of a progress bar must be a non negative value")
-        
-        perc = int(100 * value / self.maxval)        
+
+        perc = int(100 * value / self.maxval)
         if (perc >= self.nextperc) or perc >= 100:
             fill = min(self.barwidth, int(self.barwidth * perc / 100))
             counter = str(counter) if counter > 0 else str(value)
-            
+
             sys.stdout.write("\b" * self._width)  # return to start of line, after '['
             sys.stdout.write('{0}{1}] {2} {3}'
                              .format("#" * fill, " " * (self.barwidth-fill),
                                      counter, self.suffix))
             sys.stdout.flush()
             if perc < 100:
-                self._width = self.barwidth + len(self.suffix) + len(counter) + 3 
+                self._width = self.barwidth + len(self.suffix) + len(counter) + 3
                 self.nextperc = perc + self.step_perc
             else:
                 sys.stdout.write("\n")

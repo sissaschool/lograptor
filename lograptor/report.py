@@ -37,7 +37,7 @@ except ImportError:
     import ConfigParser as configparser
 
 from lograptor.utils import get_fmt_results
-import lograptor.info
+from .info import __version__
 import lograptor.channels
 import lograptor.tui
 import lograptor.utils
@@ -558,7 +558,6 @@ class Report(object):
         :param stats: statistics about the program's run
         """
         self.subreports = []
-        self.formats = []
         self.stats = dict()
         
         self.runtime = time.localtime()
@@ -576,15 +575,6 @@ class Report(object):
         self.title = config['title']
         self.html_template = config['html_template'].strip()
         self.text_template = config['text_template'].strip()
-
-        self.filters = {
-            'user': config['user'] if not config.is_default('user') else "",
-            'from': config['from'] if not config.is_default('from') else "",
-            'rcpt': config['rcpt'] if not config.is_default('rcpt') else "",
-            'client': config['client'] if not config.is_default('client') else "",
-            'pid': config['pid'] if not config.is_default('pid') else ""
-            }
-        
         self.unparsed = args.unparsed
 
         titlevars = {
@@ -611,24 +601,75 @@ class Report(object):
         """
         Create the report from application results
         """
-
         for subreport in self.subreports:
             logger.info('Make subreport "{0}"'.format(subreport.name))
-            subreport.make(self.apps)        
+            subreport.make(self.apps)
 
         for subreport in self.subreports:
             subreport.compact_tables()
-        return not self.is_empty()
 
-    def make_formats(self, formats):
+    def cleanup(self):
+        pass
+
+    def get_formats(self, formats, apps):
         """
         Make report item texts in a specified format
         """
-        self.formats = formats
+        if self.is_empty():
+            logger.info("the report is empty: skip sending to channels")
+            return []
+
         for fmt in formats:
             width = 100 if fmt is not None else lograptor.tui.getTerminalSize()[0]
             for subrep in self.subreports:
                 subrep.make_format(fmt, width)
+
+        logger.info('Retrieve parameters and run\'s statistics')
+        valumap = {
+            'title': self.title,
+            'localhost': socket.gethostname(),
+            'patterns': [pattern.pattern for pattern in self.patterns],
+            'pattern_file': self.args.pattern_file,
+            'hosts': self.args.hosts,
+            'apps': u', '.join([u'%s(%d)' % (app.name, app.counter)
+                                for app in apps.values() if app.counter > 0]),
+            'version': __version__
+        }
+
+        logger.debug('add filters information')
+        filters = []
+        for flt in self.args.filters:
+            filters.append(' AND '.join(['%s=%r' % (k, v.pattern) for k, v in flt.items()]))
+        if len(filters) > 1:
+            valumap['filters'] = ' OR '.join(['(%s)' % item for item in filters])
+        else:
+            valumap['filters'] = filters[0]
+
+        logger.debug('Get run\'s stats')
+        for key in self.stats:
+            valumap[key] = self.stats[key]
+
+        report_parts = []
+        for fmt in self.formats:
+            if fmt == 'plain':
+                logger.info('Creating a plain text page report')
+                report_parts.append(self.make_text_page(valumap))
+            elif fmt == 'html':
+                logger.info('Creating a standard html page report')
+                report_parts.append(self.make_html_page(valumap))
+            elif fmt == 'csv':
+                logger.info('Creating a list of csv files')
+                report_parts.extend(self.make_csv_tables())
+
+        if self.channels:
+            print(u'\n--- Sending report ---')
+            for channel in self.channels:
+                logger.info('output to channel %r' % channel.name)
+                channel.send(self.title, report_parts, rawfh)
+        elif self.formats[0] == 'plain':
+            print('\n{0}'.format(report_parts[0].text))
+
+
 
     def is_empty(self):
         """
@@ -643,64 +684,6 @@ class Report(object):
         for key, value in stats.items():
             self.stats[key] = value
             logger.debug('{0}={1}'.format(key, value))
-
-    def send(self, apps, rawfh):
-        """
-        Send the report with attachments or files, using all enabled channels.
-        """
-        if self.is_empty():
-            logger.info("the report is empty: skip sending to channels")
-            return
-
-        logger.info('Retrieve parameters and run\'s statistics')
-        valumap = {
-            'title': self.title,
-            'localhost': socket.gethostname(),
-            'patterns': [pattern.pattern for pattern in self.patterns],
-            'pattern_file': self.args.pattern_file,
-            'hosts': self.args.hosts,
-            'apps': u', '.join([u'%s(%d)' % (app.name, app.counter)
-                                for app in apps.values() if app.counter > 0]),
-            'version': lograptor.info.__version__
-            }
-
-        logger.debug('Provide filtering informations')
-        filters = ''
-        for key, flt in self.filters.items():
-            if flt != '':
-                filters = '{0}--{1}="{2}", '.format(filters, key, flt)
-        
-        if filters == '':
-            filters = 'None'
-        elif self.config['and_filters']:
-            filters = 'all({0})'.format(filters[:-2])
-        else:
-            filters = 'any({0})'.format(filters[:-2])
-        valumap['filters'] = filters        
-
-        logger.debug('Get run\'s stats')
-        for key in self.stats:
-            valumap[key] = self.stats[key]            
-
-        report_parts = []
-        for fmt in self.formats:
-            if fmt == 'plain':
-                logger.info('Creating a plain text page report')
-                report_parts.append(self.make_text_page(valumap))
-            elif fmt == 'html':
-                logger.info('Creating a standard html page report')
-                report_parts.append(self.make_html_page(valumap))
-            elif fmt == 'csv':
-                logger.info('Creating a list of csv files')
-                report_parts.extend(self.make_csv_tables())
-        
-        if self.channels:
-            print(u'\n--- Sending report ---')
-            for channel in self.channels:
-                logger.info('output to channel %r' % channel.name)
-                channel.send(self.title, report_parts, rawfh)
-        elif self.formats[0] == 'plain':
-            print('\n{0}'.format(report_parts[0].text))
 
     def make_html_page(self, valumap):
         """

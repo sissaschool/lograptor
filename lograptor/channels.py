@@ -24,6 +24,9 @@ import re
 import time
 import shutil
 import logging
+import sys
+import socket
+import tempfile
 
 from .exceptions import LograptorConfigError
 from .info import __version__
@@ -32,15 +35,48 @@ from .utils import mail_sendmail, mail_smtp, do_chunked_gzip
 
 logger = logging.getLogger(__name__)
 
+class grep_colors:
+    """
+    Define a structure for grep color codes.
+    """
+    DEFAULT_SPEC = "ms=01;31:mc=01;31:sl=:cx=:fn=35:ln=32:bn=32:se=36"
+    mt = ms = mc = sl = cx = fn = ln = bn = se = ''
+
+    def __init__(self, color_spec=None):
+        color_spec = color_spec or self.DEFAULT_SPEC
+        color_dict = dict([item.strip().split('=') for item in self.DEFAULT_SPEC.split(':')])
+        try:
+            spec_dict = dict([item.strip().split('=') for item in color_spec.split(':')])
+        except ValueError as err:
+            logger.error("wrong GREP_COLORS spec: %r" % err)
+        else:
+            if 'mt' in spec_dict:
+                spec_dict['mc'] = spec_dict['ms'] = spec_dict['mt']
+            color_dict.update(spec_dict)
+
+        self.clear = '\033[0m'
+        self.rv = bool(color_dict.get('rv', ''))
+        self.ne = bool(color_dict.get('ne', ''))
+
+        for attr in ('mt', 'ms', 'mc', 'sl', 'cx', 'fn', 'ln', 'bn', 'se'):
+            values = color_dict.get(attr, '') or '0'
+            setattr(self, attr, ''.join(['\033[%dm' % int(v) for v in values.split(';')]))
+
+
+GREP_COLORS = grep_colors(os.environ.get('GREP_COLORS'))
+
 
 class BaseChannel(object):
     """
     Base class for Lograptor's channels.
     """
 
-    def __init__(self, name, config):
+    def __init__(self, name, args, config):
         self.name = name
+        self.args = args
+        self.config = config
         self.formats = list(set(re.split('\s*, \s*', config.getstr('channel.%s' % name, 'formats'))))
+        self.rawfh = None
         logger.debug('Formats ={0}'.format(self.formats))
 
     def __repr__(self):
@@ -53,34 +89,130 @@ class BaseChannel(object):
         return fmt in self.formats
         #return (ext == 'txt' and 'plain' in self.formats) or ext in self.formats
 
-    def is_raw(self):
-        return True
+    def open(self):
+        pass
+
+    def mktempdir(self):
+        """
+        Set up a safe temp dir
+        """
+        tmpdir = self.config.getstr('main', 'tmpdir')
+        logger.debug('tmpdir=%r', tmpdir)
+        if tmpdir != "":
+            tempfile.tempdir = tmpdir
+        logger.info('creating a safe temporary directory')
+        tmpprefix = tempfile.mkdtemp('.LOGRAPTOR')
+
+        try:
+            pass
+        except:
+            raise LograptorConfigError('could not create a temp directory in %r!' % tmpprefix)
+
+        self.tmpprefix = tmpprefix
+        tempfile.tempdir = tmpprefix
+        logger.info('Temporary directory created in %r', tmpprefix)
 
     @staticmethod
-    def get_line_printer():
+    def get_send_function():
         """
-        Return the printer function for send macthed lines to channel.
-        :return:
+        Return the function for send output to channel.
         """
         raise NotImplementedError(
-            "%r: you must provide a concrete get_line_printer() method"
+            "%r: you must provide a concrete get_send_function() method"
         )
 
+    def send(self, s):
+        raise NotImplementedError(
+            "%r: you must provide a concrete send() method"
+        )
 
-class StdoutChannel(BaseChannel):
-    """
-    Channel for standard output.
-    """
-    @staticmethod
-    def get_line_printer():
-        return print
+    def close(self):
+        if self.rawfh is not None:
+            self.rawfh.close()
 
+
+class TermChannel(BaseChannel):
+    """
+    Terminal capable Output Channel
+    """
+    def __init__(self, name, args, config):
+        super(TermChannel, self).__init__(name, args, config)
+        if name == 'stdout':
+            self._channel = sys.stdout
+        color = self.color = args.color == 'always' or args.color == 'auto' and self.isatty()
+        invert = GREP_COLORS.rv and self.args.invert
+        colon_sep = GREP_COLORS.se + ":" if color else ":"
+        dash_sep = GREP_COLORS.se + "-" if color else "-"
+        self.group_sep = ''.join([GREP_COLORS.se, '--\n', GREP_COLORS.clear]) if color else "--"
+        selected_color = GREP_COLORS.cx if invert else GREP_COLORS.sl
+        context_color = GREP_COLORS.sl if invert else GREP_COLORS.cx
+
+        if invert:
+            self.fmt_matching_selected = ''.join([GREP_COLORS.mc, '%s', GREP_COLORS.cx])
+            self.fmt_matching_context = ''.join([GREP_COLORS.ms, '%s', GREP_COLORS.sl])
+        else:
+            self.fmt_matching_selected = ''.join([GREP_COLORS.ms, '%s', GREP_COLORS.sl])
+            self.fmt_matching_context = ''.join([GREP_COLORS.mc, '%s', GREP_COLORS.cx])
+
+        fmt_dict = {
+            'filename': ''.join([GREP_COLORS.fn if color else '', '%(filename)s']),
+            'line_number': ''.join([GREP_COLORS.ln if color else '', '%(line_number)s']),
+            'counter': ''.join([selected_color, '%(counter)s\n', GREP_COLORS.clear]) if color else '%(counter)s\n',
+            'selected': ''.join([selected_color, '%(rawlog)s', GREP_COLORS.clear]) if color else '%(rawlog)s',
+            'context': ''.join([context_color, '%(rawlog)s', GREP_COLORS.clear])  if color else '%(rawlog)s'
+        }
+
+        fmt_parts = []
+        if self.args.with_filename or len(self.args.files) > 1 and self.args.with_filename is None:
+            fmt_parts.append('filename')
+        if self.args.count:
+            # When -c/--count option
+            fmt_parts.append('counter')
+            self.fmt_selected = colon_sep.join(
+                [fmt_dict[i] for i in fmt_parts + ['selected']]
+            )
+            self.fmt_context = ''
+        else:
+            if self.args.line_number:
+                fmt_parts.append('line_number')
+            self.fmt_selected = colon_sep.join([fmt_dict[i] for i in fmt_parts + ['selected']])
+            self.fmt_context = dash_sep.join(
+                [fmt_dict[i] for i in fmt_parts + ['context']]
+            )
+
+        print(self.fmt_selected, self.fmt_context)
+
+    def isatty(self):
+        try:
+            return self._channel.isatty()
+        except AttributeError:
+            return False
+
+    def send_event(self, **kwargs):
+        if self.color:
+            pattern_match = kwargs.get('pattern_match')
+            if pattern_match:
+                kwargs['rawlog'] = ''.join([
+                    item if not pos % 2 else self.fmt_matching_selected % item
+                    for pos, item in enumerate(pattern_match.re.split(kwargs['rawlog']))
+                ])
+        self._channel.write(self.fmt_selected % kwargs)
+
+    def send_context(self, **kwargs):
+        if self.color:
+            pattern_match = kwargs.get('pattern_match')
+            if pattern_match:
+                kwargs['rawlog'] = ''.join([
+                    item if not pos % 2 else self.fmt_matching_context % item
+                    for pos, item in enumerate(pattern_match.re.split(kwargs['rawlog']))
+                ])
+        self._channel.write(self.fmt_context % kwargs)
 
 class MailChannel(BaseChannel):
     """
     Channel type to send results with SMTP.
     """
-    def __init__(self, section, config):
+    def __init__(self, section, args, config):
         super(MailChannel, self).__init__(section, config)
         self.email_address = config['email_address']
         self.smtp_server = config['smtp_server']
@@ -88,6 +220,7 @@ class MailChannel(BaseChannel):
         self.mailto = list(set(re.split('\s*, \s*', config.getstr(section, 'mailto'))))
         logger.debug('Recipients list ={0}'.format(self.mailto))
 
+        # if self.args.report is not None and self.report.need_rawlogs():
         self.rawlogs = config.getboolean(section, 'include_rawlogs')
         if self.rawlogs:
             self.rawlogs_limit = config.getint(section, 'rawlogs_limit') * 1024
@@ -123,6 +256,12 @@ class MailChannel(BaseChannel):
 
     def __repr__(self):
         return u'{0}({1}: mailto={2})'.format(self.section, self.name, u','.join(self.mailto))
+
+    # Create temporary file for matches rawlog
+    def open(self):
+        if not self.rawfh:
+            self.mktempdir()
+            self.rawfh = tempfile.NamedTemporaryFile(mode='w+', delete=False)
 
     def send(self, title, report_parts, rawfh):
         """
@@ -311,7 +450,7 @@ class FileChannel(BaseChannel):
     """
     name = 'file'
 
-    def __init__(self, section, config):
+    def __init__(self, section, args, config):
         super(FileChannel, self).__init__(section, config)
         self.expire = config.getint(section, 'expire_in')
         self.dirmask = config.getstr(section, 'dirmask')

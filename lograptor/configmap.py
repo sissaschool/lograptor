@@ -28,30 +28,9 @@ except ImportError:
     import ConfigParser as configparser
 
 from collections import OrderedDict
-from .exceptions import NoSectionError, NoOptionError, FileMissingError, FormatError
+from .exceptions import NoSectionError, NoOptionError, FileMissingError
 
 logger = logging.getLogger(__name__)
-
-
-def _interpolate(configdict, env):
-    """
-    Make string interpolation of a two-level configuration
-    dictionary using an environment dict.
-
-    :param configdict: The configuration dictionary.
-    :param env: The environment dictionary.
-    """
-    while True:
-        changed = False
-        for sect in configdict.values():
-            for opt, value in filter(lambda x: isinstance(x[1], str), sect.items()):
-                if string.Template(value).safe_substitute({opt: value}) == value:
-                    new = string.Template(value).safe_substitute(env)
-                    if new != value:
-                        sect[opt] = new
-                        changed = True
-        if not changed:
-            break
 
 
 class ConfigMap(object):
@@ -72,11 +51,8 @@ class ConfigMap(object):
         self.base_sections = base_sections
         self.env = env
 
-        try:
-            if not self.parser.read(cfgfiles):
-                raise FileMissingError("no configuration file found in paths: %r" % cfgfiles)
-        except configparser.ParsingError as err:
-            raise FormatError('could not parse configuration file %r' % err)
+        if not self.parser.read(cfgfiles):
+            raise FileMissingError("no configuration file found in paths: %r" % cfgfiles)
 
         # Read default sections from configuration file
         for sect, options in defaults.items():
@@ -92,19 +68,22 @@ class ConfigMap(object):
                     else:
                         self.config[sect][opt] = self.parser.get(sect, opt).strip('\'"').replace('\n', '')
                 except (configparser.NoSectionError, configparser.NoOptionError):
-                    # If missing section/option then use default value
+                    # If missing section/option then use the default value
                     if not self.parser.has_section(sect):
                         self.parser.add_section(sect)
                     self.parser.set(sect, opt, self.defaults[sect][opt])
                     self.config[sect][opt] = self.defaults[sect][opt]
 
+            # Add options not in defaults
+            for opt, value in self.parser.items(sect):
+                if opt not in options:
+                    self.config[sect][opt] = value
+
+            # Update environment if it's a base section
             if sect in base_sections:
                 self.env.update(options)
 
-        # Interpolation for all strings. Also the default strings
-        # are interpolated to mantain the equality comparisons.
-        _interpolate(self.config, self.env)
-        _interpolate(self.defaults, self.env)
+        self._interpolate()
 
     @staticmethod
     def _get(config, section, option):
@@ -121,8 +100,32 @@ class ConfigMap(object):
         except KeyError as err:
             raise NoOptionError(section, err)
 
+    def _interpolate(self, env=None):
+        """
+        Make string interpolation using an environment dict.
+
+        :param env: The environment dictionary.
+        """
+        env = env or self.env
+        while True:
+            changed = False
+            for sect_name, section in self.config.items():
+                for opt, value in filter(lambda x: isinstance(x[1], str), section.items()):
+                    if string.Template(value).safe_substitute({opt: value}) == value:
+                        new = string.Template(value).safe_substitute(env)
+                        if new != value:
+                            section[opt] = new
+                            self.defaults[sect_name][opt] = new
+                            self.parser.set(sect_name, opt, new)
+                            changed = True
+            if not changed:
+                break
+
     def get_default(self, section, option):
-        return self._get(self.defaults, section, option)
+        try:
+            return self._get(self.defaults, section, option)
+        except (NoSectionError, NoOptionError):
+            return None
 
     def is_default(self, section, option):
         default = self.get_default(section, option)
@@ -133,7 +136,7 @@ class ConfigMap(object):
 
     def getstr(self, section, option):
         default = self.get_default(section, option)
-        if not isinstance(default, str) and not isinstance(default, type(u'')):
+        if default is not None and not isinstance(default, str) and not isinstance(default, type(u'')):
             raise TypeError("option %r of section %r: not a string!" % (option, section))
         try:
             value = self._get(self.config, section, option)
@@ -145,7 +148,7 @@ class ConfigMap(object):
 
     def getbool(self, section, option):
         default = self.get_default(section, option)
-        if not isinstance(default, bool):
+        if default is not None and not isinstance(default, bool):
             raise TypeError("option %r of section %r: not a boolean!" % (option, section))
         try:
             return bool(self._get(self.config, section, option))
@@ -156,7 +159,7 @@ class ConfigMap(object):
 
     def getint(self, section, option):
         default = self.get_default(section, option)
-        if not isinstance(default, int):
+        if default is not None and not isinstance(default, int):
             raise TypeError("option %r of section %r: not an integer!" % (option, section))
         try:
             return int(self._get(self.config, section, option))
@@ -167,7 +170,7 @@ class ConfigMap(object):
 
     def getfloat(self, section, option):
         default = self.get_default(section, option)
-        if not isinstance(default, float):
+        if default is not None and not isinstance(default, float):
             raise TypeError("option %r of section %r: not a string!" % (option, section))
         try:
             return float(self._get(self.config, section, option))

@@ -26,7 +26,6 @@ import re
 import glob
 import logging
 import fileinput
-import tempfile
 import socket
 import sys
 import fnmatch
@@ -39,7 +38,7 @@ from .matcher import create_matcher_engine
 from .filemap import FileMap
 from .cache import RenameCache
 from .report import Report
-from .channels import StdoutChannel, MailChannel, FileChannel
+from .channels import TermChannel, MailChannel, FileChannel
 from .timedate import get_interval
 from .utils import set_logger
 
@@ -98,7 +97,7 @@ DEFAULT_CONFIG = {
         'subreport.query_report': 'Database lookups'
     },
     'channel.default': {
-        'type': 'stdout',
+        'type': 'tty',
         'formats': 'plain',
 
         # options for mail channel sections
@@ -152,8 +151,6 @@ def exec_lograptor(args, is_batch=False):
 
     try:
         retval = _lograptor.process()
-        if _lograptor.make_report():
-            _lograptor.send_report()
     finally:
         _lograptor.cleanup()
 
@@ -188,7 +185,6 @@ class Lograptor(object):
         #  apps: dictionary with enabled applications
         #  tagmap: dictionary map from tags to apps
         #  _search_flags: flags for re.compile of patterns
-        #  rawfh: raw file handler
         #  tmpprefix: location for temporary files
         """
         try:
@@ -255,39 +251,8 @@ class Lograptor(object):
         logger.info('hosts to be processed: %r', self.hosts)
 
         self.extra_tags = set()
-        self.rawfh = None
+
         self.tmpprefix = None
-        self.prefix = None
-
-        # Setting print_lines and print_status for processing.
-        if self.is_batch:
-            self.print_lines = self.print_status = False
-        elif args.quiet:
-            logger.info('Quiet option provided: disabling output and status')
-            self.print_lines = False
-            self.print_status = False
-        elif args.count:
-            logger.info('Count option provided: disabling line output')
-            self.print_lines = False
-            self.print_status = True
-        elif not self.filters and not self.patterns:
-            self.print_lines = not args.report
-            self.print_status = args.report
-        else:
-            self.print_lines = True
-            self.print_status = False
-
-        # Setting the output for filenames:
-        #   print_filenames == None --> print as header at start of each file processing
-        #   print_filename == True --> print as prefix for each matched line (no header)
-        #   print_filename == False --> no filename printing
-        if args.print_filename is not None:
-            self.print_filename = bool(args.print_filename)
-        elif len(args.files) == 1:
-            self.print_filename = False
-        else:
-            self.print_filename = None
-        logger.debug('output: prefix lines with filename: %r', self.print_filename)
 
         # Initialize the report object when the option is enabled
         if args.report is not None:
@@ -313,7 +278,7 @@ class Lograptor(object):
 
         try:
             flags = re.IGNORECASE if self.args.case else 0
-            return tuple([re.compile(pattern, flags=flags) for pattern in patterns if pattern])
+            return tuple([re.compile("(%s)" %pattern, flags=flags) for pattern in patterns if pattern])
         except RegexCompileError as err:
             raise LograptorArgumentError('wrong regex syntax for pattern: %r' % err)
 
@@ -399,13 +364,6 @@ class Lograptor(object):
                     tagmap[tag] = [app]
         return tagmap
 
-    @staticmethod
-    def _get_line(line):
-        return line
-
-    def _get_prefixed_line(self, line):
-        return '{0}: {1}'.format(self.prefix, line)
-
     def get_channels(self, channels=None):
         channels = channels or self.args.channels
         config_channels = [sec for sec in self.config.sections() if sec.strip().startswith('channel.')]
@@ -416,12 +374,12 @@ class Lograptor(object):
         output_channels = []
         for channel in set(channels):
             channel_type = self.config.getstr("channel.%s" % channel, 'type')
-            if channel_type == 'stdout':
-                output_channels.append(StdoutChannel(channel, self.config))
+            if channel_type == 'tty':
+                output_channels.append(TermChannel(channel, self.args, self.config))
             elif channel_type == 'file':
-                output_channels.append(FileChannel(channel, self.config))
+                output_channels.append(FileChannel(channel, self.args, self.config))
             elif channel_type == 'mail':
-                output_channels.append(MailChannel(channel, self.config))
+                output_channels.append(MailChannel(channel, self.args, self.config))
             else:
                 raise LograptorConfigError('unknown channel type %r' % channel_type)
         return output_channels
@@ -492,22 +450,6 @@ class Lograptor(object):
                 ]))
         return summary
 
-    def get_line_printer(self):
-        def dummy_printer(*args, **kwargs):
-            pass
-
-        line_printers = tuple([channel.get_line_printer() for channel in self.channels if channel.is_raw()])
-
-        if not line_printers:
-            return dummy_printer
-        elif len(line_printers) == 1:
-            return line_printers[0]
-
-        def multi_line_printer(*args, **kwargs):
-            for f in line_printers:
-                f(*args, **kwargs)
-        return multi_line_printer
-
     def process(self, parsers=None):
         """
         Log processing main routine. Iterate over the log files calling
@@ -516,7 +458,6 @@ class Lograptor(object):
         logger.info('starting the processing of the log files ...')
 
         apps = self.apps
-        print_filename = self.print_filename
         process_logfile = create_matcher_engine(self, parsers)
 
         tot_lines = 0
@@ -524,19 +465,10 @@ class Lograptor(object):
         tot_unparsed = 0
         logfiles = []
 
-        # Create temporary file for matches rawlog
-        if self.args.report is not None and self.report.need_rawlogs():
-            self.mktempdir()
-            self.rawfh = tempfile.NamedTemporaryFile(mode='w+', delete=False)
-            logger.info('RAW strings file created in %r', self.rawfh.name)
-
         # Iter between log files. The iteration use the log files modified between the
         # initial and the final date, skipping the other files.
         for (filename, applist) in self.logmap:
-            logger.debug('process %r for apps %r', filename, applist)
-            if self.rawfh is not None and print_filename is None:
-                self.rawfh.write('\n*** Filename: {0} ***\n'.format(filename))
-
+            logger.info('process %r for apps %r', filename, applist)
             try:
                 num_lines, counter, unparsed_counter, extra_tags, first_event, last_event = process_logfile(filename, applist)
                 logfiles.append(filename)
@@ -560,8 +492,8 @@ class Lograptor(object):
                 "no file in datetime interval (%s, %s)!" % (self.initial_dt, self.final_dt)
             )
 
-        logger.info('Total files processed: %d', tot_files)
-        logger.info('Total log lines processed: %d', tot_lines)
+        logger.info('total files processed: %d', tot_files)
+        logger.info('total log lines processed: %d', tot_lines)
 
         # Save run stats
         try:
@@ -584,77 +516,26 @@ class Lograptor(object):
 
         # If final report is requested then purge all unmatched threads and set time stamps.
         # Otherwise print a final run summary if messages are not disabled.
-        if self.args.report is not None:
+        if tot_counter > 0 and self.args.report is not None:
             self.report.set_stats(run_stats)
-            if self.rawfh is not None:
-                self.rawfh.close()
+            self.report.make()
+            if not self.report.is_empty():
+                self.report.get_formats(set([channel.formats for channel in self.channels]))
+                self.send_report()
         elif not self.args.no_messages and not self.args.quiet:
             print(u'%s\n' % self.get_run_summary(run_stats))
 
         return tot_counter > 0
 
-    def make_report(self):
-        """
-        Create the report based on the results of Lograptor run
-        """
-        if self.args.report is None:
-            return False
-
-        if self.report.make():
-
-            if self.args.output is None:
-                formats = ['plain']
-            else:
-                formats = set()
-                for channel in self.report.channels:
-                    formats = formats.union(channel.formats)
-            logger.debug('Creating report formats: %r', formats)
-            self.report.make_formats(formats)
-            return True
-        return False
-
     def send_report(self):
-        """
-        Publish the report
-        """
-        self.report.send(self.apps, self.rawfh)
-
-    def mktempdir(self):
-        """
-        Set up a safe temp dir
-        """
-        logger.info('Setting up a temporary directory')
-
-        tmpdir = self.config.getstr('main', 'tmpdir')
-        logger.debug('tmpdir=%r', tmpdir)
-        if tmpdir != "":
-            tempfile.tempdir = tmpdir
-        logger.info('Creating a safe temporary directory')
-        tmpprefix = tempfile.mkdtemp('.LOGRAPTOR')
-
-        try:
-            pass
-        except:
-            msg = 'could not create a temp directory in "{0}"!'.format(tmpprefix)
-            raise LograptorConfigError(msg)
-
-        self.tmpprefix = tmpprefix
-        tempfile.tempdir = tmpprefix
-
-        logger.info('Temporary directory created in %r', tmpprefix)
+        self.report.send(self.apps)
 
     def cleanup(self):
-        """
-        Clean up after ourselves.
-        """
-        logger.info('Cleanup routine called')
-
-        if self.rawfh is not None:
-            print("Close rawlogs file ...")
-            self.rawfh.close()
+        for channel in self.channels:
+            channel.close()
+        if self.report is not None:
+            self.report.cleanup()
 
         if self.tmpprefix is not None:
-            from shutil import rmtree
-
-            logger.info('Removing the temp dir %r', self.tmpprefix)
-            rmtree(self.tmpprefix)
+            logger.info('removing the temp dir %r', self.tmpprefix)
+            os.rmdir(self.tmpprefix)

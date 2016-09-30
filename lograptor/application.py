@@ -483,10 +483,8 @@ class AppLogParser(object):
         for rule in self.rules:
             match = rule.regexp.search(logdata.message)
             if match is not None:
-                logger.debug('Rule %r match', rule.name)
                 gids = rule.regexp.groupindex
                 self._last_rule = rule
-
                 if self.outmap is not None:
                     outmap = self.outmap
                     values = outmap.map2dict(rule.key_gids, match)
