@@ -68,7 +68,7 @@ GREP_COLORS = grep_colors(os.environ.get('GREP_COLORS'))
 
 class BaseChannel(object):
     """
-    Base class for Lograptor's channels.
+    Abstract base class for Lograptor's channels.
     """
 
     def __init__(self, name, args, config):
@@ -112,19 +112,17 @@ class BaseChannel(object):
         tempfile.tempdir = tmpprefix
         logger.info('Temporary directory created in %r', tmpprefix)
 
-    @staticmethod
-    def get_send_function():
-        """
-        Return the function for send output to channel.
-        """
-        raise NotImplementedError(
-            "%r: you must provide a concrete get_send_function() method"
-        )
+    def send_message(self, message):
+        raise NotImplementedError("%r: you must provide a concrete send_message() method")
 
-    def send(self, s):
-        raise NotImplementedError(
-            "%r: you must provide a concrete send() method"
-        )
+    def send_event(self, **kwargs):
+        raise NotImplementedError("%r: you must provide a concrete send_event() method")
+
+    def send_context(self, **kwargs):
+        raise NotImplementedError("%r: you must provide a concrete send_context() method")
+
+    def send_report(self, report):
+        raise NotImplementedError("%r: you must provide a concrete send_report() method")
 
     def close(self):
         if self.rawfh is not None:
@@ -180,22 +178,26 @@ class TermChannel(BaseChannel):
                 [fmt_dict[i] for i in fmt_parts + ['context']]
             )
 
-        print(self.fmt_selected, self.fmt_context)
-
     def isatty(self):
         try:
             return self._channel.isatty()
         except AttributeError:
             return False
 
+    def send_message(self, message):
+        self._channel.write(message)
+
     def send_event(self, **kwargs):
         if self.color:
             pattern_match = kwargs.get('pattern_match')
             if pattern_match:
-                kwargs['rawlog'] = ''.join([
-                    item if not pos % 2 else self.fmt_matching_selected % item
-                    for pos, item in enumerate(pattern_match.re.split(kwargs['rawlog']))
-                ])
+                try:
+                    kwargs['rawlog'] = ''.join([
+                        item if not pos % 2 else self.fmt_matching_selected % item
+                        for pos, item in enumerate(pattern_match.re.split(kwargs['rawlog']))
+                    ])
+                except AttributeError:
+                    pass
         self._channel.write(self.fmt_selected % kwargs)
 
     def send_context(self, **kwargs):
@@ -207,6 +209,18 @@ class TermChannel(BaseChannel):
                     for pos, item in enumerate(pattern_match.re.split(kwargs['rawlog']))
                 ])
         self._channel.write(self.fmt_context % kwargs)
+
+    def send_separator(self):
+        self._channel.write(self.group_sep)
+
+    def send_report(self, report):
+        for fmt in self.formats:
+            try:
+                self._channel.write('\n')
+                self._channel.write(report[fmt].text)
+            except KeyError:
+                pass
+
 
 class MailChannel(BaseChannel):
     """
@@ -263,7 +277,7 @@ class MailChannel(BaseChannel):
             self.mktempdir()
             self.rawfh = tempfile.NamedTemporaryFile(mode='w+', delete=False)
 
-    def send(self, title, report_parts, rawfh):
+    def send_report(self, report_parts):
         """
         Publish by sending the report by e-mail
         """
@@ -272,6 +286,9 @@ class MailChannel(BaseChannel):
         from email.mime.multipart import MIMEMultipart
         from email.utils import formatdate, make_msgid
 
+        title = report_parts[0].title
+
+        rawfh = None
         logger.info('Creating an email message')
 
         logger.debug('Creating a main header')
@@ -541,7 +558,7 @@ class FileChannel(BaseChannel):
 
         logger.info('Finished with pruning')
         
-    def send(self, title, report_parts, rawfh):
+    def send_report(self, report_parts):
         """
         Publish the report parts to local files. Each report part is a text
         with a title and specific extension. For html and plaintext sending
@@ -549,6 +566,8 @@ class FileChannel(BaseChannel):
         string are plain text and report items are csv texts.
         """
         logger.info('Checking and creating the report directories')
+
+        title = report_parts[0].title
 
         workdir = os.path.join(self.pubdir, self.dirname)
         filename = None
@@ -559,6 +578,8 @@ class FileChannel(BaseChannel):
             except OSError as e:
                 logger.error('Error creating directory "{0}": {0}'.format(workdir, e))
                 return
+
+        rawfh = None
 
         fmtname = '{0}-{1}-{2}.{3}' if len(report_parts) > 1 else '{0}.{3}'
 

@@ -23,7 +23,7 @@ from __future__ import print_function
 import re
 import socket
 import string
-from collections import OrderedDict
+from collections import OrderedDict, deque
 
 try:
     import pwd
@@ -41,6 +41,58 @@ class CacheEntry(object):
         self.counted = False
         self.buffer = list()
         self.start_time = self.end_time = event_time
+
+
+class FileInputDeque(deque):
+    """
+    A deque subclass to read a text file with a deque line buffering.
+    """
+
+    def __init__(self, input_file, before=0, after=0):
+        super(FileInputDeque, self).__init__(maxlen=before+after+1)
+        self.input_file = input_file
+        self.before = before
+        self.after = after
+
+    def __iter__(self):
+        # Attempt to fill the buffer
+        for k in range(self.after):
+            try:
+                self.append(next(self.input_file))
+            except StopIteration:
+                break
+        self.index = 0
+
+        return self
+
+    def __next__(self):
+        try:
+            self.append(next(self.input_file))
+        except StopIteration:
+            try:
+                self.popleft()
+                next_line = self[self.index]
+            except IndexError:
+                raise StopIteration
+            return next_line
+        else:
+            try:
+                next_line = self[self.index]
+            except IndexError:
+                raise StopIteration
+            if self.index < self.before:
+                self.index += 1
+            return next_line
+
+    def iter_before(self):
+        if self.index >= self.before:
+            return range(0, self.before)
+        else:
+            return range(0, self.index)
+
+    def iter_after(self):
+        for k, i in enumerate(range(self.index + 1, len(self))):
+            yield k + 1, i
 
 
 class LineCache(object):

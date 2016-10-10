@@ -236,4 +236,20 @@ def build_dispatcher(objects, func_name):
     elif len(objects) == 1:
         return getattr(objects[0], func_name)
     else:
-        return multi_dispatch
+        return multi_dispatcher
+
+
+def results_to_string(results):
+    return u', '.join([
+        u'%s(%s)' % (key, results[key])
+        for key in sorted(results, key=lambda x: results[x], reverse=True)
+    ])
+
+
+def walk(obj):
+    try:
+        for i in iter(obj):
+            for j in iter(i):
+                yield walk(j)
+    except TypeError:
+        yield obj

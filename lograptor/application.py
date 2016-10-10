@@ -373,20 +373,18 @@ class AppLogParser(object):
         else:
             rules = self.create_rules(rule_options)
 
-        if args.report is not None:
+        if args.report:
             # Add report items
             self.repitems = []
-            sections = self.appconfig.base_sections()
+            sections = self.appconfig.sections()
             for sect in filter(lambda x: x.startswith('report.'), sections):
                 _sect = sect.split('.', 1)[1]
                 options = self.appconfig.items(sect)
                 subreports = config.options('subreports')
                 try:
-                    self.repitems.append(
-                        ReportItem(_sect, options, subreports, rules)
-                    )
+                    self.repitems.append(ReportItem(_sect, options, subreports, rules))
                 except RuleMissingError as msg:
-                    logger.error(msg)
+                    logger.info(msg)
 
         if False and any([rule for rule in rules if not rule.is_used()]):
             self.rules = [rule for rule in rules if rule.is_used()]

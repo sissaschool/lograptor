@@ -1,11 +1,11 @@
-*********************************************************
+***********************************************************
  $title
-*********************************************************
+***********************************************************
 
 ### Process parameters and statistics ###
 
 Search patterns: $patterns
-Search patterns file: $pattern_file
+Search patterns file: $pattern_files
 Filters: $filters
 Hostnames: $hosts
 Applications: $apps
@@ -15,6 +15,6 @@ Last event: $endtime
 Processed files: $logfiles
 Total files examined: $tot_files
 Total log lines parsed: $tot_lines
----------------------------------------------------------
+-----------------------------------------------------------
 $subreports
 ----- Brought to you by Lograptor $version -----

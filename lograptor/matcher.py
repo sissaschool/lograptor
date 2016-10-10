@@ -23,6 +23,7 @@ import os
 import time
 import datetime
 import logging
+import collections
 
 from .parsers import CycleParsers
 from .utils import build_dispatcher
@@ -44,15 +45,61 @@ MONTHMAP = {
 
 
 def get_mktime(year, month, day, ltime):
-    return time.mktime((
-        int(year),
-        int(MONTHMAP[month]),
-        int(day),
-        int(ltime[:2]),     # Hour
-        int(ltime[3:5]),    # Minute
-        int(ltime[6:]),     # Second
-        0, 0, -1
-    ))
+    try:
+        return time.mktime((
+            int(year),
+            int(MONTHMAP[month]),
+            int(day),
+            int(ltime[:2]),     # Hour
+            int(ltime[3:5]),    # Minute
+            int(ltime[6:]),     # Second
+            0, 0, -1
+        ))
+    except (KeyError, ValueError):
+        return None
+
+
+def get_app(log_data, tagmap, extra_tags):
+    apptag = getattr(log_data, 'apptag', None)
+    if apptag is not None:
+        # Find app using the app-tag
+        try:
+            tag_apps = tagmap[apptag]
+        except:
+            tag_apps = [
+                app for tag, _apps in tagmap.items() if apptag.startswith(tag)
+                for app in _apps
+            ]
+        if not tag_apps:
+            # Tag unmatched, skip the line
+            extra_tags.add(apptag)
+            return
+        elif len(tag_apps) == 1:
+            return tag_apps[0]
+        else:
+            # Match the tab using app's rules
+            for app in tag_apps:
+                rule_match, full_match, app_thread, map_dict = app.process(log_data)
+                if rule_match:
+                    return app
+
+
+def get_pattern_match(line, patterns, invert):
+    if not patterns:
+        return not invert
+
+    for regexp in patterns:
+        pattern_match = regexp.search(line)
+        if pattern_match:
+            if invert:
+                return False
+            else:
+                return pattern_match
+    else:
+        if not invert:
+            return False
+        else:
+            return True
 
 
 def create_matcher_engine(obj, parsers):
@@ -67,38 +114,49 @@ def create_matcher_engine(obj, parsers):
     line_number = obj.args.line_number
     tagmap = obj.tagmap
     max_count = 1 if obj.args.quiet else obj.args.max_count
-    apps = obj.apps
     use_rules = obj.args.use_rules
     hosts = obj.hosts
     patterns = obj.patterns
     thread = obj.args.thread
-    send_selected = not (obj.args.quiet or obj.args.count)
+    send_log_lines = not (obj.args.quiet or obj.args.count)
+
+    before_context = max(obj.args.before_context, obj.args.context)
+    after_context = max(obj.args.after_context, obj.args.context)
+    context = before_context + after_context
+    line_buffer = collections.deque(maxlen=before_context)
 
     invert = obj.args.invert
     count = obj.args.count
-    match_unparsed = obj.args.unparsed
-    make_report = obj.args.report is not None
+    unparsed = obj.args.unparsed
     timerange = obj.args.timerange
     send_event = build_dispatcher(obj.channels, 'send_event')
+    send_context = build_dispatcher(obj.channels, 'send_context')
+    send_separator = build_dispatcher(obj.channels, 'send_separator')
 
     initial_dt = time.mktime(obj.initial_dt.timetuple()) if obj.initial_dt else float(0)
     final_dt = time.mktime(obj.final_dt.timetuple() if obj.final_dt else (2222, 2, 2, 0, 0, 0, 0, 0, 0))
     hostset = set()
 
-    def process_logfile(filename, applist):
+    def process_logfile(path_or_file, applist):
         first_event = None
         last_event = None
-        log_parser = next(parsers)
-        prev_data = None
-        app = None
         app_thread = None
+        prev_data = None
+        log_parser = next(parsers)
 
         matching_counter = 0
         unparsed_counter = 0
         full_match = False
         extra_tags = set()
+        line_buffer.clear()
+        last_line = context_until = 0
 
-        with open(filename) as logfile:
+        try:
+            _logfile = open(path_or_file)
+        except TypeError:
+            _logfile = path_or_file
+
+        with _logfile as logfile:
             ###
             # Set counters and status
             logfile_name = logfile.name
@@ -137,26 +195,15 @@ def create_matcher_engine(obj, parsers):
                         if not thread:
                             matching_counter += repeat
                         if use_rules:
-                            apptag = prev_data.apptag
-                            try:
-                                app = tagmap[apptag]
-                            except KeyError as e:
-                                # Try a partial match
-                                for tag in tagmap:
-                                    if apptag.startswith(tag):
-                                        app = tagmap[tag]
-                                        break
-                                else:
-                                    raise KeyError(e)
+                            app = log_parser.app or get_app(prev_data, tagmap, extra_tags) or file_app
                             app.increase_last(repeat)
                             app.counter += 1
                             if app_thread is not None:
                                 app.cache.add_line(line, app_thread, pattern_match, full_match, event_time)
                         prev_data = None
-                    elif app is not None:
-                        app.counter += 1
                     continue
-                prev_data = log_data
+                else:
+                    prev_data = None
 
                 ###
                 # Checks event time with selected scope.
@@ -170,21 +217,19 @@ def create_matcher_engine(obj, parsers):
                     ltime=log_data.ltime
                 )
 
-                # Skip the lines older than the initial datetime
-                if event_time < initial_dt:
-                    prev_data = None
+                # Skip errors and the lines older than the initial datetime
+                if event_time is None or event_time < initial_dt:
                     continue
 
                 # Skip the rest of the file if the event is newer than the final datetime
                 if event_time > final_dt:
                     if fstat.st_mtime < event_time:
-                        logger.error('time inconsistency with the mtime of the file: %r', line[:-1])
-                    logger.warning('Newer line, skip the rest of the file: %r', line[:-1])
+                        logger.error("found anomaly with mtime of file %r at line %d", logfile_name, line_counter)
+                    logger.warning("newer event at line %d: skip the rest of the file %r", line_counter, logfile_name)
                     break
 
                 # Skip the lines not in timerange (if the option is provided).
                 if timerange is not None and not timerange.between(log_data.ltime):
-                    prev_data = None
                     continue
 
                 ###
@@ -198,125 +243,81 @@ def create_matcher_engine(obj, parsers):
                                 hostset.add(hostname)
                                 break
                         else:
-                            prev_data = None
                             continue
 
                 ###
-                # Process the message part of the log with provided pattern(s).
+                # Process the message part of the log with provided not-empty pattern(s).
                 # Skip log lines that not match any pattern.
-                if patterns:
-                    for regexp in patterns:
-                        pattern_match = regexp.search(line)  # log_data.message)
-                        if pattern_match and not invert or not pattern_match and invert:
-                            break
-                    else:
-                        if not thread:
-                            prev_data = None
-                            continue
-                elif invert:
-                    pattern_match = None
-                    if not thread:
-                        prev_data = None
-                        continue
-                else:
-                    pattern_match = None
+                pattern_match = get_pattern_match(line, patterns, invert)
+                if not pattern_match and not thread:
+                    if after_context and context_until >= line_counter:
+                        send_context(
+                            filename=logfile_name,
+                            line_number=line_counter if line_number else None,
+                            rawlog=line
+                        )
+                        last_line = line_counter
+                    elif before_context:
+                        line_buffer.append(line)
+                    continue
 
                 ###
                 # Get the app from parser or from the app-tag extracted from the log line.
-                app = log_parser.app
+                app = log_parser.app or get_app(log_data, tagmap, extra_tags) or file_app
                 if app is None:
-                    apptag = getattr(log_data, 'apptag', None)
-                    if apptag is not None:
-                        # Find app using the app-tag
-                        try:
-                            tag_apps = tagmap[apptag]
-                        except:
-                            tag_apps = [
-                                app for tag, _apps in tagmap.items() if apptag.startswith(tag)
-                                for app in _apps
-                            ]
-
-                        if not tag_apps:
-                            # Tag unmatched, skip the line
-                            extra_tags.add(apptag)
-                            prev_data = None
-                            continue
-                        elif len(tag_apps) == 1 or not use_rules:
-                            app = tag_apps[0]
-                        else:
-                            print(type(tag_apps[0]))
-                            print(tag_apps)
-                            for app in tag_apps:
-                                rule_match, full_match, app_thread, map_dict = app.process(log_data)
-                                if rule_match:
-                                    break
-                            else:
-                                logger.error("unknown app for log: %r", line[:-1])
-                                prev_data = None
-                                continue
-                    elif file_app:
-                        # Only one app is associated with the file (weak match heuristic)
-                        app = file_app
-                    else:
-                        logger.error("unknown app for log: %r", line[:-1])
-                        prev_data = None
-                        continue
-
+                    logger.error("unknown app for log: %r", line[:-1])
+                    continue
                 app.counter += 1
 
-                # Log message parsing with app's rules
+                # Parse the log message with app's rules
                 if use_rules and (pattern_match or thread):
                     rule_match, full_match, app_thread, map_dict = app.process(log_data)
-                    if not rule_match:
-                        # Log message unparsable by app rules
-                        if not match_unparsed:
-                            if pattern_match:
-                                logger.debug('unparsable line: %r', line[:-1])
-                            prev_data = None
-                            continue
-                        if map_dict is not None:
-                            line = name_cache.map2str(log_parser.parser.groupindex, log_match, map_dict)
-                    elif match_unparsed:
-                        # Log message parsed but match_unparsed option
-                        prev_data = None
-                        continue
-                    elif app_thread is not None:
-                        if map_dict is not None:
-                            line = name_cache.map2str(
-                                log_parser.parser.groupindexheader_gids, log_match, map_dict
-                            )
+                    if map_dict:
+                        line = name_cache.map2str(log_parser.parser.groupindex, log_match, map_dict)
+                    if app_thread is not None:
                         app.cache.add_line(line, app_thread, pattern_match, full_match, event_time)
-                    elif not full_match and app.has_filters:
-                        prev_data = None
+                    if not (rule_match ^ unparsed) or (rule_match and not full_match and app.has_filters):
                         continue
-                    elif map_dict is not None:
-                        line = name_cache.map2str(
-                            log_parser.parser.groupindex, log_match, map_dict
-                        )
 
-                    # Handle timestamps for report
-                    if make_report:
-                        if first_event is None:
-                            first_event = event_time
-                            last_event = event_time
-                        else:
-                            if first_event > event_time:
-                                first_event = event_time
-                            if last_event < event_time:
-                                last_event = event_time
+                ###
+                #  Event matched: save event's data and sent to output channels
+                if first_event is None:
+                    first_event = event_time
+                    last_event = event_time
+                else:
+                    if first_event > event_time:
+                        first_event = event_time
+                    if last_event < event_time:
+                        last_event = event_time
+                prev_data = log_data
 
                 ###
                 # Increment counters and send to output. Purge old threads every
                 # PURGE_THREADS_LIMIT processed lines.
                 if thread:
                     if (line_counter % PURGE_THREADS_LIMIT) == 0:
-                        for app in applist:
-                            apps[app].purge_threads(event_time)
-                            max_threads = None if max_count is None else max_count - matching_counter
-                            matching_counter += apps[app].cache.flush_old_cache(event_time, send_selected, max_threads)
+                        for _app in applist:
+                            _app.purge_threads(event_time)
+                            max_threads = None if not max_count else max_count - matching_counter
+                            matching_counter += _app.cache.flush_old_cache(event_time, send_log_lines, max_threads)
                 else:
                     matching_counter += 1
-                    if send_selected:
+                    if context:
+                        next_line = line_counter - len(line_buffer)
+                        if last_line and (next_line - last_line  > 1):
+                            send_separator()
+                    if line_buffer:
+                        for n_line in range(line_counter - len(line_buffer), line_counter):
+                            send_context(
+                                filename=logfile_name,
+                                line_number=n_line if line_number else None,
+                                rawlog=line_buffer.popleft(),
+                                pattern_match=pattern_match
+                            )
+                    if context:
+                        last_line = line_counter
+                        context_until = line_counter + after_context
+                    if send_log_lines:
                         send_event(
                             filename=logfile_name,
                             line_number=line_counter if line_number else None,
@@ -329,17 +330,18 @@ def create_matcher_engine(obj, parsers):
                 if max_count and matching_counter >= max_count:
                     break
 
-        # End-of file thread matching and output
+        ###
+        # End-of file events summary
         if thread:
-            for app in applist:
+            for _app in applist:
                 try:
-                    apps[app].purge_threads(event_time)
+                    _app.purge_threads(event_time)
                 except UnboundLocalError:
                     break
                 if max_count and matching_counter >= max_count:
                     break
                 max_threads = None if not max_count else max_count - matching_counter
-                matching_counter += apps[app].cache.flush_cache(event_time, send_selected, max_threads)
+                matching_counter += _app.cache.flush_cache(event_time, send_log_lines, max_threads)
 
         # If count option is enabled then print the number of matched lines.
         if count:

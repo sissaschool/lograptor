@@ -50,8 +50,9 @@ class ConfigMap(object):
         self.parser = configparser.RawConfigParser(dict_type=OrderedDict)
         self.base_sections = base_sections
         self.env = env
+        self.cfgfile = ', '.join(self.parser.read(cfgfiles))
 
-        if not self.parser.read(cfgfiles):
+        if not self.cfgfile:
             raise FileMissingError("no configuration file found in paths: %r" % cfgfiles)
 
         # Read default sections from configuration file
@@ -81,7 +82,7 @@ class ConfigMap(object):
 
             # Update environment if it's a base section
             if sect in base_sections:
-                self.env.update(options)
+                self.env.update(self.config[sect])
 
         self._interpolate()
 

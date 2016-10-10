@@ -18,15 +18,13 @@ Command line tools for Lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-import os
 import sys
-import contextlib
 import argparse
 import time
 import re
 import sre_constants
 
-from .core import exec_lograptor
+from .core import Lograptor
 from .info import __version__, __description__
 from .exceptions import (
     LograptorConfigError, OptionError, FormatError, FileMissingError, FileAccessError, LograptorArgumentError
@@ -135,9 +133,8 @@ def create_argument_parser():
 
     group = parser.add_argument_group("Data control")
     group.add_argument(
-        "--report", metavar='NAME', nargs='?', default=None,
+        "--report", metavar='NAME', nargs='?', default=False,
         help="produce a report at the end of processing"
-
     )
     group.add_argument(
         "--ip-lookup", action="store_true", default=False,
@@ -246,7 +243,7 @@ def create_argument_parser():
     group = parser.add_argument_group("Context control")
     group.add_argument(
         "-T", "--thread", action="store_true", default=False,
-        help="print the thread related context"
+        help="the context is defined by application's log threads"
     )
     group.add_argument(
         "-B", "--before-context", metavar='NUM', type=positive_integer, default=0,
@@ -289,21 +286,12 @@ def create_argument_parser():
     return parser
 
 
-class DummyFile(object):
-    def write(self, x):
-        pass
-
-    def flush(self):
-        pass
-
-
-@contextlib.contextmanager
-def nostdout():
-    """Redirect the stdout to a dummy file"""
-    save_stdout = sys.stdout
-    sys.stdout = DummyFile()
-    yield
-    sys.stdout = save_stdout
+def has_void_args(argv):
+    """
+    Check if the command line has no arguments or only the --conf optional argument.
+    """
+    n_args = len(argv)
+    return n_args == 1 or n_args == 2 and argv[1].startswith('--conf=') or n_args == 3 and argv[1] == '--conf'
 
 
 def main():
@@ -314,28 +302,33 @@ def main():
     cli_parser = create_argument_parser()
     args = cli_parser.parse_args()
 
-    if os.isatty(sys.stdin.fileno()):
+    try:
+        if has_void_args(sys.argv) and 'stdout' in args.channels:
+            # If the command is called with no significative args (eg. no args
+            # or only --conf argument) then prints the configuration and exit.
+            args.patterns.append('')
+            print(Lograptor(args).print_config())
+            sys.exit(0)
+
+        _lograptor = Lograptor(args)
         try:
-            retval = exec_lograptor(args, is_batch=False)
-        except (LograptorArgumentError, OptionError) as e:
-            if e.message:
-                cli_parser.error(e)
-            else:
-                cli_parser.print_usage()
-                sys.exit(2)
-        except (LograptorConfigError, FormatError, FileMissingError, FileAccessError) as e:
-            sys.exit(u"ERROR: {0}\nExiting ...".format(e))
-        except KeyboardInterrupt:
-            print("\nCtrl-C pressed, terminate the process ...")
-            sys.exit(1)
-    else:
-        with nostdout():
-            try:
-                retval = exec_lograptor(args, is_batch=True)
-            except (LograptorArgumentError, OptionError, LograptorConfigError,
-                    FormatError, FileMissingError, FileAccessError) as e:
-                sys.exit(u"ERROR: {0}\nExiting ...".format(e))
-    sys.exit(retval)
+            retval = _lograptor.process()
+        finally:
+            _lograptor.cleanup()
+    except (LograptorArgumentError, OptionError, LograptorConfigError, FormatError,
+            FileMissingError, FileAccessError) as err:
+        if 'stdout' not in args.channels:
+            sys.exit(u"ERROR: {0}\nExiting ...".format(err))
+        elif str(err):
+            cli_parser.error(err)
+        else:
+            cli_parser.print_usage()
+            sys.exit(2)
+    except KeyboardInterrupt:
+        print("\nCtrl-C pressed, terminate the process ...")
+        sys.exit(1)
+
+    sys.exit(0 if retval else 1)
 
 
 if __name__ == '__main__':

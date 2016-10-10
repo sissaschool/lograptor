@@ -123,7 +123,7 @@ class ReportItem(UserDict):
                         self.rules[opt] = rule
                         break
                 else:
-                    msg = u"Skip report rule '%s' because use undefined or not active app rule!" % self.name
+                    msg = u"skip report rule %r because use undefined or not active app rule!" % self.name
                     raise lograptor.RuleMissingError(msg)
                 self.data[opt] = value
 
@@ -430,6 +430,9 @@ class Subreport(object):
     def __bool__(self):
         return len(self.repitems) > 0
 
+    def __repr__(self):
+        return u"<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
+
     def make(self, apps):
         """
         Make of subreport items from results
@@ -551,45 +554,29 @@ class Report(object):
     This helper class holds the contents of a report before it is
     sent to selected channels.
     """
-    def __init__(self, patterns, apps, args, config):
-        """
-        :param channels: the list of output channels
-        :param subreports: list of subreports
-        :param stats: statistics about the program's run
-        """
-        self.subreports = []
-        self.stats = dict()
-        
-        self.runtime = time.localtime()
+    def __init__(self, name, patterns, apps, args, config):
+        self.name = name
         self.patterns = patterns
         self.apps = apps
         self.args = args
         self.config = config
 
-        # Initalize the subreports structure
-        for subreport in config.parser.options('subreports'):
-            logger.debug('Add "{0}" to subreports.'.format(subreport))
-            self.subreports.append(Subreport(name=subreport, title=config[subreport]))
+        self.stats = dict()
+        self.runtime = time.localtime()
 
-        # Read the parameters from config files
-        self.title = config['title']
-        self.html_template = config['html_template'].strip()
-        self.text_template = config['text_template'].strip()
-        self.unparsed = args.unparsed
+        # Read the report options from the config file
+        options = dict(config.items('report.%s' % name))
 
-        titlevars = {
+        self.title = Template(options['title']).safe_substitute({
             'localhost': socket.gethostname(),
             'localtime': time.strftime('%c', self.runtime)
-        }
-
-        logger.debug('Before title={0}'.format(self.title))
-        self.title = Template(self.title).safe_substitute(titlevars)
-        logger.debug('After title={0}'.format(self.title))
-
-        logger.debug('html_template={0}'.format(self.html_template))
-        logger.debug('text_template={0}'.format(self.text_template))
-        logger.debug('filters={0}'.format(self.filters))
-        logger.debug('unparsed={0}'.format(self.unparsed))
+        })
+        self.html_template = options['template.html']
+        self.text_template = options['template.text']
+        self.subreports = [
+            Subreport(name=opt.partition('.')[2], title=value)
+            for opt, value in options.items() if opt.startswith('subreport.')
+        ]
 
     def need_rawlogs(self):
         """
@@ -611,11 +598,11 @@ class Report(object):
     def cleanup(self):
         pass
 
-    def get_formats(self, formats, apps):
+    def get_report(self, formats):
         """
-        Make report item texts in a specified format
+        Make report item texts in a specified format.
         """
-        if self.is_empty():
+        if not self.is_empty():
             logger.info("the report is empty: skip sending to channels")
             return []
 
@@ -628,11 +615,12 @@ class Report(object):
         valumap = {
             'title': self.title,
             'localhost': socket.gethostname(),
-            'patterns': [pattern.pattern for pattern in self.patterns],
-            'pattern_file': self.args.pattern_file,
-            'hosts': self.args.hosts,
-            'apps': u', '.join([u'%s(%d)' % (app.name, app.counter)
-                                for app in apps.values() if app.counter > 0]),
+            'patterns': ', '.join([repr(pattern) for pattern in self.args.patterns]) or None,
+            'pattern_files': ', '.join(self.args.pattern_files) or None,
+            'hosts': ', '.join(self.args.hostnames) or None,
+            'apps': u', '.join([
+                u'%s(%d)' % (app.name, app.counter) for app in self.apps.values() if app.counter > 0
+            ]),
             'version': __version__
         }
 
@@ -643,33 +631,24 @@ class Report(object):
         if len(filters) > 1:
             valumap['filters'] = ' OR '.join(['(%s)' % item for item in filters])
         else:
-            valumap['filters'] = filters[0]
+            valumap['filters'] = filters[0] if filters else None
 
         logger.debug('Get run\'s stats')
         for key in self.stats:
             valumap[key] = self.stats[key]
 
-        report_parts = []
-        for fmt in self.formats:
-            if fmt == 'plain':
-                logger.info('Creating a plain text page report')
-                report_parts.append(self.make_text_page(valumap))
+        report = {}
+        for fmt in formats:
+            if fmt == 'text':
+                logger.info('creating a plain text page report')
+                report['text'] = self.make_text_page(valumap)
             elif fmt == 'html':
-                logger.info('Creating a standard html page report')
-                report_parts.append(self.make_html_page(valumap))
+                logger.info('creating a standard html page report')
+                report['html'] = self.make_html_page(valumap)
             elif fmt == 'csv':
-                logger.info('Creating a list of csv files')
-                report_parts.extend(self.make_csv_tables())
-
-        if self.channels:
-            print(u'\n--- Sending report ---')
-            for channel in self.channels:
-                logger.info('output to channel %r' % channel.name)
-                channel.send(self.title, report_parts, rawfh)
-        elif self.formats[0] == 'plain':
-            print('\n{0}'.format(report_parts[0].text))
-
-
+                logger.info('creating a list of csv files')
+                report['csv'] = self.make_csv_tables()
+        return report
 
     def is_empty(self):
         """
