@@ -3,8 +3,7 @@
 Module to manage Lograptor applications
 """
 #
-# Copyright (C), 2011-2016, by Davide Brunato and
-# SISSA (Scuola Internazionale Superiore di Studi Avanzati).
+# Copyright (C), 2011-2016, by SISSA - International School for Advanced Studies.
 #
 # This file is part of Lograptor.
 #
@@ -36,7 +35,7 @@ except ImportError:
 from .exceptions import LograptorConfigError, RuleMissingError
 from .configmap import ConfigMap
 from .report import ReportItem
-from .cache import LineCache
+from .cache import ThreadLineCache
 from .utils import field_multisub, exact_sub
 
 
@@ -359,7 +358,7 @@ class AppLogParser(object):
         self.priority = self.appconfig.getint('main', 'priority')
         self.files = field_multisub(self._files, 'host', args.hostnames or ['*'])
         if self._thread:
-            self.cache = LineCache()
+            self.cache = ThreadLineCache()
 
         logger.info('app %r run tags: %r', name, self.tags)
         logger.info('app %r run files: %r', name, self.files)

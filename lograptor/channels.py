@@ -3,8 +3,7 @@
 This module defines communication channels for the program.
 """
 #
-# Copyright (C), 2011-2016, by Davide Brunato and
-# SISSA (Scuola Internazionale Superiore di Studi Avanzati).
+# Copyright (C), 2011-2016, by SISSA - International School for Advanced Studies.
 #
 # This file is part of Lograptor.
 #
@@ -166,9 +165,7 @@ class TermChannel(BaseChannel):
         if self.args.count:
             # When -c/--count option
             fmt_parts.append('counter')
-            self.fmt_selected = colon_sep.join(
-                [fmt_dict[i] for i in fmt_parts + ['selected']]
-            )
+            self.fmt_selected = colon_sep.join([fmt_dict[i] for i in fmt_parts])
             self.fmt_context = ''
         else:
             if self.args.line_number:

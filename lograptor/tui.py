@@ -4,8 +4,7 @@ This module contains functions and classes to manage output on text-based
 user interface (TUI).
 """
 #
-# Copyright (C), 2011-2016, by Davide Brunato and
-# SISSA (Scuola Internazionale Superiore di Studi Avanzati).
+# Copyright (C), 2011-2016, by SISSA - International School for Advanced Studies.
 #
 # This file is part of Lograptor.
 #

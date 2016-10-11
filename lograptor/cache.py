@@ -4,8 +4,7 @@ This module contains class to handle caching for Lograptor's
 application class instances.
 """
 #
-# Copyright (C), 2011-2016, by Davide Brunato and
-# SISSA (Scuola Internazionale Superiore di Studi Avanzati).
+# Copyright (C), 2011-2016, by SISSA - International School for Advanced Studies.
 #
 # This file is part of Lograptor.
 #
@@ -29,6 +28,8 @@ try:
     import pwd
 except ImportError:
     pwd = None
+
+from .utils import build_dispatcher
 
 
 class CacheEntry(object):
@@ -95,7 +96,7 @@ class FileInputDeque(deque):
             yield k + 1, i
 
 
-class LineCache(object):
+class ThreadLineCache(object):
     """
     A class to manage line caching
     """
@@ -310,3 +311,113 @@ class RenameCache(object):
 
         self.uidsmap[uid] = name
         return name
+
+
+class LineCache(deque):
+
+    def __init__(self, channels, before_context, after_context):
+        super(LineCache, self).__init__(maxlen=before_context)
+        self.channels = channels
+        self.before_context = before_context
+        self.after_context = after_context
+        self.last_line = 0
+        self.context_until = 0
+        self.send_event = build_dispatcher(channels, 'send_event')
+        self.send_context = build_dispatcher(channels, 'send_context')
+        self.send_separator = build_dispatcher(channels, 'send_separator')
+
+    def register_event(self, filename, line_number, pattern_match, **kwargs):
+        next_line = line_number - len(self)
+        if self.last_line and (next_line - self.last_line > 1):
+            self.send_separator()
+        for n_line in range(line_number - len(self), line_number):
+            self.send_context(
+                filename=filename,
+                line_number=n_line,
+                rawlog=self.popleft(),
+                pattern_match=pattern_match
+            )
+        self.last_line = line_number
+        self.context_until = line_number + self.after_context
+        self.send_event(filename=filename, line_number=line_number, pattern_match=pattern_match, **kwargs)
+
+    def register_context(self, line_number, rawlog, **kwargs):
+        if self.after_context and self.context_until >= line_number:
+            self.send_context(line_number=line_number, rawlog=rawlog, **kwargs)
+            last_line = line_number
+        elif self.before_context:
+            self.append(rawlog)
+
+    def reset(self):
+        self.last_line = 0
+        self.context_until = 0
+        self.clear()
+
+
+class ThreadsCache(OrderedDict):
+
+    def __init__(self, channels, before_context, after_context, max_threads=1000):
+        super(ThreadsCache, self).__init__()
+        self.channels = channels
+        if before_context <= 0:
+            raise ValueError("before_context must be a positive integer")
+        if after_context <= 0:
+            raise ValueError("after_context must be a positive integer")
+        self.before_context = before_context
+        self.after_context = after_context
+        self.context = before_context + after_context + 1
+        self.max_threads = max_threads
+        self.send_event = build_dispatcher(channels, 'send_event')
+        self.send_context = build_dispatcher(channels, 'send_context')
+        self.send_separator = build_dispatcher(channels, 'send_separator')
+        self._flushed_first = False
+
+    def flush(self, key):
+        line_cache, matched, after_context = self[key]
+        if not matched:
+            return
+
+        if not self._flushed_first:
+            self.send_separator()
+            self._flushed_first = True
+        for entry in line_cache:
+            if entry['context']:
+                self.send_context(**entry)
+            else:
+                self.send_event(**entry)
+        del self[key]
+
+    def register_event(self, key, **kwargs):
+        kwargs.update(context=False)
+        try:
+            line_cache, matched, after_context = self[key]
+        except KeyError:
+            line_cache = deque()
+            line_cache.append(kwargs)
+            self[key] = (line_cache, True, 0)
+        else:
+            if line_cache.maxlen is not None:
+                line_cache = deque()
+            del self[key]
+            self[key] = (line_cache, True, 0)
+
+    def register_context(self, key, **kwargs):
+        kwargs.update(context=True)
+        try:
+            line_cache, matched, after_context = self[key]
+        except KeyError:
+            line_cache = deque(self.before_context)
+            line_cache.append(kwargs)
+            self[key] = (line_cache, False, 0)
+        else:
+            if after_context >= self.after_context:
+                self.flush(key)
+            else:
+                del self[key]
+                line_cache.append(kwargs)
+                self[key] = (line_cache, matched, 0 if not matched else after_context + 1)
+
+    def reset(self):
+        self.clear()
+        self._flushed_first = False
+

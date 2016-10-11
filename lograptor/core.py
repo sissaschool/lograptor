@@ -3,8 +3,7 @@
 This module contain core classes and methods for Lograptor package.
 """
 #
-# Copyright (C), 2011-2016, by Davide Brunato and
-# SISSA (Scuola Internazionale Superiore di Studi Avanzati).
+# Copyright (C), 2011-2016, by SISSA - International School for Advanced Studies.
 #
 # This file is part of Lograptor.
 #

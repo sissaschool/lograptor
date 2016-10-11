@@ -3,8 +3,7 @@
 This module define the matcher engine of Lograptor package.
 """
 #
-# Copyright (C), 2011-2016, by Davide Brunato and
-# SISSA (Scuola Internazionale Superiore di Studi Avanzati).
+# Copyright (C), 2011-2016, by SISSA - International School for Advanced Studies.
 #
 # This file is part of Lograptor.
 #
@@ -23,10 +22,10 @@ import os
 import time
 import datetime
 import logging
-import collections
 
 from .parsers import CycleParsers
 from .utils import build_dispatcher
+from .cache import LineCache, ThreadsCache
 
 logger = logging.getLogger(__name__)
 
@@ -109,33 +108,42 @@ def create_matcher_engine(obj, parsers):
     :param obj: The Lograptor instance.
     :return: The matcher function.
     """
+
     parsers = CycleParsers(parsers)
     name_cache = obj.name_cache
-    line_number = obj.args.line_number
     tagmap = obj.tagmap
     max_count = 1 if obj.args.quiet else obj.args.max_count
     use_rules = obj.args.use_rules
     hosts = obj.hosts
+    if hosts:
+        hostset = set()
     patterns = obj.patterns
     thread = obj.args.thread
-    send_log_lines = not (obj.args.quiet or obj.args.count)
-
-    before_context = max(obj.args.before_context, obj.args.context)
-    after_context = max(obj.args.after_context, obj.args.context)
-    context = before_context + after_context
-    line_buffer = collections.deque(maxlen=before_context)
-
     invert = obj.args.invert
     count = obj.args.count
     unparsed = obj.args.unparsed
     timerange = obj.args.timerange
-    send_event = build_dispatcher(obj.channels, 'send_event')
-    send_context = build_dispatcher(obj.channels, 'send_context')
-    send_separator = build_dispatcher(obj.channels, 'send_separator')
-
+    register_log_lines = not (obj.args.quiet or obj.args.count)
     initial_dt = time.mktime(obj.initial_dt.timetuple()) if obj.initial_dt else float(0)
     final_dt = time.mktime(obj.final_dt.timetuple() if obj.final_dt else (2222, 2, 2, 0, 0, 0, 0, 0, 0))
-    hostset = set()
+
+    # Define functions for processing of the context.
+    before_context = max(obj.args.before_context, obj.args.context)
+    after_context = max(obj.args.after_context, obj.args.context)
+    if not register_log_lines or not (before_context + after_context):
+        def dummy(*args, **kwargs):
+            pass
+
+        register_event = build_dispatcher(obj.channels, 'send_event')
+        register_context = context_reset = dummy
+    else:
+        if thread:
+            context_cache = ThreadsCache(obj.channels, before_context, after_context)
+        else:
+            context_cache = LineCache(obj.channels, before_context, after_context)
+        register_event = context_cache.register_event
+        register_context = context_cache.register_context
+        context_reset = context_cache.reset
 
     def process_logfile(path_or_file, applist):
         first_event = None
@@ -148,8 +156,7 @@ def create_matcher_engine(obj, parsers):
         unparsed_counter = 0
         full_match = False
         extra_tags = set()
-        line_buffer.clear()
-        last_line = context_until = 0
+        context_reset()
 
         try:
             _logfile = open(path_or_file)
@@ -250,15 +257,7 @@ def create_matcher_engine(obj, parsers):
                 # Skip log lines that not match any pattern.
                 pattern_match = get_pattern_match(line, patterns, invert)
                 if not pattern_match and not thread:
-                    if after_context and context_until >= line_counter:
-                        send_context(
-                            filename=logfile_name,
-                            line_number=line_counter if line_number else None,
-                            rawlog=line
-                        )
-                        last_line = line_counter
-                    elif before_context:
-                        line_buffer.append(line)
+                    register_context(filename=logfile_name, line_number=line_counter, rawlog=line)
                     continue
 
                 ###
@@ -269,6 +268,7 @@ def create_matcher_engine(obj, parsers):
                     continue
                 app.counter += 1
 
+                ###
                 # Parse the log message with app's rules
                 if use_rules and (pattern_match or thread):
                     rule_match, full_match, app_thread, map_dict = app.process(log_data)
@@ -280,7 +280,9 @@ def create_matcher_engine(obj, parsers):
                         continue
 
                 ###
-                #  Event matched: save event's data and sent to output channels
+                # Event matched: register event's data and datetime
+                prev_data = log_data
+
                 if first_event is None:
                     first_event = event_time
                     last_event = event_time
@@ -289,44 +291,20 @@ def create_matcher_engine(obj, parsers):
                         first_event = event_time
                     if last_event < event_time:
                         last_event = event_time
-                prev_data = log_data
+
+                if register_log_lines:
+                    register_event(
+                        filename=logfile_name,
+                        line_number=line_counter,
+                        log_data=log_data,
+                        rawlog=line,
+                        pattern_match=pattern_match,
+                        key=(app, app_thread)
+                    )
 
                 ###
-                # Increment counters and send to output. Purge old threads every
-                # PURGE_THREADS_LIMIT processed lines.
-                if thread:
-                    if (line_counter % PURGE_THREADS_LIMIT) == 0:
-                        for _app in applist:
-                            _app.purge_threads(event_time)
-                            max_threads = None if not max_count else max_count - matching_counter
-                            matching_counter += _app.cache.flush_old_cache(event_time, send_log_lines, max_threads)
-                else:
-                    matching_counter += 1
-                    if context:
-                        next_line = line_counter - len(line_buffer)
-                        if last_line and (next_line - last_line  > 1):
-                            send_separator()
-                    if line_buffer:
-                        for n_line in range(line_counter - len(line_buffer), line_counter):
-                            send_context(
-                                filename=logfile_name,
-                                line_number=n_line if line_number else None,
-                                rawlog=line_buffer.popleft(),
-                                pattern_match=pattern_match
-                            )
-                    if context:
-                        last_line = line_counter
-                        context_until = line_counter + after_context
-                    if send_log_lines:
-                        send_event(
-                            filename=logfile_name,
-                            line_number=line_counter if line_number else None,
-                            log_data=log_data,
-                            rawlog=line,
-                            pattern_match=pattern_match
-                        )
-
                 # Stops iteration if max_count matchings is exceeded
+                matching_counter += 1
                 if max_count and matching_counter >= max_count:
                     break
 
@@ -341,11 +319,11 @@ def create_matcher_engine(obj, parsers):
                 if max_count and matching_counter >= max_count:
                     break
                 max_threads = None if not max_count else max_count - matching_counter
-                matching_counter += _app.cache.flush_cache(event_time, send_log_lines, max_threads)
+                matching_counter += _app.cache.flush_cache(event_time, register_log_lines, max_threads)
 
         # If count option is enabled then print the number of matched lines.
         if count:
-            send_event(filename=logfile.name, counter=matching_counter)
+            register_event(filename=logfile.name, counter=matching_counter)
 
         return line_counter, matching_counter, unparsed_counter, extra_tags, first_event, last_event
 
