@@ -14,7 +14,7 @@ Command line tools for Lograptor package.
 # See the file 'LICENSE' in the root directory of the present
 # distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
 #
-# @Author Davide Brunato <brunato@sissa.it>
+# @author Davide Brunato <brunato@sissa.it>
 #
 from .core import Lograptor
 from .exceptions import *

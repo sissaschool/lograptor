@@ -20,7 +20,7 @@ import logging
 import re
 import socket
 import time
-from collections import namedtuple, OrderedDict
+from collections import namedtuple, OrderedDict, MutableMapping
 from string import Template
 
 try:
@@ -29,17 +29,11 @@ except ImportError:
     # Fall back for Python 2.x
     from UserDict import IterableUserDict as UserDict
 
-try:
-    import configparser
-except ImportError:
-    # Fall back for Python 2.x
-    import ConfigParser as configparser
 
-from lograptor.utils import get_fmt_results
 from .info import __version__
-import lograptor.channels
-import lograptor.tui
-import lograptor.utils
+from .exceptions import NoOptionError, OptionError, RuleMissingError
+from . import tui
+from .utils import get_fmt_results, htmlsafe, get_value_unit
 
 
 logger = logging.getLogger(__name__)
@@ -47,7 +41,7 @@ logger = logging.getLogger(__name__)
 TextPart = namedtuple('TextPart', 'title text ext')
 
 
-class ReportItem(UserDict):
+class ReportItem(MutableMapping):
     """
     Class to manage the report items defined for an
     application's logs parsed by Lograptor.
@@ -75,24 +69,23 @@ class ReportItem(UserDict):
         self.html_text = None
         self.csv_text = None
         n_headers = 0
-        
+
         for opt, value in section_items:
             # Check fixed options
             if opt == 'subreport':
                 if value not in subreports:
-                    msg = '"{0}" is not a subreport!'.format(value)
-                    raise lograptor.OptionError('subreport', msg)
+                    raise OptionError('subreport', '%r is not a subreport!' % value)
                 self.subreport = value
             elif opt == 'title':
                 self.title = value
             elif opt == 'color':
                 if self._color_regexp.search(value) is None:
-                    raise lograptor.OptionError('color')
+                    raise OptionError('color')
                 self.color = value
             elif opt == 'function':
                 match = self._function_regexp.search(value)
                 if not match:
-                    raise lograptor.OptionError('function')
+                    raise OptionError('function')
 
                 self.function = match.group('function')
                 self.topnum = match.group('topnum')
@@ -105,15 +98,14 @@ class ReportItem(UserDict):
                 
                 # Parameters value checking
                 if self.function == "total" and n_headers > 0:
-                    msg = 'function "total" doesn\'t have headers!'
-                    raise lograptor.OptionError('function', msg)
+                    raise OptionError('function', 'function "total" doesn\'t have headers!')
                 elif self.function == "top":
                     try:
                         if int(self.topnum) < 0:
                             raise ValueError
                     except (ValueError, TypeError):
-                        msg = 'First parameter of function "top" must be a positive integer'
-                        raise lograptor.OptionError('function', msg)
+                        msg = 'the first argument of function "top" must be a positive integer'
+                        raise OptionError('function', msg)
             else:
                 # Load and check names of report rule options
                 for rule in rules:
@@ -123,26 +115,22 @@ class ReportItem(UserDict):
                         break
                 else:
                     msg = u"skip report rule %r because use undefined or not active app rule!" % self.name
-                    raise lograptor.RuleMissingError(msg)
+                    raise RuleMissingError(msg)
                 self.data[opt] = value
 
-        # Check if fixed options are all defined
+        # Raise if a required option is missing
         if self.subreport is None:
-            raise configparser.NoOptionError('subreport', section)
+            raise NoOptionError('subreport', section)
         elif self.title is None:
-            raise configparser.NoOptionError('title', section)
+            raise NoOptionError('title', section)
         elif self.function is None:
-            raise configparser.NoOptionError('function', section)
+            raise NoOptionError('function', section)
 
         # Check the values of report rule options
         for opt in self:
-            logger.debug('Check report rule "{0}"'.format(opt))
-            
             match = self._reprule_regexp.search(self.data[opt])
-            
             if not match:
-                msg = 'syntax error in report rule'
-                raise lograptor.OptionError(opt, msg)
+                raise OptionError(opt, 'syntax error in report rule')
 
             valfld = match.group('valfld')
             cond = match.group('condition')
@@ -150,50 +138,48 @@ class ReportItem(UserDict):
             
             fields = re.split('\s*,\s*', match.group('fields'))
             if len(fields) < n_headers:
-                msg = 'too many headers with respect to the number of fields of the rules'
-                raise lograptor.OptionError('function', msg)
+                raise OptionError('function', 'more headers than fields in the rule!')
 
-            # Report rule check by function
+            # Check report rule's function declaration
             if self.function == 'total':
-                if cond != "*" and condfield not in self.rules[opt].regexp.groupindex:
-                    msg = 'condition field "{0}" not in rule {1} gids'.format(condfield, opt)
-                    raise lograptor.OptionError('function', msg)
+                if cond != '*' and condfield not in self.rules[opt].regexp.groupindex:
+                    raise OptionError('function', 'condition %r not in rule %r gids' % (condfield, opt))
                 if valfld is not None and valfld not in self.rules[opt].regexp.groupindex:
-                    msg = 'field "{0}" not in rule {1} gids'.format(valfld, opt)
-                    raise lograptor.OptionError(opt, msg)
+                    raise OptionError(opt, 'field %r not in rule %r gids' % (valfld, opt))
                 if len(fields) > 1:
-                    msg = 'multiple row descriptions!'
-                    raise lograptor.OptionError(opt, msg)
+                    raise OptionError(opt, 'multiple row descriptions!')
                 if fields[0][0] != '"':
-                    msg = 'the row description must be between double-quotes!'
-                    raise lograptor.OptionError(opt, msg)
-
+                    raise OptionError(opt, 'a description must be double-quoted!')
             elif self.function == 'top':
                 if valfld is not None and valfld not in self.rules[opt].regexp.groupindex:
-                    msg = 'field "{0}" not in rule {1} gids'.format(valfld, opt)
-                    raise lograptor.OptionError(opt, msg)                    
+                    raise OptionError(opt, 'field %r not in rule %r gids' % (valfld, opt))
                 if len(fields) != 1 or fields[0][0] == '"':
-                    msg = 'missing field specification!'
-                    raise lograptor.OptionError(opt, msg)
-
+                    raise OptionError(opt, 'missing field specification!')
             elif self.function == 'table':
                 if valfld is not None:
-                    msg = 'syntax error in report rule'
-                    raise lograptor.OptionError(opt, msg)
-                if cond != "*" and condfield not in self.rules[opt].regexp.groupindex:
-                    msg = 'filter field "{0}" not in rule {1} gids'.format(condfield, opt)
-                    raise lograptor.OptionError('function', msg)
+                    raise OptionError(opt, 'syntax error in report rule')
+                if cond != '*' and condfield not in self.rules[opt].regexp.groupindex:
+                    raise OptionError('function', 'field %r not in rule %r gids' % (condfield, opt))
 
             # Checking report rule's fields
-            logger.debug('Checking fields: {0}'.format(fields)) 
+            logger.debug('checking fields: %s', fields)
             for field in fields:
                 if field[0] == '"' and field[-1] == '"':
                     continue
                 if field == "host":
                     continue
                 if field not in self.rules[opt].regexp.groupindex:
-                    msg = 'field "{0}" not in rule gids'.format(field)
-                    raise lograptor.OptionError(opt, msg)
+                    raise OptionError(opt, 'field %r not in rule gids' % field)
+
+    def __repr__(self):
+        return u"<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
+
+    def __getitem__(self, key): return self.data[key]
+    def __setitem__(self, key, value):
+        self.data[key] = value
+    def __delitem__(self, key): del self.data[key]
+    def __iter__(self): return iter(self.data)
+    def __len__(self): return len(self.data)
 
     def __eq__(self, repitem):
         """
@@ -296,7 +282,7 @@ class ReportItem(UserDict):
             text = u'<table border="0" width="100%" rules="cols" cellpadding="2">\n'\
                    '<tr><th colspan="2" align="left"><h3><font color="{1}">'\
                    '{0}</font></h3></th></tr>\n'\
-                   .format(lograptor.utils.htmlsafe(self.title.strip()), self.color)
+                   .format(htmlsafe(self.title.strip()), self.color)
 
             for res in self.results:
                 text = u'{0}<tr><td valign="top" align="right">{1}</td>'\
@@ -307,7 +293,7 @@ class ReportItem(UserDict):
             text = u'<table border="0" width="100%" rules="cols" cellpadding="2">\n'\
                    '<tr><th colspan="2" align="left"><h3><font color="{1}">'\
                    '{0}</font></h3></th></tr>\n'\
-                   .format(lograptor.utils.htmlsafe(self.title.strip()), self.color)
+                   .format(htmlsafe(self.title.strip()), self.color)
 
             if self.results[0] is not None:
                 for res in self.results:
@@ -323,7 +309,7 @@ class ReportItem(UserDict):
             text = u'<h3><font color="{1}">{0}</font></h3>'\
                    '<table width="100%" rules="cols" cellpadding="2">\n'\
                    '<tr bgcolor="#aaaaaa">'\
-                   .format(lograptor.utils.htmlsafe(self.title.strip()), self.color)
+                   .format(htmlsafe(self.title.strip()), self.color)
             
             headers = re.split('\s*,\s*', self.headers)
             for i in range(len(headers)):
@@ -373,8 +359,6 @@ class ReportItem(UserDict):
         Get the text representation of a report element as csv.
         """
         import csv
-        import io
-
         try:
             import cStringIO
             out = cStringIO.StringIO()
@@ -426,28 +410,26 @@ class Subreport(object):
         self.repitems = []
         self.reptext = ""
 
-    def __bool__(self):
-        return len(self.repitems) > 0
+    def __len__(self):
+        return len(self.repitems)
 
     def __repr__(self):
         return u"<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
 
     def make(self, apps):
         """
-        Make of subreport items from results
+        Make subreport items from results.
         """
         for (appname, app) in sorted(apps.items(), key=lambda x: (x[1].priority, x[0])):
-            logger.info('Getting report results from "{0}"'.format(appname))
+            logger.info('Getting report results from %r', appname)
             
             for repitem in app.repitems:
-                
                 if repitem.subreport != self.name:
                     continue
 
                 if repitem.function == 'total':
                     for opt in repitem:
                         match = repitem.parse_report_rule(opt)
-
                         cond = match.group('condition')
                         valfld = match.group('valfld')
                         unit = match.group('unit')
@@ -458,11 +440,10 @@ class Subreport(object):
                             continue
 
                         if unit is not None:
-                            total, unit = lograptor.utils.get_value_unit(total, unit, 'T')
+                            total, unit = get_value_unit(total, unit, 'T')
                             total = '{0} {1}'.format(total, unit)
                         else:
                             total = str(total)
-
                         repitem.results.append(tuple([total, itemtitle]))
 
                 elif repitem.function == 'top':
@@ -505,7 +486,7 @@ class Subreport(object):
 
                 for res in repitem.results:
                     if unit is not None:
-                        v, u = lograptor.utils.get_value_unit(res[0], unit, 'T')
+                        v, u = get_value_unit(res[0], unit, 'T')
                         res[0] = '{0} {1}'.format(v, u)
                     else:
                         res[0] = str(res[0])
@@ -519,7 +500,7 @@ class Subreport(object):
         
         for repitem in self.repitems:
             if repitem.results:
-                if fmt is None or fmt == 'plain':
+                if fmt is None or fmt == 'text':
                     repitem.make_text_plain(width)
                 elif fmt == 'html':
                     repitem.make_text_html()
@@ -553,10 +534,9 @@ class Report(object):
     This helper class holds the contents of a report before it is
     sent to selected channels.
     """
-    def __init__(self, name, patterns, apps, args, config):
+    def __init__(self, name, patterns, args, config):
         self.name = name
         self.patterns = patterns
-        self.apps = apps
         self.args = args
         self.config = config
 
@@ -577,19 +557,13 @@ class Report(object):
             for opt, value in options.items() if opt.startswith('subreport.')
         ]
 
-    def need_rawlogs(self):
-        """
-        Check if rawlogs are requested by almost one report's channels.
-        """
-        return any([channel.rawlogs for channel in self.channels])
-
-    def make(self):
+    def make(self, apps):
         """
         Create the report from application results
         """
         for subreport in self.subreports:
             logger.info('Make subreport "{0}"'.format(subreport.name))
-            subreport.make(self.apps)
+            subreport.make(apps)
 
         for subreport in self.subreports:
             subreport.compact_tables()
@@ -597,16 +571,12 @@ class Report(object):
     def cleanup(self):
         pass
 
-    def get_report(self, formats):
+    def get_report(self, apps, formats):
         """
         Make report item texts in a specified format.
         """
-        if not self.is_empty():
-            logger.info("the report is empty: skip sending to channels")
-            return []
-
         for fmt in formats:
-            width = 100 if fmt is not None else lograptor.tui.getTerminalSize()[0]
+            width = 100 if fmt is not None else tui.getTerminalSize()[0]
             for subrep in self.subreports:
                 subrep.make_format(fmt, width)
 
@@ -618,7 +588,7 @@ class Report(object):
             'pattern_files': ', '.join(self.args.pattern_files) or None,
             'hosts': ', '.join(self.args.hostnames) or None,
             'apps': u', '.join([
-                u'%s(%d)' % (app.name, app.counter) for app in self.apps.values() if app.counter > 0
+                u'%s(%d)' % (app.name, app.counter) for app in apps.values() if app.counter > 0
             ]),
             'version': __version__
         }
@@ -651,7 +621,7 @@ class Report(object):
 
     def is_empty(self):
         """
-        Check if the report is empty (=all subreports are empty)
+        A report is empty when it hasn't subreports or when all subreports are empty.
         """
         return not any(self.subreports)
 
@@ -661,25 +631,21 @@ class Report(object):
         """
         for key, value in stats.items():
             self.stats[key] = value
-            logger.debug('{0}={1}'.format(key, value))
+            logger.debug('%s=%r' % (key, value))
 
     def make_html_page(self, valumap):
         """
         Builds the report as html page, using the template page from file.
         """
-        logger.info('Making a standard report page')
-
-        logger.info('Reading in the template file "{0}"'.format(self.html_template))
+        logger.info('Making an html report using template %r.', self.html_template)
         fh = open(self.html_template)
         template = fh.read()
         fh.close()
 
-        logger.info('Concatenating the subreports together')
-
         allsubrep = ''
         for subrep in self.subreports:
             if subrep.repitems:
-                logger.info('Processing report for "{0}"'.format(subrep.name))
+                logger.info('Processing report for %r', subrep.name)
                 allsubrep = '{0}\n<h2>{1}</h2>\n'\
                             .format(allsubrep, subrep.title, subrep.reptext)
                 for repitem in subrep.repitems:
@@ -687,48 +653,28 @@ class Report(object):
                 allsubrep = '{0}<hr />'.format(allsubrep)
         
         valumap['subreports'] = allsubrep
-
-        logger.info('Create the final report')
         endpage = Template(template).safe_substitute(valumap)
-
-        logger.debug('----htmlreport starts----')
-        logger.debug(endpage)
-        logger.debug('----htmlreport ends-----')
-
         return TextPart("Lograptor report", endpage, 'html')
 
     def make_text_page(self, valumap):
         """
         Builds the report as text page, using the template page from file.
         """
-        
-        logger.info('Making a standard report text page')
-
-        logger.info('Reading in the template file "{0}"'.format(self.text_template))
+        logger.info('Making a plain text report page using template %r.', self.text_template)
         fh = open(self.text_template)
         template = fh.read()
         fh.close()
         
-        logger.info('Concatenating the subreports together')
-
-        allsubrep = ''
+        allsubrep = []
         for subrep in self.subreports:
-            if subrep.repitems:
-                logger.info('Processing report for "{0}"'.format(subrep.name))
-                allsubrep = '{0}\n\n{2}\n***** {1} *****\n{2}'\
-                            .format(allsubrep, subrep.title, '*' * (len(subrep.title)+12))
-                for repitem in subrep.repitems:
-                    allsubrep = '{0}\n{1}'.format(allsubrep, repitem.plain_text)
+            repitems = [item.plain_text for item in subrep.repitems if item.plain_text]
+            if repitems:
+                allsubrep.append('\n{1}\n***** {0} *****\n{1}'.format(subrep.title, '*' * (len(subrep.title)+12)))
+                allsubrep.extend(repitems)
+                allsubrep.append('')
 
-        valumap['subreports'] = allsubrep
-        
-        logger.info('Create the final report')
+        valumap['subreports'] = '\n'.join(allsubrep) or "\n<<NO SUBREPORT RELATED EVENTS>>\n"
         endpage = Template(template).safe_substitute(valumap)
-
-        logger.debug('----textreport starts----')
-        logger.debug(endpage)
-        logger.debug('----textreport ends-----')
-
         return TextPart("Lograptor report", endpage, 'txt')
 
     def make_csv_tables(self):

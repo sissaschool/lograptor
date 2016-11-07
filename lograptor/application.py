@@ -32,10 +32,9 @@ try:
 except ImportError:
     pwd = None
 
-from .exceptions import LograptorConfigError, RuleMissingError
+from .exceptions import LograptorConfigError, RuleMissingError, OptionError
 from .configmap import ConfigMap
 from .report import ReportItem
-from .cache import ThreadLineCache
 from .utils import field_multisub, exact_sub
 
 
@@ -92,12 +91,14 @@ class AppRule(object):
 
         self._last_idx = None
 
+    def __repr__(self):
+        return u"<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
+
     def add_result(self, values):
         """
         Add a tuple or increment the value of an existing one
         in the rule results dictionary.
         """
-
         idx = [values['host']]
         for gid in self.key_gids[1:]:
             idx.append(values[gid])
@@ -124,12 +125,6 @@ class AppRule(object):
             self.args.thread and 'thread' in self.regexp.groupindex or
             self.used_by_report or self.args.unparsed
         )
-
-    def has_results(self):
-        """
-        Returns true if the rule has results.
-        """
-        return self.results
 
     def total_events(self, cond, valfld=None):
         """
@@ -357,8 +352,6 @@ class AppLogParser(object):
         self.enabled = self.appconfig.getbool('main', 'enabled')
         self.priority = self.appconfig.getint('main', 'priority')
         self.files = field_multisub(self._files, 'host', args.hostnames or ['*'])
-        if self._thread:
-            self.cache = ThreadLineCache()
 
         logger.info('app %r run tags: %r', name, self.tags)
         logger.info('app %r run files: %r', name, self.files)
@@ -375,15 +368,18 @@ class AppLogParser(object):
         if args.report:
             # Add report items
             self.repitems = []
-            sections = self.appconfig.sections()
-            for sect in filter(lambda x: x.startswith('report.'), sections):
-                _sect = sect.split('.', 1)[1]
+            subreports = [
+                opt.split('.')[1] for opt in config.options('report.%s' % args.report)
+                if opt.startswith('subreport.')
+            ]
+            for sect in filter(lambda x: x not in ['main', 'rules'], self.appconfig.sections()):
                 options = self.appconfig.items(sect)
-                subreports = config.options('subreports')
                 try:
-                    self.repitems.append(ReportItem(_sect, options, subreports, rules))
+                    self.repitems.append(ReportItem(sect, options, subreports, rules))
                 except RuleMissingError as msg:
                     logger.info(msg)
+                except OptionError as err:
+                    logger.error('skip report item %r for app %r: %s', sect, name, err)
 
         if False and any([rule for rule in rules if not rule.is_used()]):
             self.rules = [rule for rule in rules if rule.is_used()]
@@ -432,28 +428,6 @@ class AppLogParser(object):
                     rules.append(AppRule(option, pattern, self.args))
 
         return rules
-
-    def purge_threads(self, event_time=0):
-        """
-        Purge the old unmatched threads from application's results.
-        """
-        cache = self.cache.data
-        for rule in self.rules:
-            try:
-                pos = rule.key_gids.index('thread')
-            except ValueError:
-                continue
-
-            purge_list = []
-            for idx in rule.results:
-                thread = idx[pos]
-                if thread in cache:
-                    if not (cache[thread].pattern_match and cache[thread].full_match) and \
-                            (abs(event_time - cache[thread].end_time) > 3600):
-                        purge_list.append(idx)
-
-            for idx in purge_list:
-                del rule.results[idx]
 
     def increase_last(self, k):
         """

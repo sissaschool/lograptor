@@ -34,6 +34,7 @@ from .utils import mail_sendmail, mail_smtp, do_chunked_gzip
 
 logger = logging.getLogger(__name__)
 
+
 class grep_colors:
     """
     Define a structure for grep color codes.
@@ -78,6 +79,9 @@ class BaseChannel(object):
         self.rawfh = None
         logger.debug('Formats ={0}'.format(self.formats))
 
+    def __str__(self):
+        return u"<%s '%s'>" % (self.__class__.__name__, self.name)
+
     def __repr__(self):
         return u"<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
 
@@ -112,16 +116,19 @@ class BaseChannel(object):
         logger.info('Temporary directory created in %r', tmpprefix)
 
     def send_message(self, message):
-        raise NotImplementedError("%r: you must provide a concrete send_message() method")
+        raise NotImplementedError("%r: you must provide a concrete send_message() method" % self)
 
-    def send_event(self, **kwargs):
-        raise NotImplementedError("%r: you must provide a concrete send_event() method")
+    def send_selected(self, **kwargs):
+        raise NotImplementedError("%r: you must provide a concrete send_event() method" % self)
 
     def send_context(self, **kwargs):
-        raise NotImplementedError("%r: you must provide a concrete send_context() method")
+        raise NotImplementedError("%r: you must provide a concrete send_context() method" % self)
+
+    def send_separator(self):
+        raise NotImplementedError("%r: you must provide a concrete send_separator() method" % self)
 
     def send_report(self, report):
-        raise NotImplementedError("%r: you must provide a concrete send_report() method")
+        raise NotImplementedError("%r: you must provide a concrete send_report() method" % self)
 
     def close(self):
         if self.rawfh is not None:
@@ -140,7 +147,7 @@ class TermChannel(BaseChannel):
         invert = GREP_COLORS.rv and self.args.invert
         colon_sep = GREP_COLORS.se + ":" if color else ":"
         dash_sep = GREP_COLORS.se + "-" if color else "-"
-        self.group_sep = ''.join([GREP_COLORS.se, '--\n', GREP_COLORS.clear]) if color else "--"
+        self.group_sep = ''.join([GREP_COLORS.se, '--\n', GREP_COLORS.clear]) if color else "--\n"
         selected_color = GREP_COLORS.cx if invert else GREP_COLORS.sl
         context_color = GREP_COLORS.sl if invert else GREP_COLORS.cx
 
@@ -184,26 +191,24 @@ class TermChannel(BaseChannel):
     def send_message(self, message):
         self._channel.write(message)
 
-    def send_event(self, **kwargs):
+    def send_selected(self, match=False, **kwargs):
         if self.color:
-            pattern_match = kwargs.get('pattern_match')
-            if pattern_match:
+            if match:
                 try:
                     kwargs['rawlog'] = ''.join([
                         item if not pos % 2 else self.fmt_matching_selected % item
-                        for pos, item in enumerate(pattern_match.re.split(kwargs['rawlog']))
+                        for pos, item in enumerate(match.re.split(kwargs['rawlog']))
                     ])
                 except AttributeError:
                     pass
         self._channel.write(self.fmt_selected % kwargs)
 
-    def send_context(self, **kwargs):
+    def send_context(self, match=False, **kwargs):
         if self.color:
-            pattern_match = kwargs.get('pattern_match')
-            if pattern_match:
+            if match:
                 kwargs['rawlog'] = ''.join([
                     item if not pos % 2 else self.fmt_matching_context % item
-                    for pos, item in enumerate(pattern_match.re.split(kwargs['rawlog']))
+                    for pos, item in enumerate(match.re.split(kwargs['rawlog']))
                 ])
         self._channel.write(self.fmt_context % kwargs)
 
@@ -215,6 +220,7 @@ class TermChannel(BaseChannel):
             try:
                 self._channel.write('\n')
                 self._channel.write(report[fmt].text)
+                self._channel.write('\n')
             except KeyError:
                 pass
 
@@ -223,25 +229,21 @@ class MailChannel(BaseChannel):
     """
     Channel type to send results with SMTP.
     """
-    def __init__(self, section, args, config):
-        super(MailChannel, self).__init__(section, config)
-        self.email_address = config['email_address']
-        self.smtp_server = config['smtp_server']
-
-        self.mailto = list(set(re.split('\s*, \s*', config.getstr(section, 'mailto'))))
-        logger.debug('Recipients list ={0}'.format(self.mailto))
+    def __init__(self, name, args, config):
+        super(MailChannel, self).__init__(name, args, config)
+        self.section = name
+        self.email_address = config.getstr('main', 'email_address')
+        self.smtp_server = config.getstr('main', 'smtp_server')
+        self.mailto = list(set(re.split('\s*, \s*', config.getstr('channel.%s' % name, 'mailto'))))
 
         # if self.args.report is not None and self.report.need_rawlogs():
-        self.rawlogs = config.getboolean(section, 'include_rawlogs')
+        self.rawlogs = config.getbool('channel.%s' % name, 'include_rawlogs')
         if self.rawlogs:
-            self.rawlogs_limit = config.getint(section, 'rawlogs_limit') * 1024
+            self.rawlogs_limit = config.getint('channel.%s' % name, 'rawlogs_limit') * 1024
         else: 
             self.rawlogs_limit = 0
-        
-        logger.debug('rawlogs={0}'.format(self.rawlogs))
-        logger.debug('rawlogs_limit={0}'.format(self.rawlogs_limit))
 
-        self.gpg_encrypt = config.getstr(section, 'gpg_encrypt')
+        self.gpg_encrypt = config.getbool('channel.%s' % name, 'gpg_encrypt')
         if self.gpg_encrypt:
             self.gpg_keyringdir = config.get['gpg_keyringdir']
 
@@ -262,8 +264,11 @@ class MailChannel(BaseChannel):
                     keyid = keyid.strip()
                     logger.debug('adding gpg_signer=' + keyid)
                     self.gpg_signers.append(keyid)
-        
-        logger.debug('gpg_encrypt={0}'.format(self.gpg_encrypt))        
+
+        logger.debug('recipients = %r', self.mailto)
+        logger.debug('rawlogs = %r', self.rawlogs)
+        logger.debug('rawlogs_limit = %r', self.rawlogs_limit)
+        logger.debug('gpg_encrypt = %r', self.gpg_encrypt)
 
     def __repr__(self):
         return u'{0}({1}: mailto={2})'.format(self.section, self.name, u','.join(self.mailto))
@@ -274,6 +279,18 @@ class MailChannel(BaseChannel):
             self.mktempdir()
             self.rawfh = tempfile.NamedTemporaryFile(mode='w+', delete=False)
 
+    def send_message(self, message):
+        pass
+
+    def send_selected(self, match=False, **kwargs):
+        pass
+
+    def send_context(self, **kwargs):
+        pass
+
+    def send_separator(self):
+        pass
+
     def send_report(self, report_parts):
         """
         Publish by sending the report by e-mail
@@ -283,19 +300,19 @@ class MailChannel(BaseChannel):
         from email.mime.multipart import MIMEMultipart
         from email.utils import formatdate, make_msgid
 
-        title = report_parts[0].title
+        title = list(report_parts.values())[0].title
 
         rawfh = None
-        logger.info('Creating an email message')
+        logger.error('Creating an email message')
 
         logger.debug('Creating a main header')
         root_part = MIMEMultipart('mixed')
         root_part.preamble = 'This is a multi-part message in MIME format.'
 
-        has_text_plain = any(text_part.ext == 'txt' for text_part in report_parts)
+        has_text_plain = 'text' in report_parts  # any(text_part.ext == 'text' for text_part in report_parts)
 
         logger.debug('Creating the text/"text_type" parts')
-        for text_part in report_parts:
+        for text_part in report_parts.values():
 
             # Skip report formats not related with this channel
             if not self.has_format(text_part.ext):

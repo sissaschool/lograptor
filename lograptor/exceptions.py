@@ -17,8 +17,14 @@ This module contain exception classes for Lograptor package.
 # @Author Davide Brunato <brunato@sissa.it>
 #
 import logging
+try:
+    import configparser
+except ImportError:
+    # Fall back for Python 2.x
+    import ConfigParser as configparser
 
-logger = logging.getLogger('lograptor')
+
+logger = logging.getLogger(__name__)
 
 
 class LograptorException(Exception):
@@ -54,12 +60,12 @@ class LograptorArgumentError(LograptorException):
         Exception.__init__(self, message)
 
 
-class NoSectionError(LograptorException):
+class NoSectionError(LograptorException, configparser.NoSectionError):
     def __init__(self, section):
         Exception.__init__(self, "No section: %r" % section)
 
 
-class NoOptionError(LograptorException):
+class NoOptionError(LograptorException, configparser.NoOptionError):
     def __init__(self, section, option):
         Exception.__init__(self, "No option %r in section: %r" % (option, section))
 
@@ -71,9 +77,9 @@ class OptionError(LograptorException):
     """
     def __init__(self, option, message=None):
         if message is None:
-            message = 'syntax error for option "{0}"'.format(option)
+            message = 'syntax error for option %r' % option
         else:
-            message = 'option "{0}": {1}'.format(option, message)
+            message = 'option %r: %s' % (option, message)
         Exception.__init__(self, message)
         logger.debug('!OptionError: {0}'.format(message))
 

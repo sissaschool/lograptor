@@ -30,10 +30,6 @@ from .cache import LineCache, ThreadsCache
 logger = logging.getLogger(__name__)
 
 
-# Cleans the thread caches every time you process a certain number of lines.
-PURGE_THREADS_LIMIT = 1000
-
-
 # Map for month field from any admitted representation to numeric.
 MONTHMAP = {
     'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06',
@@ -134,14 +130,14 @@ def create_matcher_engine(obj, parsers):
         def dummy(*args, **kwargs):
             pass
 
-        register_event = build_dispatcher(obj.channels, 'send_event')
+        register_selected = build_dispatcher(obj.channels, 'send_selected')
         register_context = context_reset = dummy
     else:
         if thread:
             context_cache = ThreadsCache(obj.channels, before_context, after_context)
         else:
             context_cache = LineCache(obj.channels, before_context, after_context)
-        register_event = context_cache.register_event
+        register_selected = context_cache.register_selected
         register_context = context_cache.register_context
         context_reset = context_cache.reset
 
@@ -205,8 +201,12 @@ def create_matcher_engine(obj, parsers):
                             app = log_parser.app or get_app(prev_data, tagmap, extra_tags) or file_app
                             app.increase_last(repeat)
                             app.counter += 1
-                            if app_thread is not None:
-                                app.cache.add_line(line, app_thread, pattern_match, full_match, event_time)
+                            register_context(
+                                key=(app, app_thread),
+                                filename=logfile_name,
+                                line_number=line_counter,
+                                rawlog=line
+                            )
                         prev_data = None
                     continue
                 else:
@@ -264,19 +264,23 @@ def create_matcher_engine(obj, parsers):
                 # Get the app from parser or from the app-tag extracted from the log line.
                 app = log_parser.app or get_app(log_data, tagmap, extra_tags) or file_app
                 if app is None:
-                    logger.error("unknown app for log: %r", line[:-1])
                     continue
-                app.counter += 1
 
                 ###
                 # Parse the log message with app's rules
                 if use_rules and (pattern_match or thread):
                     rule_match, full_match, app_thread, map_dict = app.process(log_data)
+                    if not pattern_match and rule_match and app_thread is None:
+                        continue
                     if map_dict:
                         line = name_cache.map2str(log_parser.parser.groupindex, log_match, map_dict)
-                    if app_thread is not None:
-                        app.cache.add_line(line, app_thread, pattern_match, full_match, event_time)
-                    if not (rule_match ^ unparsed) or (rule_match and not full_match and app.has_filters):
+                    if (not (rule_match ^ unparsed)) or (rule_match and not full_match and app.has_filters):
+                        register_context(
+                            key=(app, app_thread),
+                            filename=logfile_name,
+                            line_number=line_counter,
+                            rawlog=line
+                        )
                         continue
 
                 ###
@@ -293,37 +297,38 @@ def create_matcher_engine(obj, parsers):
                         last_event = event_time
 
                 if register_log_lines:
-                    register_event(
-                        filename=logfile_name,
-                        line_number=line_counter,
-                        log_data=log_data,
-                        rawlog=line,
-                        pattern_match=pattern_match,
-                        key=(app, app_thread)
-                    )
+                    if pattern_match:
+                        if max_count and matching_counter >= max_count:
+                            # Stops iteration if max_count matchings is exceeded
+                            break
+                        matching_counter += 1
+                        app.counter += 1
 
-                ###
-                # Stops iteration if max_count matchings is exceeded
-                matching_counter += 1
-                if max_count and matching_counter >= max_count:
-                    break
+                        register_selected(
+                            key=(app, app_thread),
+                            filename=logfile_name,
+                            line_number=line_counter,
+                            log_data=log_data,
+                            rawlog=line,
+                            match=pattern_match
+                        )
+                    else:
+                        register_context(
+                            key=(app, app_thread),
+                            filename=logfile_name,
+                            line_number=line_counter,
+                            rawlog=line
+                        )
 
-        ###
-        # End-of file events summary
-        if thread:
-            for _app in applist:
-                try:
-                    _app.purge_threads(event_time)
-                except UnboundLocalError:
-                    break
-                if max_count and matching_counter >= max_count:
-                    break
-                max_threads = None if not max_count else max_count - matching_counter
-                matching_counter += _app.cache.flush_cache(event_time, register_log_lines, max_threads)
+        try:
+            for key in list(context_cache.keys()):
+                context_cache.flush(key)
+        except (NameError, AttributeError):
+            pass
 
-        # If count option is enabled then print the number of matched lines.
+        # If count option is enabled then register only the number of matched lines.
         if count:
-            register_event(filename=logfile.name, counter=matching_counter)
+            register_selected(filename=logfile.name, counter=matching_counter)
 
         return line_counter, matching_counter, unparsed_counter, extra_tags, first_event, last_event
 

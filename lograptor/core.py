@@ -43,10 +43,6 @@ from .utils import set_logger, results_to_string, walk
 
 logger = logging.getLogger(__name__)
 
-
-# Cleans the thread caches every time you process a certain number of lines.
-PURGE_THREADS_LIMIT = 1000
-
 # Lograptor default configuration
 DEFAULT_CONFIG = {
     'main': {
@@ -119,36 +115,6 @@ DEFAULT_CONFIG = {
 }
 
 
-def exec_lograptor(args):
-    """
-    Exec a Lograptor intance from passed arguments.
-    """
-    # Check arguments
-    matcher_count = [args.use_rules, args.exclude_rules, args.unparsed].count(True)
-    if matcher_count == 0:
-        args.use_rules = True
-    elif matcher_count > 1:
-        raise LograptorArgumentError("conflicting matchers specified")
-
-    if args.report is None:
-        args.report = 'default'
-
-    if not args.patterns and not args.pattern_files:
-        try:
-            args.patterns.append(args.files.pop(0))
-        except IndexError:
-            raise LograptorArgumentError('PATTERN', 'no search pattern')
-
-    _lograptor = Lograptor(args)
-
-    try:
-        retval = _lograptor.process()
-    finally:
-        _lograptor.cleanup()
-
-    return 0 if retval else 1
-
-
 class Lograptor(object):
     """
     This is the main class of Lograptor package.
@@ -180,7 +146,7 @@ class Lograptor(object):
             logger.critical('no configuration available in files %r: %r', args.cfgfile, err)
             raise FileMissingError('abort "{0}" for previous errors'.format(__name__))
         else:
-            if 'stdout' in args.channels:
+            if sys.stdout.isatty():
                 set_logger('lograptor', args.loglevel)
             else:
                 set_logger('lograptor', args.loglevel, logfile=self.config.getstr('main', 'logfile'))
@@ -192,9 +158,6 @@ class Lograptor(object):
             args.use_rules = True
         elif matcher_count > 1:
             raise LograptorArgumentError("conflicting matchers specified")
-
-        if args.report is None:
-            args.report = 'default'
 
         if not args.patterns and not args.pattern_files:
             try:
@@ -221,6 +184,11 @@ class Lograptor(object):
             self.name_cache = RenameCache(args, self.config)
         else:
             self.name_cache = None
+
+        if args.report is None:
+            args.report = 'default'
+        if args.report:
+            self.report = Report(args.report, self.patterns, self.args, self.config)
 
         # Loading configured apps
         try:
@@ -252,10 +220,6 @@ class Lograptor(object):
         self.extra_tags = set()
 
         self.tmpprefix = None
-
-        # Initialize the report object when the option is enabled
-        if args.report:
-            self.report = Report(args.report, self.patterns, self.apps, self.args, self.config)
 
         if not args.files and not os.isatty(sys.stdin.fileno()):
             # No files and input by a pipe
@@ -319,7 +283,7 @@ class Lograptor(object):
             try:
                 app = AppLogParser(name, cfgfile, self.args, self.config, self.name_cache)
             except (OptionError, LograptorConfigError, FormatError) as err:
-                logger.error('cannot add app %r: %r', name, err)
+                logger.error('cannot add app %r: %s', name, err)
             else:
                 apps[name] = app
 
@@ -400,14 +364,15 @@ class Lograptor(object):
         Return a formatted text with main configuration parameters.
         """
         # Create a dummy report object if necessary
-        channels = filter(lambda x: x.startswith('channel.'), self.config.sections())
+        channels = [sect.split('.')[1] for sect in self.config.sections('channel.')]
+        channels.sort()
         return u'\n'.join([
             u"\n--- %s configuration ---" % self.__class__.__name__,
             u"Configuration main file: %s" % self.config.cfgfile,
             u"Configuration directory: %s" % os.path.abspath(self.config.getstr('main', 'cfgdir')),
             u"Enabled applications: %s" % ', '.join(self.apps.keys()),
             u"Disabled applications: %s" % ', '.join([app for app in self.get_apps() if app not in self.apps]),
-            u"Available fields: %s" % ', '.join(self.config.options('fields')),
+            u"Filter fields: %s" % ', '.join(self.config.options('fields')),
             u"Output channels: %s" % ', '.join(channels) if channels else u'No channels defined',
             ''
         ])
@@ -481,44 +446,40 @@ class Lograptor(object):
                 except TypeError:
                     pass
 
-                if self.args.thread:
-                    map(lambda x: x.purge_threads(), applist)
-
             except IOError as msg:
                 if not self.args.no_messages:
                     logger.error(msg)
 
         tot_files = len(logfiles)
         if not logfiles and self.initial_dt is not None:
-            raise FileMissingError(
-                "no file in datetime interval (%s, %s)!" % (self.initial_dt, self.final_dt)
-            )
+            raise FileMissingError("no file in time interval (%s, %s)!" % (self.initial_dt, self.final_dt))
+        elif not tot_lines:
+            return False
 
         try:
-            starttime = datetime.datetime.fromtimestamp(start_event)
-            endtime = datetime.datetime.fromtimestamp(end_event)
+            start_time = datetime.datetime.fromtimestamp(start_event)
+            end_time = datetime.datetime.fromtimestamp(end_event)
         except (TypeError, UnboundLocalError):
-            starttime = endtime = None
+            start_time = end_time = None
 
         run_stats = {
-            'starttime': starttime,
-            'endtime': endtime,
+            'start_time': start_time,
+            'end_time': end_time,
             'tot_counter': tot_counter,
             'tot_files': tot_files,
             'tot_lines': tot_lines,
             'tot_unparsed': tot_unparsed,
-            'logfiles': ', '.join(logfiles),
+            'files': ', '.join(logfiles),
             'unknown_tags': set([tag for tag in self.extra_tags
                                  if tag not in self.known_tags and not tag.isdigit()]),
         }
 
         # If final report is requested then purge all unmatched threads and set time stamps.
-        # Otherwise print a final run summary if messages are not disabled.
+        # Otherwise send final run summary if messages are not disabled.
         if tot_counter > 0 and self.args.report:
             self.report.set_stats(run_stats)
-            self.report.make()
-            if True or not self.report.is_empty():
-                self.send_report()
+            self.report.make(self.apps)
+            self.send_report()
         elif not self.args.no_messages and not self.args.quiet:
             self.send_message(self.get_run_summary(run_stats))
 
@@ -530,7 +491,7 @@ class Lograptor(object):
 
     def send_report(self):
         formats = list(set([fmt for channel in self.channels for fmt in channel.formats]))
-        report = self.report.get_report(formats)
+        report = self.report.get_report(self.apps, formats)
         for channel in self.channels:
             channel.send_report(report)
 

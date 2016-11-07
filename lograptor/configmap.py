@@ -56,6 +56,8 @@ class ConfigMap(object):
 
         # Read default sections from configuration file
         for sect, options in defaults.items():
+            if sect.endswith('.default'):
+                continue
             self.config[sect] = dict()
             for opt, value in options.items():
                 try:
@@ -74,10 +76,14 @@ class ConfigMap(object):
                     self.parser.set(sect, opt, self.defaults[sect][opt])
                     self.config[sect][opt] = self.defaults[sect][opt]
 
-            # Add options not in defaults
-            for opt, value in self.parser.items(sect):
-                if opt not in options:
-                    self.config[sect][opt] = value
+        for sect in self.parser.sections():
+            # Add sections/options not in defaults
+            if sect not in self.config:
+                self.config[sect] = dict(self.parser.items(sect))
+            else:
+                for opt, values in self.parser.items(sect):
+                    if opt not in self.config[sect]:
+                        self.config[sect][opt] = value
 
             # Update environment if it's a base section
             if sect in base_sections:
@@ -182,8 +188,11 @@ class ConfigMap(object):
     def options(self, section):
         return self.parser.options(section)
 
-    def sections(self):
-        return self.parser.sections()
+    def sections(self, prefix=''):
+        if prefix:
+            return filter(lambda x: x.startswith(prefix), self.parser.sections())
+        else:
+            return self.parser.sections()
 
     def items(self, section):
         return self.parser.items(section)

@@ -15,13 +15,14 @@ application class instances.
 # See the file 'LICENSE' in the root directory of the present
 # distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
 #
-# @Author Davide Brunato <brunato@sissa.it>
+# @author Davide Brunato <brunato@sissa.it>
 #
 from __future__ import print_function
 
 import re
 import socket
 import string
+from itertools import chain, repeat
 from collections import OrderedDict, deque
 
 try:
@@ -30,149 +31,6 @@ except ImportError:
     pwd = None
 
 from .utils import build_dispatcher
-
-
-class CacheEntry(object):
-    """
-    Simple container class for cache entries
-    """
-    def __init__(self, event_time):
-        self.pattern_match = False
-        self.full_match = False
-        self.counted = False
-        self.buffer = list()
-        self.start_time = self.end_time = event_time
-
-
-class FileInputDeque(deque):
-    """
-    A deque subclass to read a text file with a deque line buffering.
-    """
-
-    def __init__(self, input_file, before=0, after=0):
-        super(FileInputDeque, self).__init__(maxlen=before+after+1)
-        self.input_file = input_file
-        self.before = before
-        self.after = after
-
-    def __iter__(self):
-        # Attempt to fill the buffer
-        for k in range(self.after):
-            try:
-                self.append(next(self.input_file))
-            except StopIteration:
-                break
-        self.index = 0
-
-        return self
-
-    def __next__(self):
-        try:
-            self.append(next(self.input_file))
-        except StopIteration:
-            try:
-                self.popleft()
-                next_line = self[self.index]
-            except IndexError:
-                raise StopIteration
-            return next_line
-        else:
-            try:
-                next_line = self[self.index]
-            except IndexError:
-                raise StopIteration
-            if self.index < self.before:
-                self.index += 1
-            return next_line
-
-    def iter_before(self):
-        if self.index >= self.before:
-            return range(0, self.before)
-        else:
-            return range(0, self.index)
-
-    def iter_after(self):
-        for k, i in enumerate(range(self.index + 1, len(self))):
-            yield k + 1, i
-
-
-class ThreadLineCache(object):
-    """
-    A class to manage line caching
-    """
-    
-    def __init__(self):
-        self.data = OrderedDict()
-
-    def add_line(self, line, thread, pattern_match, full_match, event_time):
-        try:
-            cache_entry = self.data[thread]
-        except KeyError:
-            cache_entry = self.data[thread] = CacheEntry(event_time)
-        
-        if pattern_match:
-            cache_entry.pattern_match = True
-        if full_match:
-            cache_entry.full_match = True
-        cache_entry.buffer.append(line)
-        cache_entry.end_time = event_time
-        
-    def flush_cache(self, event_time, print_out_lines, max_threads=None):
-        """
-        Flush the cache to output. Only matched threads are printed.
-        Delete cache entries older (last updated) than 1 hour. Return
-        the total lines of matching threads.
-        """
-        cache = self.data
-        counter = 0
-        
-        for thread in cache.keys():
-            if cache[thread].pattern_match and cache[thread].full_match:
-                if max_threads is not None:
-                    max_threads -= 1
-                    if max_threads < 0:
-                        break
-
-                if not cache[thread].counted:
-                    counter += 1
-                    cache[thread].counted = True
-
-                if cache[thread].buffer:
-                    if print_out_lines:
-                        for line in cache[thread].buffer:
-                            print(line, end='')
-                        print('--')
-                    cache[thread].buffer = []
-            if abs(event_time - cache[thread].end_time) > 3600:
-                del cache[thread]
-        return counter
-    
-    def flush_old_cache(self, event_time, print_out_lines, max_threads=None):
-        """
-        Flush the older cache to output. Only matched threads are printed.
-        Delete cache entries older (last updated) than 1 hour. Return the
-        total lines of old matching threads.
-        """
-        cache = self.data
-        counter = 0
-        for thread in cache.keys():
-            if abs(event_time - cache[thread].end_time) > 3600:
-                if cache[thread].pattern_match and cache[thread].full_match:
-                    if max_threads is not None:
-                        max_threads -= 1
-                        if max_threads < 0:
-                            break
-
-                    if not cache[thread].counted:
-                        counter += 1
-                        cache[thread].counted = True
-
-                    if print_out_lines and cache[thread].buffer:
-                        for line in cache[thread].buffer:
-                            print(line, end='')
-                        print('--')
-                del cache[thread]
-        return counter
 
 
 class RenameCache(object):
@@ -322,29 +180,29 @@ class LineCache(deque):
         self.after_context = after_context
         self.last_line = 0
         self.context_until = 0
-        self.send_event = build_dispatcher(channels, 'send_event')
+        self.send_selected = build_dispatcher(channels, 'send_selected')
         self.send_context = build_dispatcher(channels, 'send_context')
-        self.send_separator = build_dispatcher(channels, 'send_separator')
+        self.send_separator = chain([lambda *args: None], repeat(build_dispatcher(channels, 'send_separator')))
 
-    def register_event(self, filename, line_number, pattern_match, **kwargs):
+    def register_selected(self, filename, line_number, match=None, **kwargs):
         next_line = line_number - len(self)
-        if self.last_line and (next_line - self.last_line > 1):
-            self.send_separator()
+        if self.last_line == 0 or (next_line - self.last_line) > 1:
+            next(self.send_separator)()
         for n_line in range(line_number - len(self), line_number):
             self.send_context(
                 filename=filename,
                 line_number=n_line,
                 rawlog=self.popleft(),
-                pattern_match=pattern_match
+                match=match
             )
         self.last_line = line_number
         self.context_until = line_number + self.after_context
-        self.send_event(filename=filename, line_number=line_number, pattern_match=pattern_match, **kwargs)
+        self.send_selected(filename=filename, line_number=line_number, match=match, **kwargs)
 
     def register_context(self, line_number, rawlog, **kwargs):
         if self.after_context and self.context_until >= line_number:
             self.send_context(line_number=line_number, rawlog=rawlog, **kwargs)
-            last_line = line_number
+            self.last_line = line_number
         elif self.before_context:
             self.append(rawlog)
 
@@ -355,7 +213,9 @@ class LineCache(deque):
 
 
 class ThreadsCache(OrderedDict):
-
+    """
+    A cache for multiple threads.
+    """
     def __init__(self, channels, before_context, after_context, max_threads=1000):
         super(ThreadsCache, self).__init__()
         self.channels = channels
@@ -367,28 +227,25 @@ class ThreadsCache(OrderedDict):
         self.after_context = after_context
         self.context = before_context + after_context + 1
         self.max_threads = max_threads
-        self.send_event = build_dispatcher(channels, 'send_event')
+        self.send_selected = build_dispatcher(channels, 'send_selected')
         self.send_context = build_dispatcher(channels, 'send_context')
-        self.send_separator = build_dispatcher(channels, 'send_separator')
-        self._flushed_first = False
+        self.send_separator = chain([lambda *args: None], repeat(build_dispatcher(channels, 'send_separator')))
 
     def flush(self, key):
         line_cache, matched, after_context = self[key]
         if not matched:
+            del self[key]
             return
 
-        if not self._flushed_first:
-            self.send_separator()
-            self._flushed_first = True
+        next(self.send_separator)()
         for entry in line_cache:
-            if entry['context']:
-                self.send_context(**entry)
+            if entry['match']:
+                self.send_selected(**entry)
             else:
-                self.send_event(**entry)
+                self.send_context(**entry)
         del self[key]
 
-    def register_event(self, key, **kwargs):
-        kwargs.update(context=False)
+    def register_selected(self, key, **kwargs):
         try:
             line_cache, matched, after_context = self[key]
         except KeyError:
@@ -399,14 +256,14 @@ class ThreadsCache(OrderedDict):
             if line_cache.maxlen is not None:
                 line_cache = deque()
             del self[key]
+            line_cache.append(kwargs)
             self[key] = (line_cache, True, 0)
 
     def register_context(self, key, **kwargs):
-        kwargs.update(context=True)
         try:
             line_cache, matched, after_context = self[key]
         except KeyError:
-            line_cache = deque(self.before_context)
+            line_cache = deque(maxlen=self.before_context)
             line_cache.append(kwargs)
             self[key] = (line_cache, False, 0)
         else:
@@ -419,5 +276,3 @@ class ThreadsCache(OrderedDict):
 
     def reset(self):
         self.clear()
-        self._flushed_first = False
-

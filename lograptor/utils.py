@@ -55,10 +55,10 @@ def set_logger(name, loglevel=1, logfile=None):
 
     # Add the first new handler
     if not logger.handlers:
-        if logfile is None:
-            lh = logging.StreamHandler()
-        else:
+        try:
             lh = logging.FileHandler(logfile)
+        except (OSError, AttributeError):
+            lh = logging.StreamHandler()
         lh.setLevel(effective_level)
 
         if effective_level <= logging.DEBUG:

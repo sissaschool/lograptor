@@ -25,7 +25,6 @@ from datetime import datetime
 from collections import MutableMapping
 from .timedate import strftimegen
 
-
 logger = logging.getLogger(__name__)
 
 
