@@ -60,7 +60,7 @@ def get_app(log_data, tagmap, extra_tags):
         # Find app using the app-tag
         try:
             tag_apps = tagmap[apptag]
-        except:
+        except KeyError:
             tag_apps = [
                 app for tag, _apps in tagmap.items() if apptag.startswith(tag)
                 for app in _apps
@@ -150,7 +150,6 @@ def create_matcher_engine(obj, parsers):
 
         matching_counter = 0
         unparsed_counter = 0
-        full_match = False
         extra_tags = set()
         context_reset()
 

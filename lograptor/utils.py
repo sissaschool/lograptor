@@ -85,25 +85,28 @@ def do_chunked_gzip(infh, outfh, filename):
 
     if infh.closed:
         infh = open(infh.name, 'r')
+    else:
+        infh.seek(0)
         
     readsize = 0
     sys.stdout.write('Gzipping {0}: '.format(filename))
 
-    infh.seek(0)
-    progressbar = ProgressBar(sys.stdout, os.stat(infh.name).st_size, "bytes gzipped")
-    while True:
-        chunk = infh.read(GZIP_CHUNK_SIZE)
-        if not chunk:
-            break
+    if os.stat(infh.name).st_size:
+        infh.seek(0)
+        progressbar = ProgressBar(sys.stdout, os.stat(infh.name).st_size, "bytes gzipped")
+        while True:
+            chunk = infh.read(GZIP_CHUNK_SIZE)
+            if not chunk:
+                break
 
-        if sys.version_info[0] >= 3:
-            # noinspection PyArgumentList
-            gzfh.write(bytes(chunk, "utf-8"))
-        else:
-            gzfh.write(chunk)
-            
-        readsize += len(chunk)
-        progressbar.redraw(readsize)
+            if sys.version_info[0] >= 3:
+                # noinspection PyArgumentList
+                gzfh.write(bytes(chunk, "utf-8"))
+            else:
+                gzfh.write(chunk)
+
+            readsize += len(chunk)
+            progressbar.redraw(readsize)
 
     gzfh.close()
 

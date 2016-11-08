@@ -62,12 +62,12 @@ class LograptorArgumentError(LograptorException):
 
 class NoSectionError(LograptorException, configparser.NoSectionError):
     def __init__(self, section):
-        Exception.__init__(self, "No section: %r" % section)
+        super(NoSectionError, self).__init__(section)
 
 
 class NoOptionError(LograptorException, configparser.NoOptionError):
     def __init__(self, section, option):
-        Exception.__init__(self, "No option %r in section: %r" % (option, section))
+        super(NoOptionError, self).__init__(option, section)
 
 
 class OptionError(LograptorException):

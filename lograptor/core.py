@@ -100,8 +100,9 @@ DEFAULT_CONFIG = {
         'include_rawlogs': False,
         'rawlogs_limit': 200,
         'gpg_encrypt': False,
-        'gpg_keyringdir': None,
-        'gpg_recipients': None,
+        'gpg_keyringdir': '/root/.gnupg',
+        'gpg_recipients': '',
+        'gpg_signers': '',
 
         # options for file channel sections
         'notify': '',
@@ -424,6 +425,7 @@ class Lograptor(object):
         tot_lines = tot_counter = tot_unparsed = 0
         start_event = end_event = None
         logfiles = []
+        self.open()
 
         # Iter between log files. The iteration use the log files modified between the
         # initial and the final date, skipping the other files.
@@ -484,6 +486,10 @@ class Lograptor(object):
             self.send_message(self.get_run_summary(run_stats))
 
         return tot_counter > 0
+
+    def open(self):
+        for channel in self.channels:
+            channel.open()
 
     def send_message(self, message):
         for channel in self.channels:

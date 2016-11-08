@@ -24,11 +24,18 @@ import time
 import shutil
 import logging
 import sys
-import socket
 import tempfile
+
+try:
+    from io import BytesIO, StringIO
+except ImportError:
+    # Python 2 fallback
+    from io import StringIO
+    BytesIO = StringIO
 
 from .exceptions import LograptorConfigError
 from .info import __version__
+from . import __name__ as package_name
 from .utils import mail_sendmail, mail_smtp, do_chunked_gzip
 
 
@@ -70,6 +77,7 @@ class BaseChannel(object):
     """
     Abstract base class for Lograptor's channels.
     """
+    TEMP_DIR = None
 
     def __init__(self, name, args, config):
         self.name = name
@@ -88,32 +96,19 @@ class BaseChannel(object):
     def has_format(self, ext):
         return (ext == 'txt' and 'plain' in self.formats) or ext in self.formats
 
-    def has_format2(self, fmt):
-        return fmt in self.formats
-        #return (ext == 'txt' and 'plain' in self.formats) or ext in self.formats
-
     def open(self):
         pass
 
-    def mktempdir(self):
-        """
-        Set up a safe temp dir
-        """
+    def set_tempdir(self):
+        if self.TEMP_DIR:
+            return
         tmpdir = self.config.getstr('main', 'tmpdir')
-        logger.debug('tmpdir=%r', tmpdir)
-        if tmpdir != "":
+        if tmpdir:
             tempfile.tempdir = tmpdir
-        logger.info('creating a safe temporary directory')
-        tmpprefix = tempfile.mkdtemp('.LOGRAPTOR')
-
         try:
-            pass
-        except:
-            raise LograptorConfigError('could not create a temp directory in %r!' % tmpprefix)
-
-        self.tmpprefix = tmpprefix
-        tempfile.tempdir = tmpprefix
-        logger.info('Temporary directory created in %r', tmpprefix)
+            self.TEMP_DIR = tempfile.mkdtemp('.LOGRAPTOR')
+        except OSError:
+            raise LograptorConfigError('could not create a temp directory in %r!' % tempfile.tempdir)
 
     def send_message(self, message):
         raise NotImplementedError("%r: you must provide a concrete send_message() method" % self)
@@ -163,7 +158,7 @@ class TermChannel(BaseChannel):
             'line_number': ''.join([GREP_COLORS.ln if color else '', '%(line_number)s']),
             'counter': ''.join([selected_color, '%(counter)s\n', GREP_COLORS.clear]) if color else '%(counter)s\n',
             'selected': ''.join([selected_color, '%(rawlog)s', GREP_COLORS.clear]) if color else '%(rawlog)s',
-            'context': ''.join([context_color, '%(rawlog)s', GREP_COLORS.clear])  if color else '%(rawlog)s'
+            'context': ''.join([context_color, '%(rawlog)s', GREP_COLORS.clear]) if color else '%(rawlog)s'
         }
 
         fmt_parts = []
@@ -225,71 +220,95 @@ class TermChannel(BaseChannel):
                 pass
 
 
-class MailChannel(BaseChannel):
+class NoTermChannel(BaseChannel):
+
+    def __init__(self, name, args, config):
+        super(NoTermChannel, self).__init__(name, args, config)
+        colon_sep = ":"
+        dash_sep = "-"
+        self.group_sep = "--\n"
+        fmt_dict = {
+            'filename': '%(filename)s',
+            'line_number': '%(line_number)s',
+            'counter': '%(counter)s\n',
+            'selected': '%(rawlog)s',
+            'context': '%(rawlog)s'
+        }
+
+        fmt_parts = []
+        if self.args.with_filename or len(self.args.files) > 1 and self.args.with_filename is None:
+            fmt_parts.append('filename')
+        if self.args.count:
+            # When -c/--count option
+            fmt_parts.append('counter')
+            self.fmt_selected = colon_sep.join([fmt_dict[i] for i in fmt_parts])
+            self.fmt_context = ''
+        else:
+            if self.args.line_number:
+                fmt_parts.append('line_number')
+            self.fmt_selected = colon_sep.join([fmt_dict[i] for i in fmt_parts + ['selected']])
+            self.fmt_context = dash_sep.join(
+                [fmt_dict[i] for i in fmt_parts + ['context']]
+            )
+
+
+class MailChannel(NoTermChannel):
     """
     Channel type to send results with SMTP.
     """
     def __init__(self, name, args, config):
         super(MailChannel, self).__init__(name, args, config)
-        self.section = name
+        section = 'channel.%s' % name
         self.email_address = config.getstr('main', 'email_address')
         self.smtp_server = config.getstr('main', 'smtp_server')
         self.mailto = list(set(re.split('\s*, \s*', config.getstr('channel.%s' % name, 'mailto'))))
 
         # if self.args.report is not None and self.report.need_rawlogs():
-        self.rawlogs = config.getbool('channel.%s' % name, 'include_rawlogs')
+        self.rawlogs = config.getbool(section, 'include_rawlogs')
         if self.rawlogs:
+            self.set_tempdir()
             self.rawlogs_limit = config.getint('channel.%s' % name, 'rawlogs_limit') * 1024
         else: 
             self.rawlogs_limit = 0
 
-        self.gpg_encrypt = config.getbool('channel.%s' % name, 'gpg_encrypt')
-        if self.gpg_encrypt:
-            self.gpg_keyringdir = config.get['gpg_keyringdir']
-
-            gpg_recipients = config.get['gpg_recipients']
-            if gpg_recipients is not None:
-                keyids = gpg_recipients.split(',')
-                self.gpg_recipients = []
-                for keyid in keyids:
-                    keyid = keyid.strip()
-                    logger.debug('adding gpg_recipient=' + keyid)
-                    self.gpg_recipients.append(keyid)
-
-            gpg_signers = config['gpg_signers']
-            if self.gpg_signers is not None:
-                keyids = gpg_signers.split(',')
-                self.gpg_signers = []
-                for keyid in keyids:
-                    keyid = keyid.strip()
-                    logger.debug('adding gpg_signer=' + keyid)
-                    self.gpg_signers.append(keyid)
-
+        self.gpg_encrypt = config.getbool(section, 'gpg_encrypt')
         logger.debug('recipients = %r', self.mailto)
         logger.debug('rawlogs = %r', self.rawlogs)
         logger.debug('rawlogs_limit = %r', self.rawlogs_limit)
         logger.debug('gpg_encrypt = %r', self.gpg_encrypt)
 
+        if self.gpg_encrypt:
+            self.gpg_keyringdir = config.getstr(section, 'gpg_keyringdir')
+            gpg_recipients = config.getstr(section, 'gpg_recipients')
+            self.gpg_recipients = [keyid.strip() for keyid in gpg_recipients.split(',') if keyid.strip()]
+            gpg_signers = config.getstr(section, 'gpg_signers')
+            self.gpg_signers = [keyid.strip() for keyid in gpg_signers.split(',') if keyid.strip()]
+            logger.debug('gpg_keyringdir = %r', self.gpg_recipients)
+            logger.debug('gpg_recipients = %r', self.gpg_recipients)
+            logger.debug('gpg_signers = %r', self.gpg_signers)
+
     def __repr__(self):
-        return u'{0}({1}: mailto={2})'.format(self.section, self.name, u','.join(self.mailto))
+        return u"<%s '%s: (mailto=%r)' at %#x>" % (self.__class__.__name__, self.name, self.mailto, id(self))
 
     # Create temporary file for matches rawlog
     def open(self):
-        if not self.rawfh:
-            self.mktempdir()
+        if self.rawlogs:
             self.rawfh = tempfile.NamedTemporaryFile(mode='w+', delete=False)
 
     def send_message(self, message):
         pass
 
-    def send_selected(self, match=False, **kwargs):
-        pass
+    def send_selected(self, **kwargs):
+        if self.rawfh:
+            self.rawfh.write(self.fmt_selected % kwargs)
 
     def send_context(self, **kwargs):
-        pass
+        if self.rawfh:
+            self.rawfh.write(self.fmt_context % kwargs)
 
-    def send_separator(self):
-        pass
+    def send_separator(self, **kwargs):
+        if self.rawfh:
+            self.rawfh.write(self.group_sep)
 
     def send_report(self, report_parts):
         """
@@ -302,18 +321,13 @@ class MailChannel(BaseChannel):
 
         title = list(report_parts.values())[0].title
 
-        rawfh = None
-        logger.error('Creating an email message')
-
-        logger.debug('Creating a main header')
+        logger.info('Creating an email message')
         root_part = MIMEMultipart('mixed')
         root_part.preamble = 'This is a multi-part message in MIME format.'
-
-        has_text_plain = 'text' in report_parts  # any(text_part.ext == 'text' for text_part in report_parts)
+        has_text_plain = 'text' in report_parts
 
         logger.debug('Creating the text/"text_type" parts')
         for text_part in report_parts.values():
-
             # Skip report formats not related with this channel
             if not self.has_format(text_part.ext):
                 continue
@@ -322,25 +336,19 @@ class MailChannel(BaseChannel):
                 root_part.attach(MIMEText(text_part.text, text_part.ext, 'utf-8'))
             else:
                 attach_part = MIMEText(text_part.text, text_part.ext, 'utf-8')
-                attach_part.add_header('Content-Disposition', 'attachment',
-                                       filename='{0}.{1}'.format(text_part.title, text_part.ext))
+                attach_part.add_header(
+                    'Content-Disposition', 'attachment', filename='%s.%s' % (text_part.title, text_part.ext)
+                )
                 root_part.attach(attach_part)
 
         if self.rawlogs:
-            try:
-                import cStringIO
-                out = cStringIO.StringIO()
-            except ImportError:
-                import io
-                out = io.StringIO()  
-            
-            do_chunked_gzip(rawfh, out, filename='raw.log.gz')
+            out = BytesIO()
+            do_chunked_gzip(self.rawfh, out, filename=u'raw.log.gz')
             out.seek(0, os.SEEK_END)
             size = out.tell()
-            
+
             if size > self.rawlogs_limit:
-                logger.warning('{0} is over the defined max of "{1}"'
-                               .format(size, self.rawlogs))
+                logger.warning('{0} is over the defined max of "{1}"'.format(size, self.rawlogs_limit))
                 logger.warning('Not attaching the raw logs')
             else:
                 logger.debug('Creating the application/x-gzip part')
@@ -351,90 +359,55 @@ class MailChannel(BaseChannel):
 
                 logger.debug('Encoding the gzipped raw logs with base64')
                 encode_base64(attach_part)
-                attach_part.add_header('Content-Disposition', 'attachment',
-                                       filename='raw.log.gz')
+                attach_part.add_header('Content-Disposition', 'attachment', filename='raw.log.gz')
                 root_part.attach(attach_part)
 
         if self.gpg_encrypt:
-            logger.info('Encrypting the message')
-
-            from StringIO import StringIO
+            import gpgme
             try:
-                import gpgme
-
                 if self.gpg_keyringdir and os.path.exists(self.gpg_keyringdir):
-                    logger.debug('Setting keyring dir to {0}'.format(
-                                 self.gpg_keyringdir))
+                    logger.debug('Setting keyring dir to %r', self.gpg_keyringdir)
                     os.environ['GNUPGHOME'] = self.gpg_keyringdir
 
-                msg = root_part.as_string()
-                logger.debug('----Cleartext follows----')
-                logger.debug(msg)
-                logger.debug('----Cleartext ends----')
-
-                cleartext = StringIO(msg)
-                ciphertext = StringIO()
+                cleartext = BytesIO(root_part.as_string().encode())
+                ciphertext = BytesIO()
 
                 ctx = gpgme.Context()
-
                 ctx.armor = True
 
-                recipients = []
-                signers = []
-
-                logger.debug('gpg_recipients={0}'.format(self.gpg_recipients))
-                logger.debug('gpg_signers={0}'.format(self.gpg_signers))
-
-                if self.gpg_recipients is not None:
-                    for recipient in self.gpg_recipients:
-                        logger.debug('Looking for an encryption key for {0}'.format(
-                                     recipient))
-                        recipients.append(ctx.get_key(recipient))
+                if self.gpg_recipients:
+                    recipients = [ctx.get_key(recipient) for recipient in self.gpg_recipients]
                 else:
+                    recipients = []
                     for key in ctx.keylist():
                         for subkey in key.subkeys:
                             if subkey.can_encrypt:
-                                logger.debug('Found can_encrypt key={0}'.format(
-                                             subkey.keyid))
+                                logger.debug('Found can_encrypt key=%d', subkey.keyid)
                                 recipients.append(key)
                                 break
 
-                if self.gpg_signers is not None:
-                    for signer in self.gpg_signers:
-                        logger.debug('Looking for a signing key for {0}'.format(
-                                     signer))
-                        signers.append(ctx.get_key(signer))
-
-                if len(signers) > 0:
+                signers = [ctx.get_key(signer) for signer in self.gpg_signers]
+                if signers:
                     logger.info('Encrypting and signing the report')
                     ctx.signers = signers
-                    ctx.encrypt_sign(recipients, gpgme.ENCRYPT_ALWAYS_TRUST,
-                                     cleartext, ciphertext)
-
+                    ctx.encrypt_sign(recipients, gpgme.ENCRYPT_ALWAYS_TRUST, cleartext, ciphertext)
                 else:
                     logger.info('Encrypting the report')
-                    ctx.encrypt(recipients, gpgme.ENCRYPT_ALWAYS_TRUST,
-                                cleartext, ciphertext)
+                    ctx.encrypt(recipients, gpgme.ENCRYPT_ALWAYS_TRUST, cleartext, ciphertext)
 
                 logger.debug('Creating the MIME envelope for PGP')
 
                 gpg_envelope_part = MIMEMultipart('encrypted')
-                gpg_envelope_part.set_param('protocol',
-                                            'application/pgp-encrypted', header='Content-Type')
-                gpg_envelope_part.preamble = ('This is an OpenPGP/MIME encrypted message '
-                                              '(RFC 2440 and 3156)')
+                gpg_envelope_part.set_param('protocol', 'application/pgp-encrypted', header='Content-Type')
+                gpg_envelope_part.preamble = 'This is an OpenPGP/MIME encrypted message (RFC 2440 and 3156)'
 
                 gpg_mime_version_part = MIMEBase('application', 'pgp-encrypted')
-                gpg_mime_version_part.add_header('Content-Disposition',
-                                                 'PGP/MIME version identification')
+                gpg_mime_version_part.add_header('Content-Disposition', 'PGP/MIME version identification')
                 gpg_mime_version_part.set_payload('Version: 1')
 
-                gpg_payload_part = MIMEBase('application', 'octet-stream', 
-                                            name='encrypted.asc')
-                gpg_payload_part.add_header('Content-Disposition', 
-                                            'OpenPGP encrypted message')
-                gpg_payload_part.add_header('Content-Disposition', 'inline',
-                                            filename='encrypted.asc')
+                gpg_payload_part = MIMEBase('application', 'octet-stream', name='encrypted.asc')
+                gpg_payload_part.add_header('Content-Disposition', 'OpenPGP encrypted message')
+                gpg_payload_part.add_header('Content-Disposition', 'inline', filename='encrypted.asc')
                 gpg_payload_part.set_payload(ciphertext.getvalue())
 
                 gpg_envelope_part.attach(gpg_mime_version_part)
@@ -455,21 +428,13 @@ class MailChannel(BaseChannel):
         root_part['To'] = ', '.join(self.mailto)
         root_part['Subject'] = title
         root_part['Message-Id'] = make_msgid()
-        root_part['X-Mailer'] = u'{0}-{1}'.format(Lograptor.__name__, __version__)
+        root_part['X-Mailer'] = u'{0}-{1}'.format(package_name, __version__)
         
         logger.debug('Creating the message as string')
-        msg = root_part.as_string()
-
-        logger.debug('----Message follows----')
-        logger.debug(msg)
-        logger.debug('----Message ends----')
-
-        logger.info('Figuring out if we are using sendmail or smtplib')
-
         if re.compile('^/').search(self.smtp_server):
-            mail_sendmail(self.smtp_server, msg)
+            mail_sendmail(self.smtp_server, root_part.as_string())
         else:   
-            mail_smtp(self.smtp_server, self.email_address, self.mailto, msg)
+            mail_smtp(self.smtp_server, self.email_address, self.mailto, root_part.as_string())
 
         print('Mailed the report to: {0}'.format(','.join(self.mailto)))
 
@@ -482,15 +447,14 @@ class FileChannel(BaseChannel):
     name = 'file'
 
     def __init__(self, section, args, config):
-        super(FileChannel, self).__init__(section, config)
+        super(FileChannel, self).__init__(section, args, config)
         self.expire = config.getint(section, 'expire_in')
         self.dirmask = config.getstr(section, 'dirmask')
         self.filemask = config.getstr(section, 'filemask')
+        self.pubdir = config.getstr(section, 'pubdir')
         maskmsg = 'Invalid mask for {0}: {1}'
 
-        self.pubdir = config.getstr(section, 'pubdir')
-
-        try: 
+        try:
             self.dirname = time.strftime(self.dirmask, time.localtime())
         except: 
             raise LograptorConfigError(maskmsg.format('dirmask', self.dirmask))
@@ -503,36 +467,26 @@ class FileChannel(BaseChannel):
         self.rawlogs = config.getboolean(section, 'save_rawlogs')       
         if self.rawlogs:
             logger.info('Will save raw logs in the reports directory')
-        
-        self.notify = []
 
-        try:
-            notify = config.getstr(section, 'notify')
-            if notify:
-                for addy in notify.split(','):
-                    addy = addy.strip()
-                    logger.info('Will notify: {0}'.format(addy))
-                    self.notify.append(addy)
-        except TypeError:
-            pass
+        notify = config.getstr(section, 'notify')
+        self.notify = [addy.strip() for addy in notify.split(',') if addy.strip()]
 
         self.fromaddr = config['email_address']
         self.smtp_server = config['smtp_server']
 
         if self.notify:
-            try:
-                self.pubroot = config.getstr(section, 'pubroot')
-                logger.debug('pubroot={0}'.format(self.pubroot))
-            except:
-                msg = 'File channel requires a pubroot when notify is set'
-                raise LograptorConfigError(msg)
+            self.pubroot = config.getstr(section, 'pubroot')
+            logger.debug('pubroot=%r', self.pubroot)
+            if not self.pubroot:
+                raise LograptorConfigError('File channel requires a pubroot when notify is set')
         
-        logger.debug('path={0}'.format(self.pubdir))
-        logger.debug('filename={0}'.format(self.filename))
+        logger.debug('path=%r', self.pubdir)
+        logger.debug('filename=%r', self.filename)
 
     def __repr__(self):
-        return u'{0}({1}: pubdir={2}, expire_in={3})'.format(
-            self.section, self.name, self.pubdir, self.expire)
+        return u"<%s '%s: pubdir=%r, expire_in=%r' at %#x>" % (
+            self.__class__.__name__, self.name, self.pubdir, self.expire, id(self)
+        )
 
     def prune_old(self):
         """
@@ -556,19 +510,17 @@ class FileChannel(BaseChannel):
                 try: 
                     stamp = time.mktime(time.strptime(entry, dirmask))
                 except ValueError as e:
-                    logger.info('Dir {0} did not match dirmask {1}: {2}'.format(
-                                entry, dirmask, e))
-                    logger.info('Skipping {0}'.format(entry))
+                    logger.info('Dir %r did not match dirmask %r: %r', entry, dirmask, e)
+                    logger.info('Skipping %r', entry)
                     continue
 
                 if stamp < expire_limit:
                     shutil.rmtree(os.path.join(path, entry))
-                    print('File Publisher: Pruned old dir: {0}'.format(
-                                entry))
+                    logger.info('File Publisher: Pruned old dir: %r', entry)
                 else:
-                    logger.info('{0} is still active'.format(entry))
+                    logger.info('%r is still active', entry)
             else:
-                logger.info('{0} is not a directory. Skipping.'.format(entry))
+                logger.info('%r is not a directory. Skipping.', entry)
 
         logger.info('Finished with pruning')
         
@@ -624,7 +576,7 @@ class FileChannel(BaseChannel):
 
             eml['Subject'] = '{0} (report notification)'.format(title)
             eml['To'] = ', '.join(self.notify)
-            eml['X-Mailer'] = u'{0}-{1}'.format(Lograptor.__name__, __version__)
+            eml['X-Mailer'] = u'{0}-{1}'.format(package_name, __version__)
 
             msg = eml.as_string()
 

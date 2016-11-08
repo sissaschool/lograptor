@@ -104,7 +104,7 @@ class ConfigMap(object):
         try:
             return sect[option]
         except KeyError as err:
-            raise NoOptionError(section, err)
+            raise NoOptionError(section, str(err))
 
     def _interpolate(self, env=None):
         """
@@ -157,7 +157,15 @@ class ConfigMap(object):
         if default is not None and not isinstance(default, bool):
             raise TypeError("option %r of section %r: not a boolean!" % (option, section))
         try:
-            return bool(self._get(self.config, section, option))
+            value = self._get(self.config, section, option)
+            if isinstance(value, bool):
+                return value
+            elif value.lower() in ('1', 'true', 'yes', 'on'):
+                return True
+            elif value.lower() in ('0', 'false', 'no', 'off'):
+                return False
+            else:
+                raise ValueError('%r: not a boolean!' % value)
         except (NoOptionError, NoSectionError):
             if default is None:
                 raise
