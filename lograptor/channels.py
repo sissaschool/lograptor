@@ -25,6 +25,7 @@ import shutil
 import logging
 import sys
 import tempfile
+import abc
 
 try:
     from io import BytesIO, StringIO
@@ -55,7 +56,7 @@ class grep_colors:
         try:
             spec_dict = dict([item.strip().split('=') for item in color_spec.split(':')])
         except ValueError as err:
-            logger.error("wrong GREP_COLORS spec: %r" % err)
+            logger.error("wrong GREP_COLORS spec: %r", err)
         else:
             if 'mt' in spec_dict:
                 spec_dict['mc'] = spec_dict['ms'] = spec_dict['mt']
@@ -77,6 +78,8 @@ class BaseChannel(object):
     """
     Abstract base class for Lograptor's channels.
     """
+    __metaclass__ = abc.ABCMeta
+
     TEMP_DIR = None
 
     def __init__(self, name, args, config):
@@ -84,8 +87,7 @@ class BaseChannel(object):
         self.args = args
         self.config = config
         self.formats = list(set(re.split('\s*, \s*', config.getstr('channel.%s' % name, 'formats'))))
-        self.rawfh = None
-        logger.debug('Formats ={0}'.format(self.formats))
+        logger.debug('Formats = %r', self.formats)
 
     def __str__(self):
         return u"<%s '%s'>" % (self.__class__.__name__, self.name)
@@ -95,9 +97,6 @@ class BaseChannel(object):
 
     def has_format(self, ext):
         return (ext == 'txt' and 'plain' in self.formats) or ext in self.formats
-
-    def open(self):
-        pass
 
     def set_tempdir(self):
         if self.TEMP_DIR:
@@ -110,24 +109,33 @@ class BaseChannel(object):
         except OSError:
             raise LograptorConfigError('could not create a temp directory in %r!' % tempfile.tempdir)
 
-    def send_message(self, message):
-        raise NotImplementedError("%r: you must provide a concrete send_message() method" % self)
+    @abc.abstractmethod
+    def open(self):
+        return
 
-    def send_selected(self, **kwargs):
-        raise NotImplementedError("%r: you must provide a concrete send_event() method" % self)
-
-    def send_context(self, **kwargs):
-        raise NotImplementedError("%r: you must provide a concrete send_context() method" % self)
-
-    def send_separator(self):
-        raise NotImplementedError("%r: you must provide a concrete send_separator() method" % self)
-
-    def send_report(self, report):
-        raise NotImplementedError("%r: you must provide a concrete send_report() method" % self)
-
+    @abc.abstractmethod
     def close(self):
-        if self.rawfh is not None:
-            self.rawfh.close()
+        return
+
+    @abc.abstractmethod
+    def send_message(self, message):
+        return
+
+    @abc.abstractmethod
+    def send_selected(self, **kwargs):
+        return
+
+    @abc.abstractmethod
+    def send_context(self, **kwargs):
+        return
+
+    @abc.abstractmethod
+    def send_separator(self):
+        return
+
+    @abc.abstractmethod
+    def send_report(self, report):
+        return
 
 
 class TermChannel(BaseChannel):
@@ -183,6 +191,12 @@ class TermChannel(BaseChannel):
         except AttributeError:
             return False
 
+    def open(self):
+        return
+
+    def close(self):
+        return
+
     def send_message(self, message):
         self._channel.write(message)
 
@@ -222,11 +236,14 @@ class TermChannel(BaseChannel):
 
 class NoTermChannel(BaseChannel):
 
+    __metaclass__ = abc.ABCMeta
+
     def __init__(self, name, args, config):
         super(NoTermChannel, self).__init__(name, args, config)
-        colon_sep = ":"
-        dash_sep = "-"
+        self.rawlogs = False
+        self.rawfh = None
         self.group_sep = "--\n"
+
         fmt_dict = {
             'filename': '%(filename)s',
             'line_number': '%(line_number)s',
@@ -234,8 +251,10 @@ class NoTermChannel(BaseChannel):
             'selected': '%(rawlog)s',
             'context': '%(rawlog)s'
         }
-
         fmt_parts = []
+        colon_sep = ":"
+        dash_sep = "-"
+
         if self.args.with_filename or len(self.args.files) > 1 and self.args.with_filename is None:
             fmt_parts.append('filename')
         if self.args.count:
@@ -250,6 +269,14 @@ class NoTermChannel(BaseChannel):
             self.fmt_context = dash_sep.join(
                 [fmt_dict[i] for i in fmt_parts + ['context']]
             )
+
+    def open(self):
+        if self.rawlogs:
+            self.rawfh = tempfile.NamedTemporaryFile(mode='w+', delete=False)
+
+    def close(self):
+        if self.rawfh is not None:
+            self.rawfh.close()
 
 
 class MailChannel(NoTermChannel):
@@ -290,13 +317,8 @@ class MailChannel(NoTermChannel):
     def __repr__(self):
         return u"<%s '%s: (mailto=%r)' at %#x>" % (self.__class__.__name__, self.name, self.mailto, id(self))
 
-    # Create temporary file for matches rawlog
-    def open(self):
-        if self.rawlogs:
-            self.rawfh = tempfile.NamedTemporaryFile(mode='w+', delete=False)
-
     def send_message(self, message):
-        pass
+        logger.info(message)
 
     def send_selected(self, **kwargs):
         if self.rawfh:
@@ -348,7 +370,7 @@ class MailChannel(NoTermChannel):
             size = out.tell()
 
             if size > self.rawlogs_limit:
-                logger.warning('{0} is over the defined max of "{1}"'.format(size, self.rawlogs_limit))
+                logger.warning('%d is over the defined max of %r', size, self.rawlogs_limit)
                 logger.warning('Not attaching the raw logs')
             else:
                 logger.debug('Creating the application/x-gzip part')
@@ -382,7 +404,7 @@ class MailChannel(NoTermChannel):
                     for key in ctx.keylist():
                         for subkey in key.subkeys:
                             if subkey.can_encrypt:
-                                logger.debug('Found can_encrypt key=%d', subkey.keyid)
+                                logger.debug('Found can_encrypt key = %d', subkey.keyid)
                                 recipients.append(key)
                                 break
 
@@ -431,7 +453,7 @@ class MailChannel(NoTermChannel):
         root_part['X-Mailer'] = u'{0}-{1}'.format(package_name, __version__)
         
         logger.debug('Creating the message as string')
-        if re.compile('^/').search(self.smtp_server):
+        if self.smtp_server[0] == '/':
             mail_sendmail(self.smtp_server, root_part.as_string())
         else:   
             mail_smtp(self.smtp_server, self.email_address, self.mailto, root_part.as_string())
@@ -439,15 +461,16 @@ class MailChannel(NoTermChannel):
         print('Mailed the report to: {0}'.format(','.join(self.mailto)))
 
 
-class FileChannel(BaseChannel):
+class FileChannel(NoTermChannel):
     """
     FileChannel save results of a run into a set of files
     and directories on the hard drive.
     """
     name = 'file'
 
-    def __init__(self, section, args, config):
-        super(FileChannel, self).__init__(section, args, config)
+    def __init__(self, name, args, config):
+        super(FileChannel, self).__init__(name, args, config)
+        section = 'channel.%s' % name
         self.expire = config.getint(section, 'expire_in')
         self.dirmask = config.getstr(section, 'dirmask')
         self.filemask = config.getstr(section, 'filemask')
@@ -456,7 +479,7 @@ class FileChannel(BaseChannel):
 
         try:
             self.dirname = time.strftime(self.dirmask, time.localtime())
-        except: 
+        except ValueError:
             raise LograptorConfigError(maskmsg.format('dirmask', self.dirmask))
 
         try: 
@@ -470,18 +493,14 @@ class FileChannel(BaseChannel):
 
         notify = config.getstr(section, 'notify')
         self.notify = [addy.strip() for addy in notify.split(',') if addy.strip()]
-
-        self.fromaddr = config['email_address']
-        self.smtp_server = config['smtp_server']
-
         if self.notify:
             self.pubroot = config.getstr(section, 'pubroot')
             logger.debug('pubroot=%r', self.pubroot)
             if not self.pubroot:
                 raise LograptorConfigError('File channel requires a pubroot when notify is set')
         
-        logger.debug('path=%r', self.pubdir)
-        logger.debug('filename=%r', self.filename)
+        logger.debug('path = %r', self.pubdir)
+        logger.debug('filename = %r', self.filename)
 
     def __repr__(self):
         return u"<%s '%s: pubdir=%r, expire_in=%r' at %#x>" % (
@@ -495,13 +514,12 @@ class FileChannel(BaseChannel):
         path = self.pubdir
         dirmask = self.dirmask
         expire = self.expire
-        logger.info('Pruning directories older than {0} days'.format(expire))
         expire_limit = int(time.time()) - (86400 * expire)
 
-        logger.debug('expire_limit={0}'.format(expire_limit))
+        logger.info('Pruning directories older than %d days', expire)
 
         if not os.path.isdir(path):
-            logger.info('Dir {0} not found -- skipping pruning'.format(path))
+            logger.warning('Dir %r not found -- skipping pruning', path)
             return
 
         for entry in os.listdir(path):
@@ -523,7 +541,22 @@ class FileChannel(BaseChannel):
                 logger.info('%r is not a directory. Skipping.', entry)
 
         logger.info('Finished with pruning')
-        
+
+    def send_message(self, message):
+        logger.info(message)
+
+    def send_selected(self, **kwargs):
+        if self.rawfh:
+            self.rawfh.write(self.fmt_selected % kwargs)
+
+    def send_context(self, **kwargs):
+        if self.rawfh:
+            self.rawfh.write(self.fmt_context % kwargs)
+
+    def send_separator(self, **kwargs):
+        if self.rawfh:
+            self.rawfh.write(self.group_sep)
+
     def send_report(self, report_parts):
         """
         Publish the report parts to local files. Each report part is a text
@@ -568,6 +601,9 @@ class FileChannel(BaseChannel):
 
         if self.notify:
             logger.info('Creating an email message')
+            email_address = self.config.getstr('main', 'email_address')
+            smtp_server = self.config.getstr('main', 'smtp_server')
+
             publoc = '{0}/{1}/{2}'.format(self.pubroot, self.dirname, filename)
 
             from email.mime.text import MIMEText
@@ -581,10 +617,10 @@ class FileChannel(BaseChannel):
             msg = eml.as_string()
 
             logger.info('Figuring out if we are using sendmail or smtplib')
-            if self.smtp_server[0] == '/':
-                mail_sendmail(self.smtp_server, msg)
+            if smtp_server[0] == '/':
+                mail_sendmail(smtp_server, msg)
             else:
-                mail_smtp(self.smtp_server, self.fromaddr, self.notify, msg)
+                mail_smtp(smtp_server, email_address, self.notify, msg)
 
             print('Notification mailed to: {0}'.format(','.join(self.notify)))
 
