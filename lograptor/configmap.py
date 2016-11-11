@@ -194,7 +194,10 @@ class ConfigMap(object):
             return default
 
     def options(self, section):
-        return self.parser.options(section)
+        try:
+            return self.parser.options(section)
+        except configparser.NoSectionError:
+            raise NoSectionError(section)
 
     def sections(self, prefix=''):
         if prefix:
@@ -203,4 +206,7 @@ class ConfigMap(object):
             return self.parser.sections()
 
     def items(self, section):
-        return self.parser.items(section)
+        try:
+            return self.parser.items(section)
+        except configparser.NoSectionError:
+            raise NoSectionError(section)

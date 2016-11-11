@@ -23,22 +23,15 @@ import time
 from collections import namedtuple, OrderedDict, MutableMapping
 from string import Template
 
-try:
-    from collections import UserDict
-except ImportError:
-    # Fall back for Python 2.x
-    from UserDict import IterableUserDict as UserDict
-
-
 from .info import __version__
-from .exceptions import NoOptionError, OptionError, RuleMissingError
+from .exceptions import NoOptionError, NoSectionError, OptionError, RuleMissingError, LograptorConfigError
 from . import tui
 from .utils import get_fmt_results, htmlsafe, get_value_unit
 
 
 logger = logging.getLogger(__name__)
 
-TextPart = namedtuple('TextPart', 'title text ext')
+TextPart = namedtuple('TextPart', 'fmt text ext')
 
 
 class ReportItem(MutableMapping):
@@ -47,7 +40,7 @@ class ReportItem(MutableMapping):
     application's logs parsed by Lograptor.
     """
     # RE fixed object to check and extract report table parameters
-    _color_regexp = re.compile(r'^([a-z]+|\#[0-9a-f]{6})', re.IGNORECASE)
+    _color_regexp = re.compile(r'^([a-z]+|#[0-9a-f]{6})', re.IGNORECASE)
     _function_regexp = re.compile(r'^(?P<function>table|top|total)(\((\s*(?P<topnum>\d+)\s*,)?'
                                   r'\s*(?P<headers>(\"[^\"]*\"(\s*,\s*)?)+)\s*\)|)')
     _reprule_regexp = re.compile(r'^\(\s*(?P<condition>\*|(?P<field>(\w)+)(!=|==)\"[^\"]*\")\s*,'
@@ -359,12 +352,8 @@ class ReportItem(MutableMapping):
         Get the text representation of a report element as csv.
         """
         import csv
-        try:
-            import cStringIO
-            out = cStringIO.StringIO()
-        except ImportError:
-            import io
-            out = io.StringIO()            
+        import io
+        out = io.StringIO()
             
         writer = csv.writer(out, delimiter='|', lineterminator='\n', quoting=csv.QUOTE_MINIMAL)
 
@@ -544,7 +533,10 @@ class Report(object):
         self.runtime = time.localtime()
 
         # Read the report options from the config file
-        options = dict(config.items('report.%s' % name))
+        try:
+            options = dict(config.items('report.%s' % name))
+        except NoSectionError:
+            raise LograptorConfigError("no configured report for name %r." % name)
 
         self.title = Template(options['title']).safe_substitute({
             'localhost': socket.gethostname(),
@@ -571,7 +563,7 @@ class Report(object):
     def cleanup(self):
         pass
 
-    def get_report(self, apps, formats):
+    def get_report_parts(self, apps, formats):
         """
         Make report item texts in a specified format.
         """
@@ -606,17 +598,17 @@ class Report(object):
         for key in self.stats:
             valumap[key] = self.stats[key]
 
-        report = {}
+        report = []
         for fmt in formats:
             if fmt == 'text':
-                logger.info('creating a plain text page report')
-                report['text'] = self.make_text_page(valumap)
+                logger.info('appends a plain text page report')
+                report.append(self.make_text_page(valumap))
             elif fmt == 'html':
-                logger.info('creating a standard html page report')
-                report['html'] = self.make_html_page(valumap)
+                logger.info('appends a standard html page report')
+                report.append(self.make_html_page(valumap))
             elif fmt == 'csv':
-                logger.info('creating a list of csv files')
-                report['csv'] = self.make_csv_tables()
+                logger.info('extends with a list of csv subreports')
+                report.extend(self.make_csv_tables())
         return report
 
     def is_empty(self):
@@ -654,7 +646,7 @@ class Report(object):
         
         valumap['subreports'] = allsubrep
         endpage = Template(template).safe_substitute(valumap)
-        return TextPart("Lograptor report", endpage, 'html')
+        return TextPart(fmt='html', text=endpage, ext='html')
 
     def make_text_page(self, valumap):
         """
@@ -675,18 +667,16 @@ class Report(object):
 
         valumap['subreports'] = '\n'.join(allsubrep) or "\n<<NO SUBREPORT RELATED EVENTS>>\n"
         endpage = Template(template).safe_substitute(valumap)
-        return TextPart("Lograptor report", endpage, 'txt')
+        return TextPart(fmt='text', text=endpage, ext='txt')
 
     def make_csv_tables(self):
         """
         Builds the report as a list of csv tables with titles.
         """
-        logger.info('Adding csv report tables as attachments')
-
+        logger.info('Generate csv report tables')
         report_parts = []
         for subrep in self.subreports:
             if subrep.repitems:
                 for repitem in subrep.repitems:
-                    report_parts.append(TextPart(repitem.title, repitem.csv_text, 'csv'))
-
+                    report_parts.append(TextPart(fmt='csv', text=repitem.csv_text, ext='csv'))
         return report_parts

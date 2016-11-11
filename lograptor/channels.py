@@ -22,10 +22,16 @@ import os
 import re
 import time
 import shutil
+import socket
 import logging
 import sys
 import tempfile
 import abc
+
+from email.mime.base import MIMEBase
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.utils import formatdate, make_msgid
 
 try:
     from io import BytesIO, StringIO
@@ -37,7 +43,7 @@ except ImportError:
 from .exceptions import LograptorConfigError
 from .info import __version__
 from . import __name__ as package_name
-from .utils import mail_sendmail, mail_smtp, do_chunked_gzip
+from .utils import mail_message, do_chunked_gzip
 
 
 logger = logging.getLogger(__name__)
@@ -86,7 +92,7 @@ class BaseChannel(object):
         self.name = name
         self.args = args
         self.config = config
-        self.formats = list(set(re.split('\s*, \s*', config.getstr('channel.%s' % name, 'formats'))))
+        self.formats = re.split('\s*, \s*', config.getstr('channel.%s' % name, 'formats'))
         logger.debug('Formats = %r', self.formats)
 
     def __str__(self):
@@ -94,9 +100,6 @@ class BaseChannel(object):
 
     def __repr__(self):
         return u"<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
-
-    def has_format(self, ext):
-        return (ext == 'txt' and 'plain' in self.formats) or ext in self.formats
 
     def set_tempdir(self):
         if self.TEMP_DIR:
@@ -134,7 +137,7 @@ class BaseChannel(object):
         return
 
     @abc.abstractmethod
-    def send_report(self, report):
+    def send_report(self, report_parts):
         return
 
 
@@ -224,11 +227,11 @@ class TermChannel(BaseChannel):
     def send_separator(self):
         self._channel.write(self.group_sep)
 
-    def send_report(self, report):
+    def send_report(self, report_parts):
         for fmt in self.formats:
             try:
                 self._channel.write('\n')
-                self._channel.write(report[fmt].text)
+                self._channel.write(report_parts[fmt].text)
                 self._channel.write('\n')
             except KeyError:
                 pass
@@ -336,32 +339,21 @@ class MailChannel(NoTermChannel):
         """
         Publish by sending the report by e-mail
         """
-        from email.mime.base import MIMEBase
-        from email.mime.text import MIMEText
-        from email.mime.multipart import MIMEMultipart
-        from email.utils import formatdate, make_msgid
-
-        title = list(report_parts.values())[0].title
-
         logger.info('Creating an email message')
+        report_parts = sorted(
+            filter(lambda x: x.fmt in self.formats, report_parts),
+            key=lambda x: self.formats.index(x.fmt)
+        )
+        fmtname = '{0}-{1}.{2}' if len(report_parts) > 1 else '{0}.{2}'
         root_part = MIMEMultipart('mixed')
         root_part.preamble = 'This is a multi-part message in MIME format.'
-        has_text_plain = 'text' in report_parts
 
         logger.debug('Creating the text/"text_type" parts')
-        for text_part in report_parts.values():
-            # Skip report formats not related with this channel
-            if not self.has_format(text_part.ext):
-                continue
-
-            if text_part.ext == 'txt' or (not has_text_plain and text_part.ext == 'html'):
-                root_part.attach(MIMEText(text_part.text, text_part.ext, 'utf-8'))
-            else:
-                attach_part = MIMEText(text_part.text, text_part.ext, 'utf-8')
-                attach_part.add_header(
-                    'Content-Disposition', 'attachment', filename='%s.%s' % (text_part.title, text_part.ext)
-                )
-                root_part.attach(attach_part)
+        for i, text_part in enumerate(report_parts):
+            attachment_name = fmtname.format(socket.gethostname(), i, text_part.ext)
+            attach_part = MIMEText(text_part.text, text_part.ext, 'utf-8')
+            attach_part.add_header('Content-Disposition', 'attachment', filename=attachment_name)
+            root_part.attach(attach_part)
 
         if self.rawlogs:
             out = BytesIO()
@@ -448,16 +440,13 @@ class MailChannel(NoTermChannel):
         root_part['Date'] = formatdate()
         root_part['From'] = self.email_address
         root_part['To'] = ', '.join(self.mailto)
-        root_part['Subject'] = title
+        root_part['Subject'] = '{0} system events: {1}'.format(
+                socket.gethostname(), time.strftime('%c', time.localtime())
+        )
         root_part['Message-Id'] = make_msgid()
         root_part['X-Mailer'] = u'{0}-{1}'.format(package_name, __version__)
         
-        logger.debug('Creating the message as string')
-        if self.smtp_server[0] == '/':
-            mail_sendmail(self.smtp_server, root_part.as_string())
-        else:   
-            mail_smtp(self.smtp_server, self.email_address, self.mailto, root_part.as_string())
-
+        mail_message(self.smtp_server, root_part.as_string(), self.email_address, self.mailto)
         print('Mailed the report to: {0}'.format(','.join(self.mailto)))
 
 
@@ -487,7 +476,7 @@ class FileChannel(NoTermChannel):
         except TypeError:
             LograptorConfigError(maskmsg.format('filemask', self.filemask))
 
-        self.rawlogs = config.getboolean(section, 'save_rawlogs')       
+        self.rawlogs = config.getbool(section, 'save_rawlogs')
         if self.rawlogs:
             logger.info('Will save raw logs in the reports directory')
 
@@ -495,7 +484,7 @@ class FileChannel(NoTermChannel):
         self.notify = [addy.strip() for addy in notify.split(',') if addy.strip()]
         if self.notify:
             self.pubroot = config.getstr(section, 'pubroot')
-            logger.debug('pubroot=%r', self.pubroot)
+            logger.debug('pubroot = %r', self.pubroot)
             if not self.pubroot:
                 raise LograptorConfigError('File channel requires a pubroot when notify is set')
         
@@ -523,7 +512,7 @@ class FileChannel(NoTermChannel):
             return
 
         for entry in os.listdir(path):
-            logger.debug('Found: {0}'.format(entry))
+            logger.debug('Found: %r', entry)
             if os.path.isdir(os.path.join(path, entry)):
                 try: 
                     stamp = time.mktime(time.strptime(entry, dirmask))
@@ -564,13 +553,13 @@ class FileChannel(NoTermChannel):
         the report part is unique, for csv send also the stats and unparsed
         string are plain text and report items are csv texts.
         """
-        logger.info('Checking and creating the report directories')
+        logger.info('Checking and creating the report directory')
 
-        title = report_parts[0].title
-
+        report_parts = sorted(
+            filter(lambda x: x.fmt in self.formats, report_parts),
+            key=lambda x: self.formats.index(x.fmt)
+        )
         workdir = os.path.join(self.pubdir, self.dirname)
-        filename = None
-
         if not os.path.isdir(workdir):
             try: 
                 os.makedirs(workdir)
@@ -578,59 +567,42 @@ class FileChannel(NoTermChannel):
                 logger.error('Error creating directory "{0}": {0}'.format(workdir, e))
                 return
 
-        rawfh = None
+        fmtname = '{0}-{1}-{2}.{3}' if len(report_parts) > 1 else '{0}-{2}.{3}'
 
-        fmtname = '{0}-{1}-{2}.{3}' if len(report_parts) > 1 else '{0}.{3}'
-
-        for i in range(len(report_parts)):
-            ext = report_parts[i].ext
-
-            # Skip report formats not related with this channel
-            if not self.has_format(ext):
-                continue
-
-            filename = fmtname.format(self.filename, i, report_parts[i].title, ext)
+        for i, text_part in enumerate(filter(lambda x: x.fmt in self.formats, report_parts)):
+            filename = fmtname.format(self.filename, i, socket.gethostname(), text_part.ext)
             repfile = os.path.join(workdir, filename)
-            
-            logger.info('Dumping the report part {1} into {0}'.format(repfile, i))
-            
+            logger.info('Dumping the report part %d into %r', i, repfile)
             fh = open(repfile, 'w')
-            fh.write(report_parts[i].text)
+            fh.write(text_part.text)
             fh.close()
-            print('Report {0}saved in: {1}'.format('part ' if ext == 'csv' else '', repfile))
+            print('Report part saved in: %r' % repfile)
 
         if self.notify:
             logger.info('Creating an email message')
             email_address = self.config.getstr('main', 'email_address')
             smtp_server = self.config.getstr('main', 'smtp_server')
+            publoc = os.path.join(self.pubroot, self.dirname)
 
-            publoc = '{0}/{1}/{2}'.format(self.pubroot, self.dirname, filename)
-
-            from email.mime.text import MIMEText
-            eml = MIMEText('New Lograptor report is available at:\r\n{0}'.format(
-                           publoc))
-
-            eml['Subject'] = '{0} (report notification)'.format(title)
+            eml = MIMEText('New Lograptor report is available at:\r\n{0}'.format(publoc))
+            eml['Subject'] = '{0} system events: {1} (report notification)'.format(
+                socket.gethostname(), time.strftime('%c', time.localtime())
+            )
+            eml['Date'] = formatdate()
+            eml['From'] = email_address
             eml['To'] = ', '.join(self.notify)
             eml['X-Mailer'] = u'{0}-{1}'.format(package_name, __version__)
 
-            msg = eml.as_string()
-
-            logger.info('Figuring out if we are using sendmail or smtplib')
-            if smtp_server[0] == '/':
-                mail_sendmail(smtp_server, msg)
-            else:
-                mail_smtp(smtp_server, email_address, self.notify, msg)
-
+            mail_message(smtp_server, eml.as_string(), email_address, self.notify)
             print('Notification mailed to: {0}'.format(','.join(self.notify)))
 
         if self.rawlogs:
-            logfilen = '{0}.log'.format(self.filename)
-            logfile = os.path.join(workdir, '{0}.gz'.format(logfilen))
+            logfilename = '{0}.log'.format(self.filename)
+            logfile = os.path.join(workdir, '{0}.gz'.format(logfilename))
 
-            logger.info('Gzipping logs and writing them to {0}'.format(logfilen))
+            logger.info('Gzipping logs and writing them to %r', logfilename)
             outfh = open(logfile, 'w+b')
-            do_chunked_gzip(rawfh, outfh, logfilen)
+            do_chunked_gzip(self.rawfh, outfh, logfilename)
             outfh.close()
             print('Gzipped logs saved in: {0}'.format(logfile))
 

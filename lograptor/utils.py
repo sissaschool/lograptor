@@ -111,24 +111,22 @@ def do_chunked_gzip(infh, outfh, filename):
     gzfh.close()
 
 
-def mail_smtp(smtpserv, fromaddr, toaddr, msg):
+def mail_message(smtp_server, message, from_address, rcpt_addresses):
     """
     Send mail using smtp.
     """
-    import smtplib
+    if smtp_server[0] == '/':
+        # Sending the message with local sendmail
+        p = os.popen(smtp_server, 'w')
+        p.write(message)
+        p.close()
+    else:
+        # Sending the message using a smtp server
+        import smtplib
 
-    server = smtplib.SMTP(smtpserv)
-    server.sendmail(fromaddr, toaddr, msg)
-    server.quit()
-
-
-def mail_sendmail(sendmail, msg):
-    """
-    Send mail using sendmail.
-    """
-    p = os.popen(sendmail, 'w')
-    p.write(msg)
-    p.close()
+        server = smtplib.SMTP(smtp_server)
+        server.sendmail(from_address, rcpt_addresses, message)
+        server.quit()
 
 
 def get_value_unit(value, unit, prefix):
@@ -227,11 +225,11 @@ def build_dispatcher(objects, func_name):
         raise TypeError('%r: not a callable for all objects %r' % (func_name, objects))
 
     def dummy_dispatcher(*args, **kwargs):
-        pass
+        return
 
     def multi_dispatcher(*args, **kwargs):
-        for f in _functions:
-            f(*args, **kwargs)
+        for _func in _functions:
+            _func(*args, **kwargs)
 
     if not objects:
         return dummy_dispatcher

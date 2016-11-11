@@ -128,7 +128,7 @@ def create_matcher_engine(obj, parsers):
     after_context = max(obj.args.after_context, obj.args.context)
     if not register_log_lines or not (before_context + after_context):
         def dummy(*args, **kwargs):
-            pass
+            return
 
         register_selected = build_dispatcher(obj.channels, 'send_selected')
         register_context = context_reset = dummy

@@ -188,7 +188,7 @@ class Lograptor(object):
 
         if args.report is None:
             args.report = 'default'
-        if args.report:
+        if args.report is not False:
             self.report = Report(args.report, self.patterns, self.args, self.config)
 
         # Loading configured apps
@@ -497,9 +497,9 @@ class Lograptor(object):
 
     def send_report(self):
         formats = list(set([fmt for channel in self.channels for fmt in channel.formats]))
-        report = self.report.get_report(self.apps, formats)
+        report_parts = self.report.get_report_parts(self.apps, formats)
         for channel in self.channels:
-            channel.send_report(report)
+            channel.send_report(report_parts)
 
     def cleanup(self):
         for channel in self.channels:
