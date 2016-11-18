@@ -24,7 +24,7 @@ import datetime
 import logging
 
 from .parsers import CycleParsers
-from .utils import build_dispatcher
+from .utils import dummy, build_dispatcher
 from .cache import LineCache, ThreadsCache
 
 logger = logging.getLogger(__name__)
@@ -79,22 +79,19 @@ def get_app(log_data, tagmap, extra_tags):
                     return app
 
 
-def get_pattern_match(line, patterns, invert):
+def multiple_search(line, patterns, invert=False):
     if not patterns:
         return not invert
 
     for regexp in patterns:
-        pattern_match = regexp.search(line)
-        if pattern_match:
+        match = regexp.search(line)
+        if match is not None:
             if invert:
-                return False
+                return False, match
             else:
-                return pattern_match
+                return True, match
     else:
-        if not invert:
-            return False
-        else:
-            return True
+        return invert, None
 
 
 def create_matcher_engine(obj, parsers):
@@ -116,20 +113,19 @@ def create_matcher_engine(obj, parsers):
     patterns = obj.patterns
     thread = obj.args.thread
     invert = obj.args.invert
+    files_with_match = obj.args.files_with_match
     count = obj.args.count
     unparsed = obj.args.unparsed
     timerange = obj.args.timerange
-    register_log_lines = not (obj.args.quiet or obj.args.count)
+    only_matching = obj.args.only_matching
+    register_log_lines = not (obj.args.quiet or obj.args.count or obj.args.files_with_match is not None)
     initial_dt = time.mktime(obj.initial_dt.timetuple()) if obj.initial_dt else float(0)
     final_dt = time.mktime(obj.final_dt.timetuple() if obj.final_dt else (2222, 2, 2, 0, 0, 0, 0, 0, 0))
 
     # Define functions for processing of the context.
     before_context = max(obj.args.before_context, obj.args.context)
     after_context = max(obj.args.after_context, obj.args.context)
-    if not register_log_lines or not (before_context + after_context):
-        def dummy(*args, **kwargs):
-            return
-
+    if not register_log_lines or not (before_context + after_context) or only_matching:
         register_selected = build_dispatcher(obj.channels, 'send_selected')
         register_context = context_reset = dummy
     else:
@@ -254,8 +250,8 @@ def create_matcher_engine(obj, parsers):
                 ###
                 # Process the message part of the log with provided not-empty pattern(s).
                 # Skip log lines that not match any pattern.
-                pattern_match = get_pattern_match(line, patterns, invert)
-                if not pattern_match and not thread:
+                pattern_matched, match = multiple_search(line, patterns, invert)
+                if not pattern_matched and not thread:
                     register_context(filename=logfile_name, line_number=line_counter, rawlog=line)
                     continue
 
@@ -267,9 +263,9 @@ def create_matcher_engine(obj, parsers):
 
                 ###
                 # Parse the log message with app's rules
-                if use_rules and (pattern_match or thread):
+                if use_rules and (pattern_matched or thread):
                     rule_match, full_match, app_thread, map_dict = app.process(log_data)
-                    if not pattern_match and rule_match and app_thread is None:
+                    if not pattern_matched and rule_match and app_thread is None:
                         continue
                     if map_dict:
                         line = name_cache.map2str(log_parser.parser.groupindex, log_match, map_dict)
@@ -295,29 +291,30 @@ def create_matcher_engine(obj, parsers):
                     if last_event < event_time:
                         last_event = event_time
 
-                if register_log_lines:
-                    if pattern_match:
-                        if max_count and matching_counter >= max_count:
-                            # Stops iteration if max_count matchings is exceeded
-                            break
-                        matching_counter += 1
-                        app.counter += 1
-
+                if pattern_matched:
+                    if max_count and matching_counter >= max_count:
+                        # Stops iteration if max_count matchings is exceeded
+                        break
+                    matching_counter += 1
+                    app.counter += 1
+                    if files_with_match:
+                        break
+                    if register_log_lines:
                         register_selected(
                             key=(app, app_thread),
                             filename=logfile_name,
                             line_number=line_counter,
                             log_data=log_data,
-                            rawlog=line,
-                            match=pattern_match
+                            rawlog='%s\n' % match.group(1) if only_matching and match else line,
+                            match=match
                         )
-                    else:
-                        register_context(
-                            key=(app, app_thread),
-                            filename=logfile_name,
-                            line_number=line_counter,
-                            rawlog=line
-                        )
+                elif register_log_lines and not only_matching:
+                    register_context(
+                        key=(app, app_thread),
+                        filename=logfile_name,
+                        line_number=line_counter,
+                        rawlog=line
+                    )
 
         try:
             for key in list(context_cache.keys()):
@@ -326,7 +323,9 @@ def create_matcher_engine(obj, parsers):
             pass
 
         # If count option is enabled then register only the number of matched lines.
-        if count:
+        if files_with_match and matching_counter or files_with_match is False and not matching_counter:
+            register_selected(filename=logfile.name)
+        elif count:
             register_selected(filename=logfile.name, counter=matching_counter)
 
         return line_counter, matching_counter, unparsed_counter, extra_tags, first_event, last_event

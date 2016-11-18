@@ -153,7 +153,11 @@ class TermChannel(BaseChannel):
         invert = GREP_COLORS.rv and self.args.invert
         colon_sep = GREP_COLORS.se + ":" if color else ":"
         dash_sep = GREP_COLORS.se + "-" if color else "-"
-        self.group_sep = ''.join([GREP_COLORS.se, '--\n', GREP_COLORS.clear]) if color else "--\n"
+        if args.group_separator:
+            group_sep = '%s\n' % args.group_separator
+            self.group_sep = ''.join([GREP_COLORS.se, group_sep, GREP_COLORS.clear]) if color else group_sep
+        else:
+            self.group_sep = ''
         selected_color = GREP_COLORS.cx if invert else GREP_COLORS.sl
         context_color = GREP_COLORS.sl if invert else GREP_COLORS.cx
 
@@ -165,7 +169,7 @@ class TermChannel(BaseChannel):
             self.fmt_matching_context = ''.join([GREP_COLORS.mc, '%s', GREP_COLORS.cx])
 
         fmt_dict = {
-            'filename': ''.join([GREP_COLORS.fn if color else '', '%(filename)s']),
+            'filename': ''.join([GREP_COLORS.fn, '%(filename)s', GREP_COLORS.clear]) if color else '%(filename)s',
             'line_number': ''.join([GREP_COLORS.ln if color else '', '%(line_number)s']),
             'counter': ''.join([selected_color, '%(counter)s\n', GREP_COLORS.clear]) if color else '%(counter)s\n',
             'selected': ''.join([selected_color, '%(rawlog)s', GREP_COLORS.clear]) if color else '%(rawlog)s',
@@ -175,7 +179,10 @@ class TermChannel(BaseChannel):
         fmt_parts = []
         if self.args.with_filename or len(self.args.files) > 1 and self.args.with_filename is None:
             fmt_parts.append('filename')
-        if self.args.count:
+        if self.args.files_with_match is not None:
+            self.fmt_selected = '%s\n' % fmt_dict['filename']
+            self.fmt_context = ''
+        elif self.args.count:
             # When -c/--count option
             fmt_parts.append('counter')
             self.fmt_selected = colon_sep.join([fmt_dict[i] for i in fmt_parts])
@@ -229,12 +236,11 @@ class TermChannel(BaseChannel):
 
     def send_report(self, report_parts):
         for fmt in self.formats:
-            try:
-                self._channel.write('\n')
-                self._channel.write(report_parts[fmt].text)
-                self._channel.write('\n')
-            except KeyError:
-                pass
+            for part in report_parts:
+                if part.fmt == fmt:
+                    self._channel.write('\n')
+                    self._channel.write(part.text)
+                    self._channel.write('\n')
 
 
 class NoTermChannel(BaseChannel):
@@ -245,7 +251,7 @@ class NoTermChannel(BaseChannel):
         super(NoTermChannel, self).__init__(name, args, config)
         self.rawlogs = False
         self.rawfh = None
-        self.group_sep = "--\n"
+        self.group_sep = "%s\n" % args.group_separator if args.group_separator else ''
 
         fmt_dict = {
             'filename': '%(filename)s',
@@ -260,7 +266,10 @@ class NoTermChannel(BaseChannel):
 
         if self.args.with_filename or len(self.args.files) > 1 and self.args.with_filename is None:
             fmt_parts.append('filename')
-        if self.args.count:
+        if self.args.files_with_match is not None:
+            self.fmt_selected = '%s\n' % fmt_dict['filename']
+            self.fmt_context = ''
+        elif self.args.count:
             # When -c/--count option
             fmt_parts.append('counter')
             self.fmt_selected = colon_sep.join([fmt_dict[i] for i in fmt_parts])

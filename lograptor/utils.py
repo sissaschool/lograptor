@@ -219,20 +219,21 @@ def exact_sub(s, mapping):
     return s, fields
 
 
+def dummy(*args, **kwargs):
+    return
+
+
 def build_dispatcher(objects, func_name):
     _functions = [getattr(obj, func_name) for obj in objects]
     if not all([callable(f) for f in _functions]):
         raise TypeError('%r: not a callable for all objects %r' % (func_name, objects))
-
-    def dummy_dispatcher(*args, **kwargs):
-        return
 
     def multi_dispatcher(*args, **kwargs):
         for _func in _functions:
             _func(*args, **kwargs)
 
     if not objects:
-        return dummy_dispatcher
+        return dummy
     elif len(objects) == 1:
         return getattr(objects[0], func_name)
     else:

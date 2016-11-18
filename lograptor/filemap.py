@@ -18,6 +18,7 @@ This module contains classes to handle iteration over log files.
 #
 import logging
 import fnmatch
+import ntpath
 import glob
 import os
 import platform
@@ -36,10 +37,16 @@ class GlobDict(MutableMapping):
     and a list of values, corresponding to the values of dictionary
     keys that matches the filename.
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, recursive=False, followlinks=False, include=None,
+                 exclude=None, exclude_dir=None, *args, **kwargs):
         self._data = dict()
         self._pathnames = []
         self.update(*args, **kwargs)
+        self.recursive = recursive
+        self.followlinks = followlinks
+        self.include = include or []
+        self.exclude = exclude or []
+        self.exclude_dir = exclude_dir or []
 
     def __getitem__(self, path):
         if not isinstance(path, str):
@@ -75,41 +82,71 @@ class GlobDict(MutableMapping):
     def __len__(self):
         return len(self._data)
 
-    def iglob(self, pathnames=None, mapfunc=None):
+    def is_included(self, path):
+        basename = ntpath.basename(path)
+        dirname = ntpath.dirname(path)
+        if any([fnmatch.fnmatch(dirname, pat) for pat in self.exclude_dir]):
+            return False
+        elif any([fnmatch.fnmatch(basename, pat) for pat in self.exclude]):
+            return False
+        elif any([fnmatch.fnmatch(basename, pat) for pat in self.include]):
+            return True
+        else:
+            return not self.include
+
+    def iglob(self, path):
+        for filename in glob.iglob(path):
+            if self.is_included(filename):
+                values = [v for k, v in self._data.items() if fnmatch.fnmatch(filename, k)]
+                yield filename, values
+
+    def glob(self, path):
+        return list(self.iglob(path))
+
+    def iter_paths(self, pathnames=None, mapfunc=None):
         pathnames = pathnames or self._pathnames
+        if self.recursive and not pathnames:
+            pathnames = ['.']
+        elif not pathnames:
+            yield []
+
         if mapfunc is not None:
             for pathgen in map(mapfunc, pathnames):
                 for path in pathgen:
-                    for filename in glob.iglob(path):
-                        values = [v for k, v in self._data.items() if fnmatch.fnmatch(filename, k)]
-                        yield filename, values
+                    if self.recursive and (os.path.isdir(path) or os.path.islink(path)):
+                        for t in os.walk(path, followlinks=self.followlinks):
+                            for filename, values in self.iglob(os.path.join(t[0], '*')):
+                                yield filename, values
+                    else:
+                        for filename, values in self.iglob(path):
+                            yield filename, values
         else:
             for path in pathnames:
-                filename = None
-                for filename in glob.iglob(path):
-                    values = [v for k, v in self._data.items() if fnmatch.fnmatch(filename, k)]
-                    yield filename, values
-                if filename is None:
-                    logger.error("%r: No such file or directory" % path)
-
-    def glob(self, pathnames=None, mapfunc=None):
-        return list(self.iglob(pathnames, mapfunc))
+                if self.recursive and (os.path.isdir(path) or os.path.islink(path)):
+                    for t in os.walk(path, followlinks=self.followlinks):
+                        for filename, values in self.iglob(os.path.join(t[0], '*')):
+                            yield filename, values
+                else:
+                    for filename, values in self.iglob(path):
+                        yield filename, values
 
 
 class FileMap(object):
     """
     A class for building collections of files and for iterating over them.
     """
-    def __init__(self, start_dt=None, end_dt=None):
+    def __init__(self, start_dt=None, end_dt=None, *args, **kwargs):
         """
         :param start_dt: End datetime for filtering the iteration over files.
         When is None no date filter is applied to selected files.
         :param end_dt: End datetime for filtering the iteration over files.
         If it is None no filter is applied.
+        :param include: list of include patterns
+
         """
         if start_dt is not None and start_dt > end_dt:
             ValueError("start datetime mustn't be after the end datetime")
-        self._filemap = GlobDict()
+        self._filemap = GlobDict(*args, **kwargs)
         self._priority = {}
         self.start_dt = start_dt
         self.end_dt = end_dt
@@ -119,11 +156,11 @@ class FileMap(object):
         Iterate into the file map, with filename glob expansion.
         """
         if self.start_dt is None:
-            for filename, items in self._filemap.iglob():
+            for filename, items in self._filemap.iter_paths():
                 items = [i for sublist in items for i in sublist]
                 yield filename, sorted(items, key=lambda x: self._priority[x])
         else:
-            for filename, items in self._filemap.iglob(mapfunc=strftimegen(self.start_dt, self.end_dt)):
+            for filename, items in self._filemap.iter_paths(mapfunc=strftimegen(self.start_dt, self.end_dt)):
                 items = [i for sublist in items for i in sublist]
                 if self.check_stat(filename):
                     yield filename, sorted(items, key=lambda x: self._priority[x])

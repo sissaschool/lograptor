@@ -208,22 +208,26 @@ def create_argument_parser():
     )
     group.add_argument(
         "-R", "--dereference-recursive", action="store_true", default=False,
-        help="likewise, but follow all symlinks"
+        dest="deref_recursive", help="likewise, but follow all symlinks"
     )
     group.add_argument(
-        "--include", metavar='GLOB', help="search only files that match GLOB"
+        "--include", metavar='GLOB', default=[], action="append",
+        help="search only files that match GLOB"
     )
     group.add_argument(
-        "--exclude", metavar='GLOB', help="skip files and directories matching GLOB"
+        "--exclude", metavar='GLOB', default=[], action="append",
+        help="skip files and directories matching GLOB"
     )
     group.add_argument(
-        "--exclude-from", metavar='FILE', help="skip files matching any file pattern from FILE"
+        "--exclude-from", metavar='FILE', default=[], action="append",
+        help="skip files matching any file pattern from FILE"
     )
     group.add_argument(
-        "--exclude-dir", metavar='DIR', help="exclude directories matching the pattern DIR"
+        "--exclude-dir", metavar='DIR', default=[], action="append",
+        help="exclude directories matching the pattern DIR"
     )
     group.add_argument(
-        "-L", "--files-without-match", action="store_false", dest="files_with_match",
+        "-L", "--files-without-match", action="store_false", dest="files_with_match", default=None,
         help="print only names of FILEs containing no match"
     )
     group.add_argument(

@@ -30,6 +30,7 @@ import sys
 import fnmatch
 from sre_constants import error as RegexCompileError
 
+from . import __name__ as package_name
 from .application import AppLogParser
 from .configmap import ConfigMap
 from .exceptions import LograptorConfigError, FileMissingError, FormatError, OptionError, LograptorArgumentError
@@ -145,7 +146,7 @@ class Lograptor(object):
             )
         except IOError as err:
             logger.critical('no configuration available in files %r: %r', args.cfgfile, err)
-            raise FileMissingError('abort "{0}" for previous errors'.format(__name__))
+            raise FileMissingError('abort %r for previous errors' % package_name)
         else:
             if sys.stdout.isatty():
                 set_logger('lograptor', args.loglevel)
@@ -160,11 +161,16 @@ class Lograptor(object):
         elif matcher_count > 1:
             raise LograptorArgumentError("conflicting matchers specified")
 
+        # No pattern arguments ==> considers the first file argument as a pattern.
         if not args.patterns and not args.pattern_files:
             try:
                 args.patterns.append(args.files.pop(0))
             except IndexError:
                 raise LograptorArgumentError('PATTERN', 'no search pattern')
+
+        # Empty file arguments but a recursion option active ==> use the current dir.
+        if not args.files and (args.recursive or args.deref_recursive):
+            args.files = ['.']
 
         # Check arguments with loaded configuration
         self.fields = self.config.options('fields')
@@ -177,6 +183,17 @@ class Lograptor(object):
         self._debug = (args.loglevel == 4)
         self.patterns = self.get_patterns()
         self.final_dt, self.initial_dt = self.get_timeperiod()
+        self.recursive = args.recursive or args.deref_recursive
+        self.followlinks = args.deref_recursive
+        self.include = args.include
+        self.include = args.include
+        self.exclude = args.exclude
+        if args.exclude_from:
+            try:
+                self.exclude.extend([p.rstrip('\n') for p in fileinput.input(args.exclude_from)])
+            except (IOError, OSError) as err:
+                raise LograptorArgumentError('exclude-from', err)
+        self.exclude_dir = args.exclude_dir
         self.filters = args.filters
         self.hosts = self.get_hosts()
 
@@ -227,7 +244,8 @@ class Lograptor(object):
             self.logmap = [(sys.stdin, self.apps.values())]
         else:
             # Build the LogMap instance adding the list of files to be scanned.
-            self.logmap = FileMap(self.initial_dt, self.final_dt)
+            self.logmap = FileMap(self.initial_dt, self.final_dt, self.recursive,
+                                  self.followlinks, self.include, self.exclude, self.exclude_dir)
             for app in self.apps.values():
                 self.logmap.add(args.files or app.files, app, app.priority)
 
@@ -247,8 +265,11 @@ class Lograptor(object):
             return tuple()
 
         try:
-            flags = re.IGNORECASE if self.args.case else 0
-            return tuple([re.compile("(%s)" % pat, flags=flags) for pat in patterns])
+            flags = re.IGNORECASE if self.args.case else 0 | re.UNICODE
+            return tuple([
+                re.compile(r'(\b%s\b)' % pat if self.args.word else '(%s)' % pat, flags=flags)
+                for pat in patterns
+            ])
         except RegexCompileError as err:
             raise LograptorArgumentError('wrong regex syntax for pattern: %r' % err)
 
@@ -262,11 +283,10 @@ class Lograptor(object):
         """
         if self.args.period is None:
             if self.args.files or not os.isatty(sys.stdin.fileno()):
-                # diff = int(time.time())
                 return None, None
             else:
                 diff = 86400  # 24h = 86400 seconds
-            return get_interval(int(time.time()), diff, 3600)
+                return get_interval(int(time.time()), diff, 3600)
         else:
             return self.args.period
 
@@ -368,7 +388,7 @@ class Lograptor(object):
         channels = [sect.split('.')[1] for sect in self.config.sections('channel.')]
         channels.sort()
         return u'\n'.join([
-            u"\n--- %s configuration ---" % self.__class__.__name__,
+            u"\n--- %s configuration ---" % package_name.title(),
             u"Configuration main file: %s" % self.config.cfgfile,
             u"Configuration directory: %s" % os.path.abspath(self.config.getstr('main', 'cfgdir')),
             u"Enabled applications: %s" % ', '.join(self.apps.keys()),
@@ -386,7 +406,7 @@ class Lograptor(object):
         :return: Formatted multiline string
         """
         summary = [
-            u'\n--- %s run summary ---' % self.__class__.__name__,
+            u'\n--- %s run summary ---' % package_name.title(),
             u'Number of processed files: %(tot_files)d',
             u'Total lines read: %(tot_lines)d',
             u'Total log events matched: %(tot_counter)d',
