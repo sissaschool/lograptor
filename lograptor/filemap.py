@@ -165,6 +165,9 @@ class FileMap(object):
                 if self.check_stat(filename):
                     yield filename, sorted(items, key=lambda x: self._priority[x])
 
+    def __len__(self):
+        return len(list(self.__iter__()))
+
     def check_stat(self, path):
         """
         Checks logfile stat information for excluding files not in datetime period.

@@ -18,6 +18,7 @@ This module contains various utility functions for Lograptor.
 #
 import sys
 import os
+import stat
 import string
 import logging
 
@@ -57,7 +58,7 @@ def set_logger(name, loglevel=1, logfile=None):
     if not logger.handlers:
         try:
             lh = logging.FileHandler(logfile)
-        except (OSError, AttributeError):
+        except (IOError, OSError, AttributeError):
             lh = logging.StreamHandler()
         lh.setLevel(effective_level)
 
@@ -247,10 +248,9 @@ def results_to_string(results):
     ])
 
 
-def walk(obj):
-    try:
-        for i in iter(obj):
-            for j in iter(i):
-                yield walk(j)
-    except TypeError:
-        yield obj
+def is_pipe(fd):
+    return stat.S_ISFIFO(os.fstat(fd).st_mode)
+
+
+def is_redirected(fd):
+    return stat.S_ISREG(os.fstat(fd).st_mode)

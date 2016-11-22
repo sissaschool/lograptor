@@ -177,7 +177,7 @@ class TermChannel(BaseChannel):
         }
 
         fmt_parts = []
-        if self.args.with_filename or len(self.args.files) > 1 and self.args.with_filename is None:
+        if self.args.with_filename:
             fmt_parts.append('filename')
         if self.args.files_with_match is not None:
             self.fmt_selected = '%s\n' % fmt_dict['filename']
@@ -264,7 +264,7 @@ class NoTermChannel(BaseChannel):
         colon_sep = ":"
         dash_sep = "-"
 
-        if self.args.with_filename or len(self.args.files) > 1 and self.args.with_filename is None:
+        if self.args.with_filename:
             fmt_parts.append('filename')
         if self.args.files_with_match is not None:
             self.fmt_selected = '%s\n' % fmt_dict['filename']

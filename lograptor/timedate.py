@@ -83,7 +83,7 @@ def get_interval(timestamp, diff, offset=0):
     """
     fin_datetime = datetime.datetime.fromtimestamp(timestamp + offset)
     ini_datetime = datetime.datetime.fromtimestamp(timestamp - diff)
-    return fin_datetime, ini_datetime
+    return ini_datetime, fin_datetime
 
 
 def parse_date(date):
@@ -179,7 +179,7 @@ def strftimegen(start_dt, end_dt):
     to the second datetime argument.
     """
     if start_dt > end_dt:
-        raise ValueError("start datetime mustn't be after the end datetime")
+        raise ValueError("the start datetime is after the end datetime: (%r,%r)" % (start_dt, end_dt))
 
     def iterftime(string):
         date_subs = [i for i in DATE_FORMATS if i[1].search(string) is not None]

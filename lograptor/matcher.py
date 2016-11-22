@@ -81,7 +81,7 @@ def get_app(log_data, tagmap, extra_tags):
 
 def multiple_search(line, patterns, invert=False):
     if not patterns:
-        return not invert
+        return not invert, None
 
     for regexp in patterns:
         match = regexp.search(line)
@@ -106,7 +106,7 @@ def create_matcher_engine(obj, parsers):
     name_cache = obj.name_cache
     tagmap = obj.tagmap
     max_count = 1 if obj.args.quiet else obj.args.max_count
-    use_rules = obj.args.use_rules
+    use_rules = obj.args.use_rules or obj.args.unparsed
     hosts = obj.hosts
     if hosts:
         hostset = set()
@@ -211,7 +211,10 @@ def create_matcher_engine(obj, parsers):
                 # Checks event time with selected scope.
                 # Converts log's timestamp into the time in seconds since the epoch
                 # as a floating point number, in order to speed up comparisons.
-                year = getattr(log_data, 'year', prev_year if log_data.month != '1' and file_month == 1 else file_year)
+                year = getattr(
+                    log_data, 'year',
+                    prev_year if MONTHMAP[log_data.month] != '01' and file_month == 1 else file_year
+                )
                 event_time = get_mktime(
                     year=year,
                     month=log_data.month,

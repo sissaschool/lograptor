@@ -40,9 +40,14 @@ from .cache import RenameCache
 from .report import Report
 from .channels import TermChannel, MailChannel, FileChannel
 from .timedate import get_interval
-from .utils import set_logger, results_to_string, walk
+from .utils import set_logger, results_to_string, is_pipe, is_redirected
 
 logger = logging.getLogger(__name__)
+
+try:
+    STDIN_FILENO = sys.stdin.fileno()
+except ValueError:
+    STDIN_FILENO = 0
 
 # Lograptor default configuration
 DEFAULT_CONFIG = {
@@ -174,15 +179,13 @@ class Lograptor(object):
 
         # Check arguments with loaded configuration
         self.fields = self.config.options('fields')
-        unknown = set([k for k in walk(args.filters)])
-        unknown.difference_update(self.fields)
+        unknown = [k for item in args.filters for k in item if k not in self.fields]
         if unknown:
-            raise LograptorArgumentError('undefined fields %r', list(unknown))
-        self.channels = self.get_channels()
+            raise LograptorArgumentError('undefined fields %r' % list(unknown))
 
         self._debug = (args.loglevel == 4)
         self.patterns = self.get_patterns()
-        self.final_dt, self.initial_dt = self.get_timeperiod()
+        self.initial_dt, self.final_dt = self.get_timeperiod()
         self.recursive = args.recursive or args.deref_recursive
         self.followlinks = args.deref_recursive
         self.include = args.include
@@ -236,10 +239,9 @@ class Lograptor(object):
         logger.info('hosts to be processed: %r', self.hosts)
 
         self.extra_tags = set()
-
         self.tmpprefix = None
 
-        if not args.files and not os.isatty(sys.stdin.fileno()):
+        if not args.files and (is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO)):
             # No files and input by a pipe
             self.logmap = [(sys.stdin, self.apps.values())]
         else:
@@ -248,6 +250,11 @@ class Lograptor(object):
                                   self.followlinks, self.include, self.exclude, self.exclude_dir)
             for app in self.apps.values():
                 self.logmap.add(args.files or app.files, app, app.priority)
+            if len(self.logmap) > 1 and self.args.with_filename is None:
+                self.args.with_filename = True
+
+        # At the end sets the channels, that depend from other arguments.
+        self.channels = self.get_channels()
 
     def get_patterns(self):
         """
@@ -268,7 +275,7 @@ class Lograptor(object):
             flags = re.IGNORECASE if self.args.case else 0 | re.UNICODE
             return tuple([
                 re.compile(r'(\b%s\b)' % pat if self.args.word else '(%s)' % pat, flags=flags)
-                for pat in patterns
+                for pat in patterns if pat
             ])
         except RegexCompileError as err:
             raise LograptorArgumentError('wrong regex syntax for pattern: %r' % err)
@@ -282,7 +289,7 @@ class Lograptor(object):
         :return:
         """
         if self.args.period is None:
-            if self.args.files or not os.isatty(sys.stdin.fileno()):
+            if self.args.files or is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO):
                 return None, None
             else:
                 diff = 86400  # 24h = 86400 seconds
@@ -426,12 +433,12 @@ class Lograptor(object):
                     }
                     summary.append(u"App's rules counters: %s" % results_to_string(rule_counters))
             if run_stats['unknown_tags']:
-                summary.append(u'Found unknown app\'s tags: %(unknown_tags)r')
+                summary.append(u'Found unknown app tags: %(unknown_tags)s')
             if any([app.unparsed_counter > 0 for app in self.apps.values()]):
-                summary = u'{0}\nFound unparsed log lines for apps: {1}'.format(summary, u', '.join([
+                summary.append(u'Found unparsed log lines for apps: {}'.format(u', '.join([
                     u'%s(%d)' % (app.name, app.unparsed_counter)
                     for app in self.apps.values() if app.unparsed_counter > 0
-                ]))
+                ])))
         summary.append('\n')
         return '\n'.join(summary) % run_stats
 
@@ -492,8 +499,10 @@ class Lograptor(object):
             'tot_lines': tot_lines,
             'tot_unparsed': tot_unparsed,
             'files': ', '.join(logfiles),
-            'unknown_tags': set([tag for tag in self.extra_tags
-                                 if tag not in self.known_tags and not tag.isdigit()]),
+            'unknown_tags': ', '.join(
+                set([tag for tag in self.extra_tags
+                if tag not in self.known_tags and not tag.isdigit()])
+            )
         }
 
         # If final report is requested then purge all unmatched threads and set time stamps.

@@ -75,7 +75,7 @@ class AppRule(object):
 
         self.name = name
         self.args = args
-        self.filter_keys = filter_keys or {}
+        self.filter_keys = filter_keys or []
         self.full_match = filter_keys is not None
         self.used_by_report = False
         self.results = dict()
@@ -388,6 +388,7 @@ class AppLogParser(object):
             self.rules = rules
 
         self.has_filters = any([rule.filter_keys for rule in self.rules])
+
         if self.has_filters:
             # If the app has filters, reorder rules putting the filters first.
             self.rules = sorted(self.rules, key=lambda x: x.filter_keys)
@@ -412,7 +413,6 @@ class AppLogParser(object):
         rules = []
         for option, value in rule_options:
             pattern = value.replace('\n', '')  # Strip newlines for multiline declarations
-
             if not self.args.filters:
                 # No filters case: substitute the filter fields with the corresponding patterns.
                 pattern = string.Template(pattern).safe_substitute(self.fields)
@@ -420,13 +420,12 @@ class AppLogParser(object):
                 continue
 
             for filter_group in self.args.filters:
-                pattern, filter_keys = exact_sub(pattern, filter_group)
-                pattern = string.Template(pattern).safe_substitute(self.fields)
+                _pattern, filter_keys = exact_sub(pattern, filter_group)
+                _pattern = string.Template(_pattern).safe_substitute(self.fields)
                 if len(filter_keys) >= len(filter_group):
-                    rules.append(AppRule(option, pattern, self.args, filter_keys))
+                    rules.append(AppRule(option, _pattern, self.args, filter_keys))
                 elif self._thread:
-                    rules.append(AppRule(option, pattern, self.args))
-
+                    rules.append(AppRule(option, _pattern, self.args))
         return rules
 
     def increase_last(self, k):

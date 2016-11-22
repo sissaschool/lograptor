@@ -41,7 +41,7 @@ class RenameCache(object):
     """
 
     def __init__(self, args, config):
-        self.mapexp = config['mapexp']
+        self.mapexp = config.getint('main', 'mapexp')
         self.mapmax = 10 ** self.mapexp
         self.ip_lookup = args.ip_lookup
         self.uid_lookup = args.uid_lookup
@@ -53,7 +53,9 @@ class RenameCache(object):
         self.hostsmap = self.maps['host']
         self.uidsmap = self.maps['uid']
         self.base_gid_pattern = re.compile('^([a-zA-Z_]+)')
-        self.ip_pattern = re.compile(u'({0}|{1})'.format(config['ipv4_pattern'], config['ipv6_pattern']))
+        self.ip_pattern = re.compile(u'({0}|{1})'.format(
+            config.getstr('patterns', 'ipv4_pattern'), config.getstr('patterns', 'ipv6_pattern'))
+        )
 
     def map_value(self, gid, value):
         """

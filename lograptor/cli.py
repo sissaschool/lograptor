@@ -51,7 +51,8 @@ def filter_spec(string):
                 raise argparse.ArgumentTypeError('filter %r: empty pattern!' % flt)
 
             try:
-                _filter[field] = re.compile(pattern)
+                re.compile(pattern)
+                _filter[field] = pattern
             except sre_constants.error:
                 raise argparse.ArgumentTypeError("wrong regex pattern in filter %r" % flt)
         except ValueError:
@@ -104,7 +105,7 @@ def create_argument_parser():
 
     group = parser.add_argument_group("Scope Selection")
     group.add_argument(
-        "--apps", metavar='APP[,APP...]', type=comma_separated_string, dest="appnames",
+        "-a", "--apps", metavar='APP[,APP...]', type=comma_separated_string, dest="appnames",
         default=[], help="process the log lines related to an application"
     )
     group.add_argument(
@@ -112,7 +113,7 @@ def create_argument_parser():
         dest="hostnames", default=[], help="process the log lines related to an hostname/IP"
     )
     group.add_argument(
-        "--filter", metavar="FIELD=PATTERN[,FIELD=PATTERN...]",
+        "-F", "--filter", metavar="FIELD=PATTERN[,FIELD=PATTERN...]",
         action="append", dest="filters", type=filter_spec, default=[],
         help="process the log lines that match all the conditions for rule's field values"
     )
