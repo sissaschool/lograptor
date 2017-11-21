@@ -1,9 +1,7 @@
-************************
-*** Lograptor README ***
-************************
+****************
+Lograptor README
+****************
 
-LOGRAPTOR
-----------
 Lograptor is a search tool for system logs written in legacy BSD syslog
 format RFC 3164 and for IETF syslog protocol RFC 5424.
 
@@ -40,8 +38,8 @@ Trieste, ITALY
 
 OBTAINING
 ---------
-https://github.com/brunato/Lograptor
-git://github.com/brunato/Lograptor.git
+https://github.com/brunato/lograptor
+git://github.com/brunato/lograptor.git
 
 
 INSTALL
