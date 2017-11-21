@@ -105,9 +105,9 @@ Davide Brunato <brunato@sissa.it>, SISSA - Scuola Internazionale Superiore di St
 TODO
 ----
  
- * Improve the anonymized output feature;
- * Introduce several different levels of details as a program option,
-   in order to produce more or less verbose reports;
- * Try an integration with RFC 3161 timestamp services, in order to
-   mark rotated log files and the produced reports;
- * Maybe examine the opportunity to translate a log format to another format.
+- Improve the anonymized output feature;
+- Introduce several different levels of details as a program option,
+  in order to produce more or less verbose reports;
+- Try an integration with RFC 3161 timestamp services, in order to
+  mark rotated log files and the produced reports;
+- Maybe examine the opportunity to translate a log format to another format.
