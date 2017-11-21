@@ -27,26 +27,21 @@ Very special thanks to Konstantin ("Icon") Ryabitsev, the author of Epylog
 package, a software from whom Lograptor was inspired and from whom has
 inherited part of the source code.
 
-
-AUTHOR
-------
-Davide Brunato <brunato@sissa.it>
-SISSA - Scuola Internazionale Superiore di Studi Avanzati/
-	    International School for Advanced Studies
-Trieste, ITALY
-
-
 OBTAINING
 ---------
-https://github.com/brunato/lograptor
-git://github.com/brunato/lograptor.git
+Clone the git repository, choosing one of those commands::
 
+  git clone https://github.com/brunato/lograptor
+  git clone git://github.com/brunato/lograptor.git
+
+or download the zip archive from the site and extract the content to a folder.
+Then go into the created directory (lograptor) to install or build the software.
 
 INSTALL
 -------
 Easiest way is to get and install the RPM/DEB package. To installing from
 source uncompact the tarball into a directory.
-Then cd in the directory and type:
+Then cd in the directory and type::
 
   python setup.py build install
 
@@ -56,7 +51,7 @@ Lograptor package and source requires python >= 2.6 (included python 3.0+).
 CONFIGURE
 ---------
 After the installation edit the files in /etc/lograptor to reflect your 
-environment:
+environment::
 
   /etc/lograptor/lograptor.conf        Default main configuration file
   /etc/lograptor/report_template.html  Report HTML template
@@ -71,6 +66,7 @@ applications are simply ignored by the program. For more info please see
 
 USAGE
 -----
+::
 
   lograptor [options] [FILE ...]
   lograptor [options] [-e PATTERN | -f PATTERNS_FILE ] [FILE ...]
@@ -84,7 +80,7 @@ For more information on usage options see "lograptor --help" or
 
 LICENSE
 -------
-Copyright (C) 2012-2014 by Davide Brunato and SISSA
+Copyright (C) 2012-2014 by SISSA
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -101,10 +97,14 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  
 02111-1307, USA.
 
+AUTHOR
+------
+Davide Brunato <brunato@sissa.it>, SISSA - Scuola Internazionale Superiore di Studi Avanzati/International School for Advanced Studies, Trieste, ITALY
+
 
 TODO
 ----
-
+ 
  * Improve the anonymized output feature;
  * Introduce several different levels of details as a program option,
    in order to produce more or less verbose reports;
