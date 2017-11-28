@@ -29,7 +29,7 @@ DESCRIPTION
 
 An application configuration file for *lograptor* must contains two sections:
 
-    **main**
+**main**
         Contains the parameters of the application. Includes log app-tags, log files
         locations, priority and enabling status.
 
@@ -60,13 +60,13 @@ Optional additional sections can be defined to define report data composition.
 
     Finally you can also use some wildcards related to dates:
 
-     **%Y**
+    **%Y**
         specifies the year
 
-     **%m** 
+    **%m** 
         specifies the month as a number with 2 digits (01..12)
 
-     **%d** 
+    **%d** 
         specifies the day with 2 digits (01..)
 
     Currently only these formats are supported to specify the dates. Filenames that include
