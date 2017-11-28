@@ -30,12 +30,12 @@ DESCRIPTION
 An application configuration file for *lograptor* must contains two sections:
 
 **main**
-        Contains the parameters of the application. Includes log app-tags, log files
-        locations, priority and enabling status.
+    Contains the parameters of the application. Includes log app-tags, log files
+    locations, priority and enabling status.
 
-    **rules**
-        This section contains the *pattern rules* for the analysis of application's logs.
-        Those regexp rules are used by the engines of *lograptor*.
+**rules**
+    This section contains the *pattern rules* for the analysis of application's logs.
+    Those regexp rules are used by the engines of *lograptor*.
 
 Optional additional sections can be defined to define report data composition.
 
@@ -252,18 +252,18 @@ additional option must be::
 
 The parameter *<filter>* can have the following values:
 
-    ``*``
-        Computes the total on all results.
+``*``
+    Computes the total on all results.
 
-    ``<field>=<pattern>``
-        Consider only the tuples of results for which the specified field satisfies the
-        constraint described by *<pattern>*. The value *<field>* must be the name of a
-        symbolic group and must be defined in all the pattern rules provided for the section.
+``<field>=<pattern>``
+    Consider only the tuples of results for which the specified field satisfies the
+    constraint described by *<pattern>*. The value *<field>* must be the name of a
+    symbolic group and must be defined in all the pattern rules provided for the section.
 
-    ``<field>!=<pattern>``
-        Consider only the results that don't satisfy the constraint specified by *<pattern>*.
-        The value *<field>* must be the name of a symbolic group present in all the pattern
-        rules provided for the section.
+``<field>!=<pattern>``
+    Consider only the results that don't satisfy the constraint specified by *<pattern>*.
+    The value *<field>* must be the name of a symbolic group present in all the pattern
+    rules provided for the section.
 
 The *<description>* will be the header of the column of the results.
 
