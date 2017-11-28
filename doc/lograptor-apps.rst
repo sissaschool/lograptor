@@ -8,7 +8,7 @@ CONFIGURATION FILES
 
 **${confdir}/*.conf**
 
-*Lograptor* defines his applications by configuration files. An application configuration
+*Lograptor* defines its applications by configuration files. An application configuration
 filename is the name of the application followed by the suffix ``.conf``.
 Each file that is located in the configuration  directory that has this suffix has to be
 an application configuration file for lograptor.
