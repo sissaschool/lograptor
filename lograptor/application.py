@@ -1,18 +1,29 @@
 # -*- coding: utf-8 -*-
 """
-Module to manage Lograptor applications
+Module to manage lograptor applications
 """
 #
-# Copyright (C), 2011-2016, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
 #
-# This file is part of Lograptor.
+# This file is part of lograptor.
 #
-# Lograptor is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with lograptor; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+# 02111-1307, USA.
+#
 # See the file 'LICENSE' in the root directory of the present
-# distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
+# distribution for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
@@ -32,13 +43,13 @@ try:
 except ImportError:
     pwd = None
 
-from .exceptions import LograptorConfigError, RuleMissingError, OptionError
-from .configmap import ConfigMap
-from .report import ReportItem
+from .exceptions import LogRaptorConfigError, RuleMissingError, LogRaptorOptionError
+from .confparsers import AppConfig
+from .report import ReportData
 from .utils import field_multisub, exact_sub
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__package__)
 
 
 class AppRule(object):
@@ -60,18 +71,18 @@ class AppRule(object):
 
     def __init__(self, name, pattern, args, filter_keys=None):
         """
-        Initialize AppRule. Arguments passed include:
+        Initialize AppRule.
 
         :param name: the configuration option name
-        :param pattern: the option value that rapresent the search pattern
+        :param pattern: the option value that represents the search pattern
         :param filter_keys: the filtering keys dictionary if the rule is a filter
         """
         try:
             if not pattern:
-                raise LograptorConfigError('empty rule %r' % name)
+                raise LogRaptorConfigError('empty rule %r' % name)
             self.regexp = re.compile(pattern)
         except RegexpCompileError:
-            raise LograptorConfigError("illegal regex pattern for app\'rule: %r" % name)
+            raise LogRaptorConfigError("illegal regex pattern for app\'rule: %r" % name)
 
         self.name = name
         self.args = args
@@ -87,7 +98,7 @@ class AppRule(object):
         self.key_gids = tuple(key_gids)
 
         if not self.key_gids:
-            raise LograptorConfigError("rule gids set empty!")
+            raise LogRaptorConfigError("rule gids set empty!")
 
         self._last_idx = None
 
@@ -164,7 +175,7 @@ class AppRule(object):
         """
         Return a list with the top NUM list of events. Each list element
         contain a value, indicating the number of events, and a list of
-        correspondind gid values (usernames, email addresses, clients).
+        matching gid values (usernames, email addresses, clients).
         Instead of calculating the top sum of occurrences a value field
         should be provided to compute the max of a numeric value field or
         the sum of product of value field with events.
@@ -223,7 +234,7 @@ class AppRule(object):
         An element of the list is a tuple with three component. The first is the main
         attribute (first field). The second the second field/label, usually a string
         that identify the service. The third is a dictionary with a key-tuple composed
-        byall other fields and values indicating the number of events associated.
+        by all other fields and values indicating the number of events associated.
         """
 
         def insert_row():
@@ -305,18 +316,7 @@ class AppLogParser(object):
     """
     Class to manage application log rules and results
     """
-    # Default values for application config files
-    DEFAULT_CONFIG = {
-        'main': {
-            'description': '${appname}',
-            'tags': '${appname}',
-            'files': '${logdir}/messages',
-            'enabled': True,
-            'priority': 1,
-        }
-    }
-
-    def __init__(self, name, cfgfile, args, config, outmap):
+    def __init__(self, name, cfgfile, args, config, name_cache=None, report=None):
         """
         :param name: application name
         :param cfgfile: application config file
@@ -329,71 +329,49 @@ class AppLogParser(object):
         self.cfgfile = cfgfile      # App configuration file
         self.args = args
         self.config = config
-        self.outmap = outmap
+        self.name_cache = name_cache
         self.fields = dict(config.items('fields'))
 
         # Setting instance internal variables for process phase
-        self._report = args.report
+        self._report = report
         self._thread = args.thread
         self.counter = 0            # Parsed lines counter
         self.unparsed_counter = 0   # Unparsed lines counter
         self._last_rule = None      # Last matched rule
         self._last_idx = None       # Last index matched
 
-        self.appconfig = ConfigMap(
-            cfgfile, self.DEFAULT_CONFIG,
-            logdir=config.getstr('main', 'logdir'),
-            appname=name, host=args.hostnames
+        self.appconfig = AppConfig(
+            cfgfiles=cfgfile,
+            logdir=config.get('main', 'logdir'),
+            appname=name,
+            host=args.hostnames
         )
 
-        self.description = self.appconfig.getstr('main', 'description')
-        self.tags = list(set(re.split('\s*,\s*', self.appconfig.getstr('main', 'tags'))))
-        self._files = list(set(re.split('\s*,\s*', self.appconfig.getstr('main', 'files'))))
-        self.enabled = self.appconfig.getbool('main', 'enabled')
+        self.description = self.appconfig.get('main', 'description')
+        self.tags = list(set(re.split('\s*,\s*', self.appconfig.get('main', 'tags'))))
+        self._files = list(set(re.split('\s*,\s*', self.appconfig.get('main', 'files'))))
+        self.enabled = self.appconfig.getboolean('main', 'enabled')
         self.priority = self.appconfig.getint('main', 'priority')
         self.files = field_multisub(self._files, 'host', args.hostnames or ['*'])
 
-        logger.info('app %r run tags: %r', name, self.tags)
-        logger.info('app %r run files: %r', name, self.files)
-        logger.info('app %r: enabled=%r, priority=%s', name, self.enabled, self.priority)
+        logger.debug('app %r run tags: %r', name, self.tags)
+        logger.debug('app %r run files: %r', name, self.files)
+        logger.debug('app %r: enabled=%r, priority=%s', name, self.enabled, self.priority)
 
-        # Load rules: an app is removed when has no rules.
-        try:
-            rule_options = self.appconfig.items('rules')
-        except configparser.NoSectionError:
-            raise LograptorConfigError("the app %r has no defined rules!" % name)
-        else:
-            rules = self.create_rules(rule_options)
+        self.rules = self.parse_rules()
 
-        if args.report:
-            # Add report items
-            self.repitems = []
-            subreports = [
-                opt.split('.')[1] for opt in config.options('report.%s' % args.report)
-                if opt.startswith('subreport.')
-            ]
-            for sect in filter(lambda x: x not in ['main', 'rules'], self.appconfig.sections()):
-                options = self.appconfig.items(sect)
-                try:
-                    self.repitems.append(ReportItem(sect, options, subreports, rules))
-                except RuleMissingError as msg:
-                    logger.info(msg)
-                except OptionError as err:
-                    logger.error('skip report item %r for app %r: %s', sect, name, err)
+        if self._report is not None:
+            subreports = self.config.get_subreports(self._report.name)
+            self.report_data = [item for item in self.get_report_data() if item.subreport in subreports]
 
-        if False and any([rule for rule in rules if not rule.is_used()]):
-            self.rules = [rule for rule in rules if rule.is_used()]
-            logger.info("purged %d unused rules" % (len(rules) - len(self.rules)))
-        else:
-            self.rules = rules
-
+        self.rules = [rule for rule in self.rules if rule.is_used()]  # Purge unused rules
         self.has_filters = any([rule.filter_keys for rule in self.rules])
 
         if self.has_filters:
             # If the app has filters, reorder rules putting the filters first.
             self.rules = sorted(self.rules, key=lambda x: x.filter_keys)
-            logger.info('filter rules for app %r: %d', name, len(self.filters))
-            logger.info('simple rules for app %r: %d', name, len(self.rules) - len(self.filters))
+            logger.debug('filter rules of app %r: %d', name, len(self.filters))
+            logger.debug('other rules of app %r: %d', name, len(self.rules) - len(self.filters))
         else:
             for rule in self.rules:
                 rule.full_match = True
@@ -406,10 +384,30 @@ class AppLogParser(object):
     def filters(self):
         return [rule for rule in self.rules if rule.filter_keys]
 
-    def create_rules(self, rule_options):
+    def get_report_data(self):
+        report_data = []
+        for section in filter(lambda x: x not in ['main', 'rules'], self.appconfig.sections()):
+            options = self.appconfig.items(section)
+            try:
+                data_item = ReportData(section, options, self.rules)
+            except RuleMissingError as msg:
+                logger.debug(msg)
+            except LogRaptorOptionError as err:
+                logger.error('skip report data %r for app %r: %s', section, self.name, err)
+            else:
+                report_data.append(data_item)
+        return report_data
+
+    def parse_rules(self):
         """
         Add a set of rules to the app, dividing between filter and other rule set
         """
+        # Load patterns: an app is removed when has no defined patterns.
+        try:
+            rule_options = self.appconfig.items('rules')
+        except configparser.NoSectionError:
+            raise LogRaptorConfigError("the app %r has no defined rules!" % self.name)
+
         rules = []
         for option, value in rule_options:
             pattern = value.replace('\n', '')  # Strip newlines for multiline declarations
@@ -455,13 +453,12 @@ class AppLogParser(object):
             if match is not None:
                 gids = rule.regexp.groupindex
                 self._last_rule = rule
-                if self.outmap is not None:
-                    outmap = self.outmap
-                    values = outmap.map2dict(rule.key_gids, match)
-                    values['host'] = outmap.map_value('host', logdata.host)
+                if self.name_cache is not None:
+                    values = self.name_cache.match_to_dict(match, rule.key_gids)
+                    values['host'] = self.name_cache.map_value(logdata.host, 'host')
                     map_dict = {
                         'host': values['host'],
-                        'message': outmap.map2str(gids, match, values),
+                        'message': self.name_cache.match_to_string(match, gids, values),
                     }
                 else:
                     values = {'host': logdata.host}

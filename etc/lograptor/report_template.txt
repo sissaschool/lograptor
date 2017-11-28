@@ -17,4 +17,4 @@ Total files examined: ${tot_files}
 Total log lines parsed: ${tot_lines}
 ------------------------------------------------
 ${subreports}
------ Brought to you by Lograptor $version -----
+----- Brought to you by lograptor $version -----

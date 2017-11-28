@@ -2,38 +2,40 @@
 Lograptor configuration
 =======================
 
-
+******************
 CONFIGURATION FILE
-------------------
+******************
 
-**/etc/lograptor/lograptor.conf**
+**lograptor.conf**
 
-Lograptor will look for `/etc/lograptor/lograptor.conf` as default configuration file,
-but you can override that by passing ``--conf`` switch on the command line.
+lograptor will look at `./lograptor.conf` or `~/.config/lograptor/lograptor.conf`
+or `/etc/lograptor/lograptor.conf` for a configuration file, but you can override
+that by passing ``--conf`` option on the command line.
 
 
+***********
 DESCRIPTION
------------
+***********
 
-Lograptor configuration file use the
+A lograptor configuration file uses the
 `Python's ConfigParser <https://docs.python.org/2/library/configparser.html>`_
 format which provides a structure similar to Microsoft Windows INI files.
 A configuration file consists of sections and option entries. A section start with a ''[section]'' header.
 Each section can have different ``name=value`` (``name: value`` is also accepted) option entries, with
 continuations in the style of `RFC 822 <https://www.ietf.org/rfc/rfc0822.txt>`_
 (see section 3.1.1, “LONG HEADER FIELDS”).
-Note that leading whitespace is removed from values.
+Note that leading and trailing whitespaces are removed from values.
 
-The configuration file include five fixed-named sections. Extra sections can be added in order to
-define report's publishers. A publisher can be of two types: *Mail Publisher* or *File Publisher*.
-The publisher type is defined with the option **method**. The names of the publishers are then
-used in `--publish option <lograptor.html#cmdoption--publish>`_.
-Other sections are ignored.
+A configuration file for lograptor includes three fixed-named sections (*main*,
+*patterns* and *fields*) and at least one section for the default report (*default_report*).
+Other sections can be added in order to configure additional output channels or reports.
 
+
+**************
 [main] SECTION
-^^^^^^^^^^^^^^
+**************
 
-.. envvar:: cfgdir
+.. envvar:: confdir
 
     This is where lograptor should look for apps configuration information,
     most notably, *conf.d* directory. See `lograptor-apps(5) <lograptor-apps.html>`_
@@ -41,33 +43,35 @@ Other sections are ignored.
 
 .. envvar:: logdir
 
-    Where the system logs are located. Useful to shortening log path
-    specification in application's configuration files.
+    Where the system logs are located. Useful to shortening log path specification in
+    application's configuration files.
 
 .. envvar:: tmpdir
 
-    Where to create temporary directories and put temporary files. Note
-    that log files can grow VERY big and lograptor might need similar
-    space for processing purposes. Make sure there is no danger
-    of filling up that partition. A good place on a designated loghost is
-    /var/tmp, since that is usually a separate partition dedicated
-    entirely for logs.
+    Where to create temporary directories and put temporary files. Note that log files
+    can grow VERY big and lograptor might need similar space for processing purposes.
+    Make sure there is no danger of filling up that partition. A good place is /var/tmp,
+    since that is usually a separate partition dedicated entirely for logs.
 
-.. envvar:: fromaddr
+.. envvar::
+
+    The file where to log application errors (/var/log/lograptor.log for default).
+
+.. envvar:: from_address
 
     Use a specific sender address when sending reports or notifications.
     Defaults to address *root@<HOST_FQDN>*.
 
-.. envvar:: smtpserv
+.. envvar:: smtp_server
 
     Use this smtp server when sending notifications. Can be either a hostname
     of an SMTP server to use, or the location of a sendmail binary.
     If the value starts with a "/" is considered a path.
     E.g. valid entries::
 
-        smtpserv = mail.example.com
+        smtp_server = mail.example.com
 
-        smtpserv = /usr/sbin/sendmail -t
+        smtp_server = /usr/sbin/sendmail -t
 
 .. envvar:: mapexp
 
@@ -76,165 +80,138 @@ Other sections are ignored.
     the power of 10 that represents the maximum extension of each table (default is 4).
 
 
+******************
 [patterns] SECTION
-^^^^^^^^^^^^^^^^^^
+******************
 
-Basic pattern rules. Those rules are essential for correct program execution.
-All the patterns could be commented out because are also defined in Lograptor's code.
-It's possible to customize patterns, but you have to make sure the new patterns
-are conform with regexp syntax to avoid execution errors.
-Pattern customization is useful to match non-ortodox log elements or if you want to
-simplify the patterns to slightly speed-up the processing.
+This section includes these basic pattern rules:
 
-.. envvar:: rfc3164_pattern
+.. envvar:: DNSNAME
 
-    This is the path for legacy BSD log header searches, compliant to
-    RFC 3164 specifications.
+    Regular expression pattern for DNS names matching.
 
-.. envvar:: rfc5424_pattern
+.. envvar:: IPV4_ADDRESS
 
-    This is the path for IETF log header searches, compliant to
-    RFC 5424 specifications.
+    Regular expression pattern for IPv4 addresses matching.
 
-.. envvar:: ipaddr_pattern
+.. envvar:: IPV6_ADDRESS
 
-    This is the pattern for IP addresses matching.
+    Regular expression pattern for IPv6 addresses matching.
 
-.. envvar:: dnsname_pattern
+.. envvar:: EMAIL
 
-    This is the pattern for DNS names matching.
+    Regular expression pattern for RFC824 e-mail address matching.
 
-.. envvar:: email_pattern
+.. envvar:: USERNAME
 
-    This is the pattern for RFC824 e-mail address matching.
+    Regular expression pattern for username matching.
 
-.. envvar:: username_pattern
+.. envvar:: ID
 
-    This is the pattern for username matching.
+    Regular expression pattern for numerical ID matching.
 
-.. envvar:: id_pattern
+.. envvar:: ASCII
 
-    This is the pattern for numerical ID matching.
+    Regular expression pattern for ASCII characters matching.
+
+These rules are essential for a correct program execution. You don't need to add basic
+pattern rules to you configuration files because are embedded in program defaults.
+You can redefine the basic patterns pattern rules but you have to make sure the new
+patterns are conform with regexp syntax to avoid execution errors.
+Basic pattern customization is useful to match non-ortodox log elements or if you want
+to simplify the patterns to slightly speed-up the processing.
+
+Declare additional pattern options if you want to define also additional fields in
+your configuration.
+All the pattern options maybe declared using name with uppercase letters, for clarity
+and for avoiding collisions with field names.
+
+Defined pattern can be used as template strings in the pattern rules of the applications.
 
 
-[filters] SECTION
-^^^^^^^^^^^^^^^^^
+****************
+[fields] SECTION
+****************
 
-This section contains default pattern rules for Lograptor filters
-(`command option -F <lograptor.html#cmdoption-F>`_).
-Each pattern rule is usually referred as a composition of basic patterns.
-Variable related strings's interpolation is then used to define the effective regexp
-pattern during execution.
-You could add your own filter or customize patterns, but in this case you have to make
-sure that the changes do not exclude valid log lines.
+This section contains the fields that can be included in lograptor filters
+(`command option -F <lograptor.html#cmdoption-F>`_) and in
+`application's pattern rules <lograptor-apps.html>`_.
 
-In default configuration 8 filters are defined. Those filters could be
-commented out because are also defined with it's default in Lograptor code.
+Each field declaration maybe a template regex pattern, that uses the declared patterns
+as template variables. A string interpolation is then used to create the effective
+regexp patterns during lograptor execution.
+
+The default configuration includes 8 predefined fields:
 
 .. envvar:: user
 
-    Filter for usernames (defaults to ``${username_pattern}``).
+    Field for usernames (defaults to ``(|${USERNAME})``).
 
 .. envvar:: mail
 
-    Filter for email addresses (defaults to ``${email_pattern}``).
+    Field for email addresses (defaults to ``${EMAIL}``).
 
 .. envvar:: from
 
-    Filter for sender email addresses (defaults to ``${email_pattern}``).
+    Field for sender email addresses (defaults to ``${EMAIL}``).
 
 .. envvar:: rcpt
 
-    Filter for recipient email addresses (defaults to ``${email_pattern}``).
+    Field for recipient email addresses (defaults to ``$${EMAIL}``).
 
 .. envvar:: client
 
-    Filter for client IP/name (defaults to
-    ``(${dnsname_pattern}|${ipv4_pattern}|${dnsname_pattern}\[${ipv4_pattern}\])``).
+    Field for client IP/name (defaults to
+    ``(${DNSNAME}|${IPV4_ADDRESS}|${DNSNAME}\[${IPV4_ADDRESS}\])``).
 
 .. envvar:: pid
 
-    Filter for process IDs (defaults to ``${id_pattern}``).
+    Field for process IDs (defaults to ``${ID}``).
 
 .. envvar:: uid
 
-    Filter for user numerical IDs (defaults to ``${id_pattern}``).
+    Field for user IDs (defaults to ``${ID}``).
 
 .. envvar:: msgid
 
-    Filter for message IDs (defaults to ``${ascii_pattern}``).
+    Field for message IDs (defaults to ``${ASCII}``).
+
+Those filters are usually skipped in the configuration files because are embedded in the
+lograptor's defaults.
 
 
-[report] SECTION
-^^^^^^^^^^^^^^^^
+**********************
+[..._channel] SECTIONS
+**********************
 
-.. envvar:: title
+The default output channel is *stdout* that is the standard output terminal channel
+(*TermChannel*). Other types of channels can be defined, currently you can choose
+either a *Mail Channel* or a *File Channel*.
 
-    What should be the title of the report. For mailed reports, this is
-    the subject of the message. For the ones published on the web, this is
-    the title of the page (as in <title></title>) for html reports, or the
-    main header for plain text reports.
+Channel types have two common options and some characteristic options. Other options are ignored.
+A channel section has a name of format *<channel-name>_channel*. The defined channels are
+usable within the option `--output option <lograptor.html#cmdoption--output>`_.
 
-.. envvar:: html_template
+.. py:attribute:: type
 
-    Which template should be used for the final html reports.
-    The default value is ``$cfgdir/report_template.html``.
+    The channel type. Type must be set to "tty" for a terminal channel (*TermChannel*),
+    "mail" for *MailChannel* and "file" for a *FileChannel".
 
-.. envvar:: text_template
+.. py:attribute:: formats
 
-    Which template should be used for the final plain text reports.
-    The default value is ``$cfgdir/report_template.txt``.
-
-
-[subreports] SECTION
-^^^^^^^^^^^^^^^^^^^^
-
-The *subreports* section define the report logical divisions. The subreports are
-inserted in the report using the interpolation of variable string "$subreport".
-The order of subreports's definition is preserved in report composition.
-In default configuration there are 4 subreports defined:
-
-.. envvar:: logins
-
-    User's logins subreport.
-
-.. envvar:: email
-
-    E-mail subreport.
-
-.. envvar:: commands
-
-    System commands subreport.
-
-.. envvar:: databases
-
-    Databases lookups subreport.
-
-You could add your own subreports: this should be needed when add new apps to configuration.
-To composite the report the subreports are then referred in application's report rules.
-See `lograptor-apps(5) <lograptor-apps.html>`_ for more details on app's report rules.
+    Can be one a comma-separated list of the following: *text*, *html*, or *csv*.
 
 
-MAIL PUBLISHER SECTIONS
-^^^^^^^^^^^^^^^^^^^^^^^
+Mail Channel SECTIONS
+---------------------
 
-.. py:attribute:: method
-
-    Method must be set to "mail" for this publisher to be considered a
-    mail publisher.
+These are the custom options used by *MailChannel* declaration sections:
 
 .. py:attribute:: mailto
 
     The list of email addresses where to mail the report. Separate
-    multiple entries by a comma. If ommitted, "root@localhost" will be
+    multiple entries by a comma. If omitted, "root@localhost" will be
     used.
-
-.. py:attribute:: format
-
-    Can be one of the following: *html*, *plain*, or *csv*. If
-    you use a mail client that doesn't support html mail, then you better
-    use "plain" or "both", though you will miss out on visual cueing that
-    lograptor uses to notify of important events.
 
 .. py:attribute:: include_rawlogs
 
@@ -289,8 +266,10 @@ MAIL PUBLISHER SECTIONS
     If gpg_signers is not set, the report will not be signed.
 
 
-FILE PUBLISHER SECTIONS
-^^^^^^^^^^^^^^^^^^^^^^^
+File Channel SECTIONS
+---------------------
+
+These are the custom options used by *FileChannel* declaration sections:
 
 .. py:attribute:: method
 
@@ -338,20 +317,82 @@ FILE PUBLISHER SECTIONS
     <http://www.example.com/lograptor/dirname/filename.html>`_
 
 
+*********************
+[..._report] SECTIONS
+*********************
+
+A report section has a name of format *<report-name>_report*. The defined reports are
+usable within the option `--report option <lograptor.html#cmdoption--report>`_.
+
+These are the entries that can be declared within a report section:
+
+.. envvar:: title
+
+    What should be the title of the report. For mailed reports, this is
+    the subject of the message. For the ones published on the web, this is
+    the title of the page (as in <title></title>) for html reports, or the
+    main header for plain text reports.
+
+.. py:attribute:: formats
+
+    Can be one a comma-separated list of the following: *text*, *html*, or *csv*.
+
+.. envvar:: html_template
+
+    Which template should be used for the final html reports.
+    The default value is ``$cfgdir/report_template.html``.
+
+.. envvar:: text_template
+
+    Which template should be used for the final plain text reports.
+    The default value is ``$cfgdir/report_template.txt``.
+
+
+The *subreport options* define the report logical divisions. The subreports are
+inserted in the report using the interpolation of variable string "${subreport}".
+You can declare a subreport option using an option name thas has a "_subreport" suffix.
+The order of subreports's declaration is preserved in report composition.
+In the default report configuration there are 4 subreports defined:
+
+.. envvar:: logins_subreport
+
+    User's "logins" subreport.
+
+.. envvar:: email_subreport
+
+    E-mail ("email") subreport.
+
+.. envvar:: commands_subreport
+
+    System "commands" subreport.
+
+.. envvar:: databases_subreport
+
+    Databases lookups subreport.
+
+You could add your own subreports: this can be a needs when you expand the applications
+configurations provided.
+To composite the report the subreports are then referred in application's "report data" sections.
+See `lograptor-apps(5) <lograptor-apps.html>`_ for more details on app's report rules.
+
+
+********
 COMMENTS
---------
+********
 
 Lines starting with "#" or ';' are ignored and may be used to provide comments.
 
 
+*******
 AUTHORS
--------
+*******
 
 Davide Brunato <`brunato@sissa.it <mailto:brunato@sissa.it>`_>
 
 
+********
 SEE ALSO
---------
+********
 `lograptor(8) <lograptor.html>`_,
 `lograptor-apps(5) <lograptor-apps.html>`_,
 `lograptor-examples(5) <lograptor-examples.html>`_,

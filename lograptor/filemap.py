@@ -3,16 +3,27 @@
 This module contains classes to handle iteration over log files.
 """
 #
-# Copyright (C), 2011-2016, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
 #
-# This file is part of Lograptor.
+# This file is part of lograptor.
 #
-# Lograptor is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with lograptor; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+# 02111-1307, USA.
+#
 # See the file 'LICENSE' in the root directory of the present
-# distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
+# distribution for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
@@ -135,7 +146,7 @@ class FileMap(object):
     """
     A class for building collections of files and for iterating over them.
     """
-    def __init__(self, start_dt=None, end_dt=None, *args, **kwargs):
+    def __init__(self, time_range=None, *args, **kwargs):
         """
         :param start_dt: End datetime for filtering the iteration over files.
         When is None no date filter is applied to selected files.
@@ -144,6 +155,7 @@ class FileMap(object):
         :param include: list of include patterns
 
         """
+        start_dt, end_dt = time_range or (None, None)
         if start_dt is not None and start_dt > end_dt:
             ValueError("start datetime mustn't be after the end datetime")
         self._filemap = GlobDict(*args, **kwargs)

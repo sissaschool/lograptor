@@ -3,21 +3,30 @@
 This module defines communication channels for the program.
 """
 #
-# Copyright (C), 2011-2016, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
 #
-# This file is part of Lograptor.
+# This file is part of lograptor.
 #
-# Lograptor is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with lograptor; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+# 02111-1307, USA.
+#
 # See the file 'LICENSE' in the root directory of the present
-# distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
+# distribution for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import print_function
-
 import os
 import re
 import time
@@ -40,13 +49,13 @@ except ImportError:
     from io import StringIO
     BytesIO = StringIO
 
-from .exceptions import LograptorConfigError
+from .exceptions import LogRaptorConfigError
 from .info import __version__
 from . import __name__ as package_name
 from .utils import mail_message, do_chunked_gzip
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__package__)
 
 
 class grep_colors:
@@ -82,7 +91,7 @@ GREP_COLORS = grep_colors(os.environ.get('GREP_COLORS'))
 
 class BaseChannel(object):
     """
-    Abstract base class for Lograptor's channels.
+    Abstract base class for lograptor's channels.
     """
     __metaclass__ = abc.ABCMeta
 
@@ -92,7 +101,7 @@ class BaseChannel(object):
         self.name = name
         self.args = args
         self.config = config
-        self.formats = re.split('\s*, \s*', config.getstr('channel.%s' % name, 'formats'))
+        self.formats = re.split('\s*, \s*', config.get('%s_channel' % name, 'formats'))
         logger.debug('Formats = %r', self.formats)
 
     def __str__(self):
@@ -108,9 +117,9 @@ class BaseChannel(object):
         if tmpdir:
             tempfile.tempdir = tmpdir
         try:
-            self.TEMP_DIR = tempfile.mkdtemp('.LOGRAPTOR')
+            self.TEMP_DIR = tempfile.mkdtemp('.lograptor')
         except OSError:
-            raise LograptorConfigError('could not create a temp directory in %r!' % tempfile.tempdir)
+            raise LogRaptorConfigError('could not create a temp directory in %r!' % tempfile.tempdir)
 
     @abc.abstractmethod
     def open(self):
@@ -297,16 +306,16 @@ class MailChannel(NoTermChannel):
     """
     def __init__(self, name, args, config):
         super(MailChannel, self).__init__(name, args, config)
-        section = 'channel.%s' % name
+        section = '%s_channel' % name
         self.email_address = config.getstr('main', 'email_address')
         self.smtp_server = config.getstr('main', 'smtp_server')
-        self.mailto = list(set(re.split('\s*, \s*', config.getstr('channel.%s' % name, 'mailto'))))
+        self.mailto = list(set(re.split('\s*, \s*', config.getstr('%s_channel' % name, 'mailto'))))
 
         # if self.args.report is not None and self.report.need_rawlogs():
         self.rawlogs = config.getbool(section, 'include_rawlogs')
         if self.rawlogs:
             self.set_tempdir()
-            self.rawlogs_limit = config.getint('channel.%s' % name, 'rawlogs_limit') * 1024
+            self.rawlogs_limit = config.getint('%s_channel' % name, 'rawlogs_limit') * 1024
         else: 
             self.rawlogs_limit = 0
 
@@ -468,7 +477,7 @@ class FileChannel(NoTermChannel):
 
     def __init__(self, name, args, config):
         super(FileChannel, self).__init__(name, args, config)
-        section = 'channel.%s' % name
+        section = '%s_channel' % name
         self.expire = config.getint(section, 'expire_in')
         self.dirmask = config.getstr(section, 'dirmask')
         self.filemask = config.getstr(section, 'filemask')
@@ -478,12 +487,12 @@ class FileChannel(NoTermChannel):
         try:
             self.dirname = time.strftime(self.dirmask, time.localtime())
         except ValueError:
-            raise LograptorConfigError(maskmsg.format('dirmask', self.dirmask))
+            raise LogRaptorConfigError(maskmsg.format('dirmask', self.dirmask))
 
         try: 
             self.filename = time.strftime(self.filemask, time.localtime())
         except TypeError:
-            LograptorConfigError(maskmsg.format('filemask', self.filemask))
+            LogRaptorConfigError(maskmsg.format('filemask', self.filemask))
 
         self.rawlogs = config.getbool(section, 'save_rawlogs')
         if self.rawlogs:
@@ -495,7 +504,7 @@ class FileChannel(NoTermChannel):
             self.pubroot = config.getstr(section, 'pubroot')
             logger.debug('pubroot = %r', self.pubroot)
             if not self.pubroot:
-                raise LograptorConfigError('File channel requires a pubroot when notify is set')
+                raise LogRaptorConfigError('File channel requires a pubroot when notify is set')
         
         logger.debug('path = %r', self.pubdir)
         logger.debug('filename = %r', self.filename)
@@ -593,7 +602,7 @@ class FileChannel(NoTermChannel):
             smtp_server = self.config.getstr('main', 'smtp_server')
             publoc = os.path.join(self.pubroot, self.dirname)
 
-            eml = MIMEText('New Lograptor report is available at:\r\n{0}'.format(publoc))
+            eml = MIMEText('New lograptor report is available at:\r\n{0}'.format(publoc))
             eml['Subject'] = '{0} system events: {1} (report notification)'.format(
                 socket.gethostname(), time.strftime('%c', time.localtime())
             )

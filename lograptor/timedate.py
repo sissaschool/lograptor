@@ -1,19 +1,30 @@
 # -*- coding: utf-8 -*-
 """
 This module contains additional class and functions to handle time
-and date values for Lograptor package.
+and date values for lograptor package.
 """
 #
-# Copyright (C), 2011-2016, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
 #
-# This file is part of Lograptor.
+# This file is part of lograptor.
 #
-# Lograptor is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with lograptor; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+# 02111-1307, USA.
+#
 # See the file 'LICENSE' in the root directory of the present
-# distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
+# distribution for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
@@ -139,13 +150,13 @@ class TimeRange(object):
     """
     A simple class to manage time range intervals
     """
-    def __init__(self, timerange):
+    def __init__(self, time_range):
         """
         Constructor from timerange string.
         The time range format is HH:MM,HH:MM.
         """
         try:
-            start_time, end_time = timerange.split(',')
+            start_time, end_time = time_range.split(',')
         except ValueError:
             raise ValueError("%r is not a time range specification, use: HH:MM,HH:MM")
 
@@ -159,12 +170,12 @@ class TimeRange(object):
         self.h2 = self.end_time.hour
         self.m2 = self.end_time.minute
 
-    def between(self, mytime):
+    def between(self, time_):
         """
         Compare if the parameter HH:MM is in the time range.
         """
-        hour = int(mytime[0:2])
-        minute = int(mytime[3:5])
+        hour = int(time_[0:2])
+        minute = int(time_[3:5])
         return not (
             hour < self.h1 or hour > self.h2 or
             (hour == self.h1 and minute < self.m1) or
@@ -174,7 +185,7 @@ class TimeRange(object):
 
 def strftimegen(start_dt, end_dt):
     """
-    Return a generator function for strings containings datetime format specs.
+    Return a generator function for datetime format strings.
     The generator produce a day-by-day sequence starting from the first datetime
     to the second datetime argument.
     """

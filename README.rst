@@ -1,15 +1,13 @@
-************************
-*** Lograptor README ***
-************************
+****************
+Lograptor README
+****************
 
-LOGRAPTOR
-----------
-Lograptor is a search tool for system logs written in legacy BSD syslog
-format RFC 3164 and for IETF syslog protocol RFC 5424.
+Lograptor is a GREP-like search tool for system logs written in legacy BSD
+syslog format RFC 3164 and for IETF syslog protocol RFC 5424.
 
-The program can perform searches in syslog files like as the UNIX command 
+The program can perform searches in syslog files like as the UNIX command
 "grep", but with the addition of some filters and parameters, useful to
-restrict the search field and retrieve the relevant informations from log 
+restrict the search field and retrieve the relevant information from log
 files. You could specify parameters like hostname, application, date,
 time range, plus a set of filters on message data.
 
@@ -22,57 +20,49 @@ system logs analysis. The log analysis is based on application or device
 that originated the message, using a set of rules for matching and for
 report composition.
 
-Please send feedbacks for bugs, feature requests, suggestions, comments and
+Please send feedback for bugs, feature requests, suggestions, comments and
 criticism.
-
-Very special thanks to Konstantin ("Icon") Ryabitsev, the author of Epylog
-package, a software from whom Lograptor was inspired and from whom has
-inherited part of the source code.
-
-
-AUTHOR
-------
-Davide Brunato <brunato@sissa.it>
-SISSA - Scuola Internazionale Superiore di Studi Avanzati/
-	    International School for Advanced Studies
-Trieste, ITALY
-
 
 OBTAINING
 ---------
-https://github.com/brunato/Lograptor
-git://github.com/brunato/Lograptor.git
+Clone the git repository, choosing one of those commands::
 
+  git clone https://github.com/brunato/lograptor
+  git clone git://github.com/brunato/lograptor.git
+
+or download the zip archive from the site and extract the content to a folder.
+Then go into the created directory (lograptor) to install or build the software.
 
 INSTALL
 -------
 Easiest way is to get and install the RPM/DEB package. To installing from
 source uncompact the tarball into a directory.
-Then cd in the directory and type:
+Then cd in the directory and type::
 
   python setup.py build install
 
-Lograptor package and source requires python >= 2.6 (included python 3.0+). 
+Lograptor package and source requires python >= 2.6 (included python 3.0+).
 
 
 CONFIGURE
 ---------
-After the installation edit the files in /etc/lograptor to reflect your 
-environment:
+After the installation edit the files in /etc/lograptor to reflect your
+environment::
 
   /etc/lograptor/lograptor.conf        Default main configuration file
   /etc/lograptor/report_template.html  Report HTML template
   /etc/lograptor/report_template.txt   Report plain text template
   /etc/lograptor/conf.d/*.conf         Configuration files for applications
 
-For more info about main configuration file please see "man lograptor.conf". 
-For each application a configuration file is needed. Logs of unconfigured 
-applications are simply ignored by the program. For more info please see 
+For more info about main configuration file please see "man lograptor.conf".
+For each application a configuration file is needed. Logs of unconfigured
+applications are simply ignored by the program. For more info please see
 "man lograptor-apps".
 
 
 USAGE
 -----
+::
 
   lograptor [options] [FILE ...]
   lograptor [options] [-e PATTERN | -f PATTERNS_FILE ] [FILE ...]
@@ -86,7 +76,7 @@ For more information on usage options see "lograptor --help" or
 
 LICENSE
 -------
-Copyright (C) 2012-2014 by Davide Brunato and SISSA
+Copyright (C) 2012-2014 by SISSA
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -97,19 +87,24 @@ This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
- 
+
 You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
-Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 02111-1307, USA.
+
+AUTHOR
+------
+Davide Brunato <brunato@sissa.it>,
+SISSA - Scuola Internazionale Superiore di Studi Avanzati/International School for Advanced Studies, Trieste, ITALY
 
 
 TODO
 ----
 
- * Improve the anonymized output feature;
- * Introduce several different levels of details as a program option,
-   in order to produce more or less verbose reports;
- * Try an integration with RFC 3161 timestamp services, in order to
-   mark rotated log files and the produced reports;
- * Maybe examine the opportunity to translate a log format to another format.
+- Improve the anonymized output feature;
+- Introduce several different levels of details as a program option,
+  in order to produce more or less verbose reports;
+- Try an integration with RFC 3161 timestamp services, in order to
+  mark rotated log files and the produced reports;
+- Maybe examine the opportunity to translate a log format to another format.

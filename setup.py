@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Setup script for Lograptor
+Setup script for lograptor
 """
 
 import glob
@@ -42,8 +42,8 @@ class my_sdist(distutils.command.sdist.sdist):
             print("Copy lograptor.py -> scripts/lograptor")
             shutil.copyfile("lograptor.py", "scripts/lograptor")
 
-        print("Copy {0}Lograptor.pdf -> doc/Lograptor.pdf".format(PDF_SOURCE_DIR))
-        os.system("cp -p {0}Lograptor.pdf doc/Lograptor.pdf".format(PDF_SOURCE_DIR))
+        print("Copy {0}lograptor.pdf -> doc/lograptor.pdf".format(PDF_SOURCE_DIR))
+        os.system("cp -p {0}lograptor.pdf doc/lograptor.pdf".format(PDF_SOURCE_DIR))
         print("Compress {0}lograptor.8 -> man/lograptor.8.gz".format(MAN_SOURCE_DIR))
         os.system("gzip -c {0}lograptor.8 > man/lograptor.8.gz".format(MAN_SOURCE_DIR))
         print("Compress {0}lograptor.conf.5 -> man/lograptor.conf.5.gz".format(MAN_SOURCE_DIR))
@@ -124,14 +124,14 @@ setup(
     license=lograptor.info.__license__,
     maintainer=lograptor.info.__maintainer__,
     long_description=lograptor.info.LONG_DESCRIPTION,
-    url='https://github.com/brunato/Lograptor',
-    packages=['lograptor', 'lograptor.backports'],
+    url='https://github.com/brunato/lograptor',
+    packages=['lograptor'],
     platform='linux2',
     package_data={
         'lograptor': [
             'README',
             'LICENSE',
-            'doc/Lograptor.pdf',
+            'doc/lograptor.pdf',
             'etc/lograptor/lograptor.conf',
             'etc/lograptor/report_template.html',
             'etc/lograptor/report_template.txt',
@@ -140,7 +140,6 @@ setup(
             'lograptor/*.py',
             'scripts/lograptor'
         ],
-        'lograptor.backports': ['lograptor/backports/*.py']
     },
     data_files=[('/usr/share/man/man8', ['man/lograptor.8.gz']),
                 ('/usr/share/man/man5', ['man/lograptor.conf.5.gz']),
@@ -153,7 +152,7 @@ setup(
                 ('/etc/lograptor/conf.d', glob.glob('etc/lograptor/conf.d/*.conf'))],
     entry_points={
         'console_scripts': [
-            'lograptor=lograptor.cli:main'
+            'lograptor=lograptor.api:main'
         ]
     },
     requires=['python (>=2.7)'],

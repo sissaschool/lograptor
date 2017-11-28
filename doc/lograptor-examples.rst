@@ -56,7 +56,7 @@ The same search but publish the report using a defined publisher::
 SCRIPTING AND CRON
 ------------------
 
-Lograptor can be easily called by a script and put in a cron execution.
+lograptor can be easily called by a script and put in a cron execution.
 For example you can run a daily batch to all logs at midnight::
 
     # crontab -l

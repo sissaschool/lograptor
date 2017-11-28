@@ -1,18 +1,29 @@
 # -*- coding: utf-8 -*-
 """
-This module contains various utility functions for Lograptor.
+This module contains various utility functions for lograptor.
 """
 #
-# Copyright (C), 2011-2016, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
 #
-# This file is part of Lograptor.
+# This file is part of lograptor.
 #
-# Lograptor is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with lograptor; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+# 02111-1307, USA.
+#
 # See the file 'LICENSE' in the root directory of the present
-# distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
+# distribution for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
@@ -20,60 +31,11 @@ import sys
 import os
 import stat
 import string
-import logging
+from functools import wraps
 
 from .tui import ProgressBar
 
 GZIP_CHUNK_SIZE = 8192
-
-
-def set_logger(name, loglevel=1, logfile=None):
-    """
-    Setup a basic logger with an handler and a formatter, using a
-    corresponding numerical range [0..4], where a higher value means
-    a more verbose logging. The loglevel value is mapped to correspondent
-    logging module's value:
-
-    LOG_CRIT=0 (syslog.h value is 2) ==> logging.CRITICAL
-    LOG_ERR=1 (syslog.h value is 3) ==> logging.ERROR
-    LOG_WARNING=2 (syslog.h value is 4) ==> logging.WARNING
-    LOG_INFO=3 (syslog.h value is 6) ==> logging.INFO
-    LOG_DEBUG=4 (syslog.h value is 7) ==> logging.DEBUG
-
-    If a logfile name is passed then writes logs to file, instead of
-    send logs to the standard output.
-
-    :param name: logger name
-    :param loglevel: Simplified POSIX's syslog like logging level index
-    :param logfile: Logfile name for non-scripts runs
-    """
-    logger = logging.getLogger(name)
-
-    # Higher or lesser argument values are also mapped to DEBUG or CRITICAL
-    effective_level = max(logging.DEBUG, logging.CRITICAL - loglevel * 10)
-
-    logger.setLevel(effective_level)
-
-    # Add the first new handler
-    if not logger.handlers:
-        try:
-            lh = logging.FileHandler(logfile)
-        except (IOError, OSError, AttributeError):
-            lh = logging.StreamHandler()
-        lh.setLevel(effective_level)
-
-        if effective_level <= logging.DEBUG:
-            formatter = logging.Formatter("[%(levelname)s:%(module)s:%(funcName)s: %(lineno)s] %(message)s")
-        elif effective_level <= logging.INFO:
-            formatter = logging.Formatter("[%(levelname)s:%(module)s] %(message)s")
-        else:
-            formatter = logging.Formatter("%(levelname)s: %(message)s")
-
-        lh.setFormatter(formatter)
-        logger.addHandler(lh)
-    else:
-        for handler in logger.handlers:
-            handler.setLevel(effective_level)
 
 
 def do_chunked_gzip(infh, outfh, filename):
@@ -254,3 +216,34 @@ def is_pipe(fd):
 
 def is_redirected(fd):
     return stat.S_ISREG(os.fstat(fd).st_mode)
+
+
+
+def protected_property(func):
+    """
+    Class method decorator that creates a property that returns the protected attribute
+    or the value returned by the wrapped method, if the protected attribute is not defined.
+    """
+    if func.__name__.startswith('_'):
+        raise ValueError("%r: Cannot decorate a protected method!" % func)
+
+    @property
+    @wraps(func)
+    def proxy_wrapper(self):
+        try:
+            return getattr(self, '_%s' % func.__name__)
+        except AttributeError:
+            pass
+        return func(self)
+
+    return proxy_wrapper
+
+
+def normalize_path(path, base_path=None):
+    path = path.strip()
+    if path.startswith('/') or base_path is None:
+        return path
+    elif path.startswith('./'):
+        return os.path.join(os.path.dirname(base_path), path[2:])
+    else:
+        return os.path.join(os.path.dirname(base_path), path)

@@ -3,26 +3,33 @@
 This module classes and methods for parsing log headers.
 """
 #
-# Copyright (C), 2011-2016, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
 #
-# This file is part of Lograptor.
+# This file is part of lograptor.
 #
-# Lograptor is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with lograptor; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+# 02111-1307, USA.
+#
 # See the file 'LICENSE' in the root directory of the present
-# distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
+# distribution for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
 import re
-import logging
 from collections import namedtuple
-
-from lograptor.exceptions import LograptorConfigError
-
-logger = logging.getLogger(__name__)
+from .exceptions import LogRaptorConfigError
 
 
 class LogParser(object):
@@ -42,7 +49,7 @@ class LogParser(object):
         for field in ('month', 'day', 'ltime', 'message'):
             if field not in self.parser.groupindex:
                 msg = '%s: missing mandatory named group "%s"' % (self.__class__.__name__, field)
-                raise LograptorConfigError(msg)
+                raise LogRaptorConfigError(msg)
 
     def match(self, line):
         return self.parser.match(line)
@@ -70,7 +77,7 @@ class ParserRFC3164(LogParser):
         extra = set(self.fields) - set(rfc3164_fields)
         if extra:
             msg = u'no RFC 3164 fields in pattern: {0}'.format(extra)
-            raise LograptorConfigError(msg)
+            raise LogRaptorConfigError(msg)
             
 
 class ParserRFC5424(LogParser):
@@ -97,7 +104,7 @@ class ParserRFC5424(LogParser):
         extra = set(self.fields) - set(rfc5424_fields)
         if extra:
             msg = u'no RFC 5424 fields in pattern: {0}'.format(extra)
-            raise LograptorConfigError(msg)
+            raise LogRaptorConfigError(msg)
 
 
 class CycleParsers(object):

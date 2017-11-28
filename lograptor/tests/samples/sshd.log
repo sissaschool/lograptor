@@ -1,0 +1,36 @@
+Jan 31 00:15:53 raptor sshd[6748]: Connection closed by 192.168.12.29
+Jan 31 00:17:56 raptor sshd[6753]: Connection closed by 192.168.13.48
+Jan 31 00:19:01 raptor sshd[6756]: Connection closed by 192.168.12.29
+Jan 31 00:19:23 raptor sshd[6758]: Connection closed by 192.168.13.48
+Jan 31 00:21:07 raptor sshd[6761]: Connection closed by 192.168.12.29
+Jan 31 00:22:34 raptor sshd[6767]: reverse mapping checking getaddrinfo for 15.0.0.10.dial.dinos.test failed - POSSIBLE BREAK-IN ATTEMPT!
+Jan 31 00:22:34 raptor sshd[6763]: reverse mapping checking getaddrinfo for 15.0.0.10.dial.dinos.test failed - POSSIBLE BREAK-IN ATTEMPT!
+Jan 31 00:22:34 raptor sshd[6765]: reverse mapping checking getaddrinfo for 15.0.0.10.dial.dinos.test failed - POSSIBLE BREAK-IN ATTEMPT!
+Jan 31 00:22:34 raptor sshd[6767]: Failed password for root from 10.0.0.15 port 3597 ssh2
+Jan 31 00:22:34 raptor sshd[6765]: Failed password for root from 10.0.0.15 port 3598 ssh2
+Jan 31 00:22:34 raptor sshd[6764]: Connection closed by 10.0.0.15
+Jan 31 00:22:34 raptor sshd[6767]: Failed password for root from 10.0.0.15 port 3597 ssh2
+Jan 31 00:22:34 raptor sshd[6765]: Failed password for root from 10.0.0.15 port 3598 ssh2
+Jan 31 00:22:34 raptor sshd[6767]: Failed password for root from 10.0.0.15 port 3597 ssh2
+Jan 31 00:22:34 raptor sshd[6765]: Failed password for root from 10.0.0.15 port 3598 ssh2
+Jan 31 00:22:35 raptor sshd[6767]: Failed password for root from 10.0.0.15 port 3597 ssh2
+Jan 31 00:22:35 raptor sshd[6765]: Failed password for root from 10.0.0.15 port 3598 ssh2
+Jan 31 00:22:35 raptor sshd[6767]: Failed password for root from 10.0.0.15 port 3597 ssh2
+Jan 31 00:22:35 raptor sshd[6765]: Failed password for root from 10.0.0.15 port 3598 ssh2
+Jan 31 00:22:35 raptor sshd[6767]: Failed password for root from 10.0.0.15 port 3597 ssh2
+Jan 31 00:22:35 raptor sshd[6765]: Failed password for root from 10.0.0.15 port 3598 ssh2
+Jan 31 00:22:36 raptor sshd[6767]: Failed password for root from 10.0.0.15 port 3597 ssh2
+Jan 31 00:22:36 raptor sshd[6768]: Disconnecting: Too many authentication failures for root
+Jan 31 00:22:36 raptor sshd[6765]: Failed password for root from 10.0.0.15 port 3598 ssh2
+Jan 31 00:22:36 raptor sshd[6766]: Disconnecting: Too many authentication failures for root
+Jan 31 00:24:34 raptor sshd[6777]: Connection closed by 192.168.13.48
+Jan 31 00:25:53 raptor sshd[6780]: Connection closed by 192.168.12.29
+Jan 31 01:51:12 raptor sshd[6988]: pam_unix(sshd-ssh:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=ceratops.dinos.test user=triceratops
+Jan 31 01:51:13 raptor sshd[6988]: Accepted password for triceratops from 172.16.25.119 port 48090 ssh2
+Jan 31 01:51:13 raptor sshd[6988]: pam_unix(sshd-ssh:session): session opened for user triceratops by (uid=0)
+Jan 31 01:52:05 raptor sshd[6990]: Received disconnect from 172.16.25.119: 11: disconnected by user
+Jan 31 01:52:05 raptor sshd[6988]: pam_unix(sshd-ssh:session): session closed for user triceratops
+Jan 31 01:52:18 raptor sshd[7048]: pam_unix(sshd-ssh:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=ceratops.dinos.test user=triceratops
+Jan 31 01:52:18 raptor sshd[7048]: Accepted password for triceratops from 172.16.25.119 port 48104 ssh2
+Jan 31 01:52:18 raptor sshd[7048]: pam_unix(sshd-ssh:session): session opened for user triceratops by (uid=0)
+Jan 31 01:54:34 raptor sshd[7133]: Connection closed by 192.168.13.48

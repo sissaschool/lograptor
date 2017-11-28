@@ -1,18 +1,29 @@
 # -*- coding: utf-8 -*-
 """
-This module contain exception classes for Lograptor package.
+This module contain exception classes for lograptor package.
 """
 #
-# Copyright (C), 2011-2016, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
 #
-# This file is part of Lograptor.
+# This file is part of lograptor.
 #
-# Lograptor is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with lograptor; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+# 02111-1307, USA.
+#
 # See the file 'LICENSE' in the root directory of the present
-# distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
+# distribution for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
@@ -27,11 +38,11 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class LograptorException(Exception):
+class LogRaptorException(Exception):
     pass
 
 
-class FormatError(LograptorException):
+class LogFormatError(LogRaptorException):
     """
     This exception is raised when there are errors with the
     format of syslog file processed.
@@ -41,7 +52,7 @@ class FormatError(LograptorException):
         logger.debug('!FormatError: {0}'.format(message))
 
 
-class LograptorConfigError(LograptorException):
+class LogRaptorConfigError(LogRaptorException):
     """
     This exception is raised when there are errors in a configuration
     file or when there are misconfiguration problems.
@@ -51,7 +62,7 @@ class LograptorConfigError(LograptorException):
         logger.debug('!ConfigError: {0}'.format(message))
 
 
-class LograptorArgumentError(LograptorException):
+class LogRaptorArgumentError(LogRaptorException):
     def __init__(self, argument=None, message=None):
         if message is None:
             message = 'syntax error for argument {0}'.format(argument)
@@ -60,17 +71,17 @@ class LograptorArgumentError(LograptorException):
         Exception.__init__(self, message)
 
 
-class NoSectionError(LograptorException, configparser.NoSectionError):
+class LogRaptorNoSectionError(LogRaptorException, configparser.NoSectionError):
     def __init__(self, section):
-        super(NoSectionError, self).__init__(section)
+        super(LogRaptorNoSectionError, self).__init__(section)
 
 
-class NoOptionError(LograptorException, configparser.NoOptionError):
+class LogRaptorNoOptionError(LogRaptorException, configparser.NoOptionError):
     def __init__(self, section, option):
-        super(NoOptionError, self).__init__(option, section)
+        super(LogRaptorNoOptionError, self).__init__(option, section)
 
 
-class OptionError(LograptorException):
+class LogRaptorOptionError(LogRaptorException):
     """
     This exception is raised when there is a wrong option values or
     when there are conflicts between options.
@@ -84,7 +95,7 @@ class OptionError(LograptorException):
         logger.debug('!OptionError: {0}'.format(message))
 
 
-class RuleMissingError(LograptorException):
+class RuleMissingError(LogRaptorException):
     """
     This exception is raised when a rule definition is missing.
     """
@@ -93,7 +104,7 @@ class RuleMissingError(LograptorException):
         logger.debug('!RuleMissingError: {0}'.format(message))
 
 
-class FileMissingError(LograptorException):
+class FileMissingError(LogRaptorException):
     """
     This exception is raised when a file is missing.
     """
@@ -102,9 +113,9 @@ class FileMissingError(LograptorException):
         logger.debug('!FileMissingError: {0}'.format(message))
 
 
-class FileAccessError(LograptorException):
+class FileAccessError(LogRaptorException):
     """
-    This exception is raised when Lograptor has problem to access to a file.
+    This exception is raised when lograptor has problem to access to a file.
     """
     def __init__(self, message):
         Exception.__init__(self, message)

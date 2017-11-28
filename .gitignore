@@ -18,13 +18,9 @@ doc/_templates/
 man/*.html
 man/*.gz
 packages/
-lograptor/tests/extra/
-lograptor/tests/samples/
 var/
 .idea/
 .cache/
 .vagrant/
 __pycache__/
-lograptor/__pycache__/
-lograptor/tests/__pycache__/
-
+*.egg-info/

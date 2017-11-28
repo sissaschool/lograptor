@@ -4,17 +4,27 @@
 Test script for lograptor.
 """
 #
-# Copyright (C), 2011-2016, by Davide Brunato and
-# SISSA (Scuola Internazionale Superiore di Studi Avanzati).
+# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
 #
-# This file is part of Lograptor.
+# This file is part of lograptor.
 #
-# Lograptor is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with lograptor; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+# 02111-1307, USA.
+#
 # See the file 'LICENSE' in the root directory of the present
-# distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
+# distribution for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
@@ -35,9 +45,9 @@ if sys.path[0] != pkg_search_path:
 from .. import __name__ as package_name
 from ..cli import create_argument_parser
 from ..exceptions import (
-    LograptorArgumentError, OptionError, LograptorConfigError, FormatError, FileMissingError, FileAccessError
+    LogRaptorArgumentError, LogRaptorOptionError, LogRaptorConfigError, LogFormatError, FileMissingError, FileAccessError
 )
-from ..core import Lograptor
+from ..core import LogRaptor
 
 # Extract sample files
 tar = tarfile.open('samples.tar', "r:")
@@ -46,10 +56,10 @@ tar.close()
 
 
 def pytest_report_header(config):
-    return "Lograptor test"
+    return "lograptor test"
 
 
-class TestLograptor(object):
+class Testlograptor(object):
     """
     Test which lograptor applications have unparsed line issues.
     """
@@ -68,12 +78,12 @@ class TestLograptor(object):
             args.patterns.append(pat.strip('\''))
 
         try:
-            _lograptor = Lograptor(args)
+            _lograptor = LogRaptor(args)
             try:
                 retval = _lograptor.process()
             finally:
                 _lograptor.cleanup()
-        except (LograptorArgumentError, OptionError, LograptorConfigError, FormatError,
+        except (LogRaptorArgumentError, LogRaptorOptionError, LogRaptorConfigError, LogFormatError,
                 FileMissingError, FileAccessError) as err:
             if 'stdout' not in args.channels:
                 sys.exit(u"ERROR: {0}\nExiting ...".format(err))
@@ -272,7 +282,7 @@ class TestLograptor(object):
     @pytest.mark.filters
     def test_filters(self, capsys):
         """
-        Test Lograptor's filters.
+        Test lograptor's filters.
         """
         tests = [
             ("-c -a postfix -F from=\"triceratops.*\" '' samples/*",

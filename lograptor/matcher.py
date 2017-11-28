@@ -1,29 +1,38 @@
 # -*- coding: utf-8 -*-
 """
-This module define the matcher engine of Lograptor package.
+This module define the matcher engine of lograptor package.
 """
 #
-# Copyright (C), 2011-2016, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
 #
-# This file is part of Lograptor.
+# This file is part of lograptor.
 #
-# Lograptor is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# Lograptor is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Lograptor is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with lograptor; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+# 02111-1307, USA.
+#
 # See the file 'LICENSE' in the root directory of the present
-# distribution or http://www.gnu.org/licenses/gpl-2.0.en.html.
+# distribution for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import print_function
-
 import os
 import time
 import datetime
 import logging
 
-from .parsers import CycleParsers
+from .logparsers import CycleParsers
 from .utils import dummy, build_dispatcher
 from .cache import LineCache, ThreadsCache
 
@@ -98,15 +107,15 @@ def create_matcher_engine(obj, parsers):
     """
     Return a tailored matcher engine for log files.
 
-    :param obj: The Lograptor instance.
+    :param obj: The lograptor instance.
     :return: The matcher function.
     """
 
     parsers = CycleParsers(parsers)
     name_cache = obj.name_cache
-    tagmap = obj.tagmap
+    tags = obj.tags
     max_count = 1 if obj.args.quiet else obj.args.max_count
-    use_rules = obj.args.use_rules or obj.args.unparsed
+    use_rules = obj.matcher != 'unruled'
     hosts = obj.hosts
     if hosts:
         hostset = set()
@@ -115,12 +124,12 @@ def create_matcher_engine(obj, parsers):
     invert = obj.args.invert
     files_with_match = obj.args.files_with_match
     count = obj.args.count
-    unparsed = obj.args.unparsed
-    timerange = obj.args.timerange
+    unparsed = obj.matcher == 'unparsed'
+    time_range = obj.args.time_range
     only_matching = obj.args.only_matching
     register_log_lines = not (obj.args.quiet or obj.args.count or obj.args.files_with_match is not None)
-    initial_dt = time.mktime(obj.initial_dt.timetuple()) if obj.initial_dt else float(0)
-    final_dt = time.mktime(obj.final_dt.timetuple() if obj.final_dt else (2222, 2, 2, 0, 0, 0, 0, 0, 0))
+    initial_dt = time.mktime(obj.time_range[0].timetuple()) if obj.time_range[0] is not None else float(0)
+    final_dt = time.mktime(obj.time_range[1].timetuple() if obj.time_range[1] else (2222, 2, 2, 0, 0, 0, 0, 0, 0))
 
     # Define functions for processing of the context.
     before_context = max(obj.args.before_context, obj.args.context)
@@ -193,7 +202,7 @@ def create_matcher_engine(obj, parsers):
                         if not thread:
                             matching_counter += repeat
                         if use_rules:
-                            app = log_parser.app or get_app(prev_data, tagmap, extra_tags) or file_app
+                            app = log_parser.app or get_app(prev_data, tags, extra_tags) or file_app
                             app.increase_last(repeat)
                             app.counter += 1
                             register_context(
@@ -234,7 +243,7 @@ def create_matcher_engine(obj, parsers):
                     break
 
                 # Skip the lines not in timerange (if the option is provided).
-                if timerange is not None and not timerange.between(log_data.ltime):
+                if time_range is not None and not time_range.between(log_data.ltime):
                     continue
 
                 ###
@@ -260,7 +269,7 @@ def create_matcher_engine(obj, parsers):
 
                 ###
                 # Get the app from parser or from the app-tag extracted from the log line.
-                app = log_parser.app or get_app(log_data, tagmap, extra_tags) or file_app
+                app = log_parser.app or get_app(log_data, tags, extra_tags) or file_app
                 if app is None:
                     continue
 
@@ -271,7 +280,7 @@ def create_matcher_engine(obj, parsers):
                     if not pattern_matched and rule_match and app_thread is None:
                         continue
                     if map_dict:
-                        line = name_cache.map2str(log_parser.parser.groupindex, log_match, map_dict)
+                        line = name_cache.match_to_string(log_match, log_parser.parser.groupindex, map_dict)
                     if (not (rule_match ^ unparsed)) or (rule_match and not full_match and app.has_filters):
                         register_context(
                             key=(app, app_thread),
