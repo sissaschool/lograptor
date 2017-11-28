@@ -128,11 +128,11 @@ def create_argument_parser():
     group = parser.add_argument_group("General Options")
     group.add_argument(
         "--conf", dest="cfgfiles", action='append', default=None, metavar="FILE",
-        help="use a specific configuration file."
+        help="use a specific configuration file"
     )
     group.add_argument(
         "-d", dest="loglevel", default=2, type=int, metavar="[0-4]", choices=range(5),
-        help="logging level (default is 2, use 4 for debug). A level of 0 suppress also "
+        help="Logging level (default is 2, use 4 for debug). A level of 0 suppress also "
              "error messages about nonexistent or unreadable files."
     )
     group.add_argument('-V', '--version', action='version', version=__version__)
@@ -169,11 +169,11 @@ def create_argument_parser():
     group = parser.add_argument_group("Matcher Selection")
     group.add_argument(
         "-G", "--ruled", dest='matcher', action=StoreOptionAction,
-        help="use patterns and application rules (default)."
+        help="use patterns and application rules (default)"
     )
     group.add_argument(
         "-X", "--unruled", dest='matcher', action=StoreOptionAction,
-        help="use patterns only, skip application rules."
+        help="use patterns only, skip application rules"
     )
     group.add_argument(
         "-U", "--unparsed", dest='matcher', action=StoreOptionAction,
@@ -270,19 +270,19 @@ def create_argument_parser():
     group = parser.add_argument_group("Context Line Control")
     group.add_argument(
         "-T", "--thread", action="store_true", default=False,
-        help="the context is the log thread of the application."
+        help="the context is the log thread of the application"
     )
     group.add_argument(
         "-B", "--before-context", metavar='NUM', type=positive_integer, default=0,
-        help="print NUM lines of leading context."
+        help="print NUM lines of leading context"
     )
     group.add_argument(
         "-A", "--after-context", metavar='NUM', type=positive_integer, default=0,
-        help="print NUM lines of trailing context."
+        help="print NUM lines of trailing context"
     )
     group.add_argument(
         "-C", "--context", metavar='NUM', type=positive_integer, default=0,
-        help="print NUM lines of output context."
+        help="print NUM lines of output context"
     )
     group.add_argument(
         "--group-separator", metavar='SEP', default='--',
@@ -290,7 +290,7 @@ def create_argument_parser():
     )
     group.add_argument(
         "--no-group-separator", dest="group_separator", action="store_const", const='',
-        help="use empty string as a group separator."
+        help="use empty string as a group separator"
     )
 
     group = parser.add_argument_group("File and Directory Selection")

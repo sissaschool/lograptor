@@ -218,7 +218,6 @@ def is_redirected(fd):
     return stat.S_ISREG(os.fstat(fd).st_mode)
 
 
-
 def protected_property(func):
     """
     Class method decorator that creates a property that returns the protected attribute
@@ -241,9 +240,12 @@ def protected_property(func):
 
 def normalize_path(path, base_path=None):
     path = path.strip()
-    if path.startswith('/') or base_path is None:
+    if path.startswith('~/'):
+        home = os.path.expanduser("~/")
+        return os.path.join(os.path.dirname(home), path[2:])
+    elif path.startswith('/') or base_path is None:
         return path
     elif path.startswith('./'):
-        return os.path.join(os.path.dirname(base_path), path[2:])
+        return os.path.join(base_path, path[2:])
     else:
-        return os.path.join(os.path.dirname(base_path), path)
+        return os.path.abspath(os.path.join(base_path, path))

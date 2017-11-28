@@ -46,7 +46,7 @@ from .cache import LookupCache
 from .report import Report
 from .channels import TermChannel, MailChannel, FileChannel
 from .timedate import get_interval
-from .utils import results_to_string, is_pipe, is_redirected, protected_property
+from .utils import results_to_string, is_pipe, is_redirected, protected_property, normalize_path
 
 logger = logging.getLogger(__package__)
 
@@ -54,6 +54,11 @@ try:
     STDIN_FILENO = sys.stdin.fileno()
 except ValueError:
     STDIN_FILENO = 0
+
+try:
+    prompt = raw_input
+except NameError:
+    prompt = input
 
 
 class LogRaptor(object):
@@ -64,14 +69,16 @@ class LogRaptor(object):
     :param config: List of configuration files paths. The first file readable is used.
     """
     DEFAULT_CONFIG_FILES = (
-        'lograptor.conf', '~/.config/lograptor/lograptor.conf', '/etc/lograptor/lograptor.conf'
+        'lograptor.conf',
+        '%s/.config/lograptor/lograptor.conf' % os.path.expanduser('~'),
+        '/etc/lograptor/lograptor.conf'
     )
 
     def __init__(self, args, config=None):
         try:
-            self.config = LogRaptorConfig(cfgfiles=args.cfgfiles)
+            self.config = LogRaptorConfig(cfgfiles=args.cfgfiles or self.DEFAULT_CONFIG_FILES)
         except IOError as err:
-            logger.critical('no configuration available in files %r: %r', args.cfgfile, err)
+            logger.critical('no configuration available in files %r: %r', args.cfgfiles, err)
             raise FileMissingError('abort %r for previous errors' % __package__)
         else:
             self.args = args
@@ -100,6 +107,10 @@ class LogRaptor(object):
         self._logmap = self.logmap
 
         self.unknown_tags = set()
+
+        if args.loglevel == 4:
+            logger.debug("End of lograptor setup!!")
+            prompt("press <ENTER> to continue ...")
 
     # Argument properties
     @property
@@ -283,10 +294,7 @@ class LogRaptor(object):
     @property
     def confdir(self):
         confdir = self.config.get('main', 'confdir')
-        if confdir[0] != '/' and self.config.cfgfile is not None:
-            cfgfile_dir = os.path.dirname(self.config.cfgfile)
-            confdir = os.path.abspath(os.path.join(cfgfile_dir, confdir))
-        return confdir
+        return normalize_path(confdir, base_path=os.path.dirname(self.config.cfgfile))
 
     def _read_apps(self):
         """
@@ -399,16 +407,15 @@ class LogRaptor(object):
         # Create a dummy report object if necessary
         channels = [sect.rsplit('_')[0] for sect in self.config.sections(suffix='_channel')]
         channels.sort()
-        return u'\n'.join([
+        disabled_apps = [app for app in self._config_apps.keys() if app not in self._apps]
+        return u''.join([
             u"\n--- %s configuration ---" % __package__,
-            u"Configuration file: %s" % self.config.cfgfile,
-            u"Configuration directory: %s" % self.confdir,
-            u"Enabled applications: %s" % ', '.join(self._apps.keys()),
-            u"Disabled applications: %s" % ', '.join([
-                app for app in self._config_apps.keys() if app not in self._apps
-            ]),
-            u"Filter fields: %s" % ', '.join(self.config.options('fields')),
-            u"Output channels: %s" % ', '.join(channels) if channels else u'No channels defined',
+            u"\nConfiguration file: %s" % self.config.cfgfile,
+            u"\nConfiguration directory: %s" % self.confdir,
+            u"\nConfigured applications: %s" % ', '.join(self._config_apps.keys()),
+            u"\nDisabled applications: %s" % ', '.join(disabled_apps) if disabled_apps else '',
+            u"\nFilter fields: %s" % ', '.join(self.config.options('fields')),
+            u"\nOutput channels: %s\n" % ', '.join(channels) if channels else u'No channels defined',
             ''
         ])
 

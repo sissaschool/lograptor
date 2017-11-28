@@ -39,6 +39,7 @@ finally:
     RawConfigParser = configparser.RawConfigParser
 
 from .exceptions import LogRaptorNoSectionError, LogRaptorNoOptionError, FileMissingError
+from .utils import normalize_path
 
 
 class EnvInterpolation(object):
@@ -100,7 +101,9 @@ class EnvConfigParser(RawConfigParser):
         if cfgfiles:
             self.cfgfile = ', '.join(self.read(cfgfiles))
             if not self.cfgfile:
-                raise FileMissingError("no configuration file in the list %r exists or is accessible!" % cfgfiles)
+                raise FileMissingError(
+                    "no configuration file in the list {} exists or is accessible!".format(cfgfiles)
+                )
         else:
             self.cfgfile = None
 
