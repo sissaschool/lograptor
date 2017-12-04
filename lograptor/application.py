@@ -316,42 +316,45 @@ class AppLogParser(object):
     """
     Class to manage application log rules and results
     """
-    def __init__(self, name, cfgfile, args, config, name_cache=None, report=None):
+    def __init__(self, name, cfgfile, args, logdir, fields, name_cache=None, report=None):
         """
         :param name: application name
         :param cfgfile: application config file
         :param args: cli arguments
-        :param config: program configuration
+        :param logdir: Log directory
+        :param fields: Configured fields
+        :param name_cache: Optional name cache (--ip-lookup/--uid-lookup/--anonymize options)
+        :param report: Optional report (--report option)
         """
         logger.info('initialize app %r', name)
 
         self.name = name            # Application name
         self.cfgfile = cfgfile      # App configuration file
         self.args = args
-        self.config = config
+        self.logdir = logdir
+        self.fields = fields
         self.name_cache = name_cache
-        self.fields = dict(config.items('fields'))
 
         # Setting instance internal variables for process phase
         self._report = report
         self._thread = args.thread
-        self.counter = 0            # Parsed lines counter
-        self.unparsed_counter = 0   # Unparsed lines counter
+        self.matches = 0            # Parsed lines counter
+        self.unparsed = 0           # Unparsed lines counter
         self._last_rule = None      # Last matched rule
         self._last_idx = None       # Last index matched
 
-        self.appconfig = AppConfig(
+        self.config = AppConfig(
             cfgfiles=cfgfile,
-            logdir=config.get('main', 'logdir'),
+            logdir=logdir,
             appname=name,
-            host=args.hostnames
+            host=args.hostnames,
         )
 
-        self.description = self.appconfig.get('main', 'description')
-        self.tags = list(set(re.split('\s*,\s*', self.appconfig.get('main', 'tags'))))
-        self._files = list(set(re.split('\s*,\s*', self.appconfig.get('main', 'files'))))
-        self.enabled = self.appconfig.getboolean('main', 'enabled')
-        self.priority = self.appconfig.getint('main', 'priority')
+        self.description = self.config.get('main', 'description')
+        self.tags = list(set(re.split('\s*,\s*', self.config.get('main', 'tags'))))
+        self._files = list(set(re.split('\s*,\s*', self.config.get('main', 'files'))))
+        self.enabled = self.config.getboolean('main', 'enabled')
+        self.priority = self.config.getint('main', 'priority')
         self.files = field_multisub(self._files, 'host', args.hostnames or ['*'])
 
         logger.debug('app %r run tags: %r', name, self.tags)
@@ -361,8 +364,10 @@ class AppLogParser(object):
         self.rules = self.parse_rules()
 
         if self._report is not None:
-            subreports = self.config.get_subreports(self._report.name)
-            self.report_data = [item for item in self.get_report_data() if item.subreport in subreports]
+            self.report_data = [
+                item for item in self.get_report_data()
+                if item.subreport in self._report.subreports
+            ]
 
         self.rules = [rule for rule in self.rules if rule.is_used()]  # Purge unused rules
         self.has_filters = any([rule.filter_keys for rule in self.rules])
@@ -386,8 +391,8 @@ class AppLogParser(object):
 
     def get_report_data(self):
         report_data = []
-        for section in filter(lambda x: x not in ['main', 'rules'], self.appconfig.sections()):
-            options = self.appconfig.items(section)
+        for section in filter(lambda x: x not in ['main', 'rules'], self.config.sections()):
+            options = self.config.items(section)
             try:
                 data_item = ReportData(section, options, self.rules)
             except RuleMissingError as msg:
@@ -404,7 +409,7 @@ class AppLogParser(object):
         """
         # Load patterns: an app is removed when has no defined patterns.
         try:
-            rule_options = self.appconfig.items('rules')
+            rule_options = self.config.items('rules')
         except configparser.NoSectionError:
             raise LogRaptorConfigError("the app %r has no defined rules!" % self.name)
 
@@ -434,13 +439,13 @@ class AppLogParser(object):
         if rule is not None:
             rule.increase_last(k)
 
-    def process(self, logdata):
+    def match_rules(self, log_data):
         """
-        Process a log line data message with app's regex rules.
+        Process a log line data message with app's pattern rules.
         Return a tuple with this data:
 
-            Element #0 (rule_match): True if a rule match, False otherwise;
-            Element #1 (full_match): True if a rule match and is a filter or the app
+            Element #0 (app_matched): True if a rule match, False otherwise;
+            Element #1 (has_full_match): True if a rule match and is a filter or the app
                 has not filters; False if a rule match but is not a filter;
                 None otherwise;
             Element #2 (app_thread): Thread value if a rule match and it has a "thread"
@@ -449,19 +454,19 @@ class AppLogParser(object):
                 of output is requested (--anonymize/--ip/--uid options).
         """
         for rule in self.rules:
-            match = rule.regexp.search(logdata.message)
+            match = rule.regexp.search(log_data.message)
             if match is not None:
                 gids = rule.regexp.groupindex
                 self._last_rule = rule
                 if self.name_cache is not None:
                     values = self.name_cache.match_to_dict(match, rule.key_gids)
-                    values['host'] = self.name_cache.map_value(logdata.host, 'host')
+                    values['host'] = self.name_cache.map_value(log_data.host, 'host')
                     map_dict = {
                         'host': values['host'],
                         'message': self.name_cache.match_to_string(match, gids, values),
                     }
                 else:
-                    values = {'host': logdata.host}
+                    values = {'host': log_data.host}
                     for gid in gids:
                         values[gid] = match.group(gid)
                     map_dict = None
@@ -486,5 +491,5 @@ class AppLogParser(object):
         # by enabled rules.
         self._last_rule = None
         if not self.has_filters:
-            self.unparsed_counter += 1
+            self.unparsed += 1
         return False, None, None, None

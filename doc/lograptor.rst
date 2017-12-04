@@ -94,7 +94,7 @@ Scope Selection
 
 .. option:: --date [YYYY]MMDD[,[YYYY]MMDD]
 
-    Restrict the search scope to a date or a date range.
+    Restrict the search scope to a date or a date interval.
 
 .. option:: --last [hour|day|week|month|Nh|Nd|Nw|Nm]
 

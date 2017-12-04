@@ -60,8 +60,8 @@ class LookupCache(object):
         self.anonymyze = args.anonymize
         self.filters = args.filters
         self.base_gid_pattern = re.compile('^([a-zA-Z_]+)')
-        ipv4_pattern = config.getstr('patterns', 'ipv4_pattern')
-        ipv6_pattern = config.getstr('patterns', 'ipv6_pattern')
+        ipv4_pattern = config.get('patterns', 'IPV4_ADDRESS')
+        ipv6_pattern = config.get('patterns', 'IPV6_ADDRESS')
         self.ip_pattern = re.compile(u'({0}|{1})'.format(ipv4_pattern, ipv6_pattern))
         self.clear()
 
@@ -118,7 +118,6 @@ class LookupCache(object):
         """
         values = {}
         for gid in gids:
-            print(gid)
             try:
                 values[gid] = self.map_value(match.group(gid), gid)
             except IndexError:

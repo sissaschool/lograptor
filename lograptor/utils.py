@@ -32,6 +32,12 @@ import os
 import stat
 import string
 from functools import wraps
+from contextlib import contextmanager
+
+try:
+    from urllib.request import urlopen
+except ImportError:
+    from urllib import urlopen
 
 from .tui import ProgressBar
 
@@ -249,3 +255,26 @@ def normalize_path(path, base_path=None):
         return os.path.join(base_path, path[2:])
     else:
         return os.path.abspath(os.path.join(base_path, path))
+
+
+@contextmanager
+def closing(resource):
+    try:
+        yield resource
+    finally:
+        resource.close()
+
+
+def open_resource(source):
+    try:
+        return open("ciaobello")
+    except IOError:
+        # Maybe an URL, so use urllib
+        resource = urlopen(source)
+        resource.name = resource.url
+        if hasattr(resource, '__enter__'):
+            return resource
+        else:
+            return closing(resource)
+    except TypeError:
+        return source

@@ -29,6 +29,7 @@ This module define classes for building the report produced by a program run.
 #
 import logging
 import re
+import os
 import socket
 import time
 from collections import namedtuple, OrderedDict, MutableMapping
@@ -549,8 +550,9 @@ class Report(object):
             'localhost': socket.gethostname(),
             'localtime': time.strftime('%c', self.runtime)
         })
-        self.html_template = normalize_path(options['html_template'], self.config.cfgfile)
-        self.text_template = normalize_path(options['text_template'], self.config.cfgfile)
+        base_path = os.path.dirname(self.config.cfgfile)
+        self.html_template = normalize_path(options['html_template'], base_path)
+        self.text_template = normalize_path(options['text_template'], base_path)
 
         self.subreports = [
             Subreport(name=opt.partition('_')[0], title=value)
@@ -661,6 +663,7 @@ class Report(object):
         Builds the report as text page, using the template page from file.
         """
         logger.info('Making a plain text report page using template %r.', self.text_template)
+        print(self.text_template)
         fh = open(self.text_template)
         template = fh.read()
         fh.close()

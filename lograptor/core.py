@@ -34,18 +34,19 @@ import logging
 import fileinput
 import sys
 import fnmatch
+import string
 
 from .exceptions import (
     LogRaptorConfigError, FileMissingError, LogFormatError, LogRaptorOptionError, LogRaptorArgumentError
 )
 from .confparsers import LogRaptorConfig
 from .application import AppLogParser
-from .matcher import create_matcher_engine
+from .matcher import create_matcher
 from .filemap import FileMap
 from .cache import LookupCache
 from .report import Report
 from .channels import TermChannel, MailChannel, FileChannel
-from .timedate import get_interval
+from .timedate import get_datetime_interval
 from .utils import results_to_string, is_pipe, is_redirected, protected_property, normalize_path
 
 logger = logging.getLogger(__package__)
@@ -66,7 +67,6 @@ class LogRaptor(object):
     This is the core class of the lograptor package.
 
     :param args: Namespace of arguments with run options.
-    :param config: List of configuration files paths. The first file readable is used.
     """
     DEFAULT_CONFIG_FILES = (
         'lograptor.conf',
@@ -74,7 +74,7 @@ class LogRaptor(object):
         '/etc/lograptor/lograptor.conf'
     )
 
-    def __init__(self, args, config=None):
+    def __init__(self, args):
         try:
             self.config = LogRaptorConfig(cfgfiles=args.cfgfiles or self.DEFAULT_CONFIG_FILES)
         except IOError as err:
@@ -93,7 +93,7 @@ class LogRaptor(object):
 
         self._matcher = self.matcher
         self._patterns = self.patterns
-        self._time_range = self.time_range
+        self._time_period = self.time_period
         self._fields = self.fields
         self._hosts = self.hosts
         self._channels = self.channels
@@ -103,10 +103,8 @@ class LogRaptor(object):
         self._config_apps = self._read_apps()
         self._config_tags = {}
         self._apps = self.apps
-        self._tags = self.tags
+        self._tags = self.apptags
         self._logmap = self.logmap
-
-        self.unknown_tags = set()
 
         if args.loglevel == 4:
             logger.debug("End of lograptor setup!!")
@@ -250,7 +248,11 @@ class LogRaptor(object):
         unknown = [k for item in self.filters for k in item if k not in self.config.options('fields')]
         if unknown:
             raise LogRaptorArgumentError('fields', 'undefined fields: %r.' % list(unknown))
-        return self.config.options('fields')
+
+        patterns = {k: v for k, v in self.config.items('patterns')}
+        return {
+            k: string.Template(v).safe_substitute(patterns) for k, v in self.config.items('fields')
+        }
 
     @protected_property
     def matcher(self):
@@ -274,40 +276,54 @@ class LogRaptor(object):
         logger.debug('hosts to be processed: %r', hosts)
         return hosts
 
-    @protected_property
+    @property
     def time_range(self):
         """
-        Time range that is determined from arguments.
+        Selected time range for log matching. If `None` then match always (equivalent to 0:00-23:59).
         """
-        if self.args.period is None:
+        return self.args.time_range
+
+    @protected_property
+    def time_period(self):
+        """
+        Time period that is determined from the arguments --date and --last. It's a 2-tuple with
+        (<start datetime>, <end_datetime>) items. An item is `None` if there isn't a limit.
+        """
+        if self.args.time_period is None:
             if self.args.files or is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO):
-                time_range = (None, None)
+                time_period = (None, None)
             else:
                 diff = 86400  # 24h = 86400 seconds
-                time_range = get_interval(int(time.time()), diff, 3600)
+                time_period = get_datetime_interval(int(time.time()), diff, 3600)
         else:
-            time_range = self.args.period
+            time_period = self.args.time_period
 
-        logger.debug('time range to be processed: %r', time_range)
-        return time_range
+        logger.debug('time period to be processed: %r', time_period)
+        return time_period
 
     @property
     def confdir(self):
         confdir = self.config.get('main', 'confdir')
         return normalize_path(confdir, base_path=os.path.dirname(self.config.cfgfile))
 
+    @property
+    def logdir(self):
+        confdir = self.config.get('main', 'logdir')
+        return normalize_path(confdir, base_path=os.path.dirname(self.config.cfgfile))
+
     def _read_apps(self):
         """
         Read the configuration of applications returning a dictionary
-        :param confdir: Read apps from a configuration directory.
-        :return: A dictionary with application names as keys and configuration
+
+        :return: A dictionary with application names as keys and configuration \
         object as values.
         """
         apps = {}
         for cfgfile in glob.iglob(os.path.join(self.confdir, '*.conf')):
             name = os.path.basename(cfgfile)[0:-5]
             try:
-                app = AppLogParser(name, cfgfile, self.args, self.config, self.name_cache, self.report)
+                app = AppLogParser(name, cfgfile, self.args, self.logdir,
+                                   self.fields, self.name_cache, self.report)
             except (LogRaptorOptionError, LogRaptorConfigError, LogFormatError) as err:
                 logger.error('cannot add app %r: %s', name, err)
             else:
@@ -335,7 +351,7 @@ class LogRaptor(object):
             return {k: v for k, v in self._config_apps.items() if k in appnames and v.enabled == enabled}
 
     @protected_property
-    def tags(self):
+    def apptags(self):
         """
         Map from log app-name to an application.
         """
@@ -365,7 +381,7 @@ class LogRaptor(object):
             return [(sys.stdin, self._apps.values())]
         else:
             # Build the LogMap instance adding the list of files to be scanned.
-            logmap = FileMap(self._time_range, self.recursive,
+            logmap = FileMap(self._time_period, self.recursive,
                              self.follow_symlinks, self.include, self.exclude, self.exclude_dir)
             for app in self._apps.values():
                 logmap.add(self.args.files or app.files, app, app.priority)
@@ -423,38 +439,54 @@ class LogRaptor(object):
         """
         Produce a text summary from run statistics.
 
-        :param run_stats:
+        :param run_stats: A dictionary containing run stats
         :return: Formatted multiline string
         """
+        run_stats = run_stats.copy()
+        run_stats['files'] = len(run_stats['files'])
         summary = [
             u'\n--- %s run summary ---' % __package__,
-            u'Number of processed files: %(tot_files)d',
-            u'Total lines read: %(tot_lines)d',
-            u'Total log events matched: %(tot_counter)d',
+            u'Number of processed files: %(files)d',
+            u'Total lines read: %(lines)d',
+            u'Total log events matched: %(matches)d',
         ]
-        if run_stats['tot_unparsed'] > 0:
-            summary.append(u'WARNING: Found %(tot_unparsed)d unparsed log header lines')
-        if self.args.appnames:
-            if any([app.counter > 0 for app in self._apps.values()]):
-                proc_apps = [app for app in self._apps.values() if app.counter > 0]
-                summary.append(u'Total log events for apps: %s' % u', '.join([
-                    u'%s(%d)' % (app.name, app.counter)
-                    for app in proc_apps
-                ]))
-                if len(proc_apps) == 1 and self.args.count:
-                    rule_counters = {
-                        rule.name: sum(rule.results.values()) for rule in proc_apps[0].rules
-                    }
-                    summary.append(u"App's rules counters: %s" % results_to_string(rule_counters))
-            if run_stats['unknown_tags']:
-                summary.append(u'Found unknown app tags: %(unknown_tags)s')
-            if any([app.unparsed_counter > 0 for app in self._apps.values()]):
-                summary.append(u'Found unparsed log lines for apps: {}'.format(u', '.join([
-                    u'%s(%d)' % (app.name, app.unparsed_counter)
-                    for app in self._apps.values() if app.unparsed_counter > 0
-                ])))
+        if run_stats['extra_tags']:
+            summary.append(u'Warning: found unknown extra app tags: %(extra_tags)s')
+        if run_stats['unknown'] > 0:
+            summary.append(u'WARNING: Found %(unknown)d lines with an unknown log format')
+        if run_stats['unparsed'] > 0:
+            summary.append(u'WARNING: Found %(unparsed)d unparsed log lines')
+        if any([app.matches or app.unparsed for app in self.apps.values()]):
+            if self.matcher == 'unruled':
+                summary.append("Applications found (no application rules)")
+            else:
+                summary.append("Applications found:")
+            for app in filter(lambda x: x.matches or x.unparsed, self.apps.values()):
+                summary.append(u'  %s(matches=%d, unparsed=%s)' % (app.name, app.matches, app.unparsed))
         summary.append('\n')
         return '\n'.join(summary) % run_stats
+
+    def get_matcher_engine(self, parsers=None):
+        return create_matcher(
+            apptags=self.apptags,
+            channels=self.channels,
+            matcher=self.matcher,
+            parsers=parsers,
+            patterns=self.patterns,
+            hosts=self.hosts,
+            time_range=self.time_range,
+            time_period=self.time_period,
+            thread=self.args.thread,
+            invert=self.args.invert,
+            count=self.args.count,
+            files_with_match=self.args.files_with_match,
+            max_count=self.args.max_count,
+            only_matching=self.args.only_matching,
+            quiet=self.args.quiet,
+            before_context=max(self.args.before_context, self.args.context),
+            after_context=max(self.args.after_context, self.args.context),
+            name_cache=self.name_cache,
+        )
 
     def process(self, parsers=None):
         """
@@ -462,30 +494,32 @@ class LogRaptor(object):
         the processing internal routine for each file.
         """
         logger.info('processing log files ...')
-        process_logfile = create_matcher_engine(self, parsers)
-        tot_lines = tot_counter = tot_unparsed = 0
-        start_event = end_event = None
-        logfiles = []
-        self.open()
+        matcher_engine = self.get_matcher_engine(parsers=parsers)
+        self.open()  # Open channels (maybe a dummy operation for some channels)
+
+        files = []
+        lines = matches = unparsed = unknown =0
+        extra_tags = set()
+        first_event = last_event = None
 
         # Iter between log files. The iteration use the log files modified between the
         # initial and the final date, skipping the other files.
-        for (path_or_file, applist) in self._logmap:
-            logger.debug('process %r for apps %r', path_or_file, applist)
+        for (source, applist) in self._logmap:
+            logger.debug('process %r for apps %r', source, applist)
             try:
-                num_lines, counter, unparsed_counter, unknown_tags, first_event, last_event = \
-                    process_logfile(path_or_file, applist)
-                logfiles.append(str(path_or_file))
+                result = matcher_engine(source, applist)
+                files.append(str(source))
 
-                tot_lines += num_lines
-                tot_counter += counter
-                tot_unparsed += unparsed_counter
-                self.unknown_tags = self.unknown_tags.union(unknown_tags)
+                lines += result.lines
+                matches += result.matches
+                unknown += result.unknown
+                unparsed += result.unparsed
+                extra_tags = extra_tags.union(result.extra_tags)
                 try:
-                    if start_event is None or start_event > first_event:
-                        start_event = first_event
-                    if end_event is None or end_event < last_event:
-                        end_event = last_event
+                    if first_event is None or first_event > result.first_event:
+                        first_event = result.first_event
+                    if last_event is None or last_event < result.last_event:
+                        last_event = result.last_event
                 except TypeError:
                     pass
 
@@ -493,44 +527,43 @@ class LogRaptor(object):
                 if self.args.loglevel:
                     logger.error(msg)
 
-        tot_files = len(logfiles)
-        if not logfiles and self._time_range[0] is not None:
-            raise FileMissingError("no file in time range {}!".format([
-                datetime.datetime.strftime(e, '%Y-%m-%dT%H:%M:%S') for e in self._time_range
+        if not files and self._time_period[0] is not None:
+            raise FileMissingError("no file in time period {}!".format([
+                datetime.datetime.strftime(e, '%Y-%m-%dT%H:%M:%S') for e in self._time_period
             ]))
-        elif not tot_lines:
+        elif not lines:
             return False
 
         try:
-            start_time = datetime.datetime.fromtimestamp(start_event)
-            end_time = datetime.datetime.fromtimestamp(end_event)
+            first_event = datetime.datetime.fromtimestamp(first_event)
+            last_event = datetime.datetime.fromtimestamp(last_event)
         except (TypeError, UnboundLocalError):
-            start_time = end_time = None
+            first_event = last_event = None
 
         run_stats = {
-            'start_time': start_time,
-            'end_time': end_time,
-            'tot_counter': tot_counter,
-            'tot_files': tot_files,
-            'tot_lines': tot_lines,
-            'tot_unparsed': tot_unparsed,
-            'files': ', '.join(logfiles),
-            'unknown_tags': ', '.join(
-                set([tag for tag in self.unknown_tags
-                     if tag not in self._config_tags and not tag.isdigit()])
-            )
+            'files': files,
+            'first_event': first_event,
+            'last_event': last_event,
+            'matches': matches,
+            'lines': lines,
+            'unknown': unknown,
+            'unparsed': unparsed,
+            'extra_tags': [
+                tag for tag in extra_tags
+                if tag not in self._config_tags and not tag.isdigit()
+            ]
         }
 
         # If final report is requested then purge all unmatched threads and set time stamps.
         # Otherwise send final run summary if messages are not disabled.
-        if tot_counter > 0 and self.args.report:
+        if matches > 0 and self.args.report:
             self.report.set_stats(run_stats)
             self.report.make(self._apps)
             self.send_report()
         elif self.args.loglevel and not self.args.quiet:
             self.send_message(self.get_run_summary(run_stats))
 
-        return tot_counter > 0
+        return matches > 0
 
     def open(self):
         for channel in self._channels:

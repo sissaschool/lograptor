@@ -47,7 +47,7 @@ DATE_FORMATS = (
 )
 
 
-def parse_last(last):
+def parse_last_period(last):
     """
     Parse the --last value and return the time difference in seconds.
     """
@@ -86,7 +86,7 @@ def parse_last(last):
     return diff
 
 
-def get_interval(timestamp, diff, offset=0):
+def get_datetime_interval(timestamp, diff, offset=0):
     """
     Returns datetime interval from timestamp backward in the past,
     computed using the milliseconds difference passed as argument.
@@ -97,7 +97,7 @@ def get_interval(timestamp, diff, offset=0):
     return ini_datetime, fin_datetime
 
 
-def parse_date(date):
+def parse_date_period(date):
     """
     Parse the --date value and return a couple of datetime object.
     The format is [YYYY]MMDD[,[YYYY]MMDD].

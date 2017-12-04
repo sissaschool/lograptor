@@ -39,7 +39,7 @@ from .info import __version__, __description__
 from .exceptions import (
     LogRaptorConfigError, LogRaptorOptionError, LogFormatError, FileMissingError, FileAccessError, LogRaptorArgumentError
 )
-from .timedate import get_interval, parse_date, parse_last, TimeRange
+from .timedate import get_datetime_interval, parse_date_period, parse_last_period, TimeRange
 
 
 class StoreOptionAction(argparse.Action):
@@ -100,17 +100,18 @@ def comma_separated_string(string):
     return [x.strip() for x in string.split(',')]
 
 
-def last_spec(string):
+def last_period_spec(string):
     try:
-        diff = parse_last(string)
+        diff = parse_last_period(string)
     except TypeError:
         raise argparse.ArgumentTypeError('wrong format: %r' % string)
-    return get_interval(int(time.time()), diff, 3600)
+    else:
+        return get_datetime_interval(int(time.time()), diff, 3600)
 
 
 def date_interval_spec(string):
     try:
-        return parse_date(string)
+        return parse_date_period(string)
     except (TypeError, ValueError):
         raise argparse.ArgumentTypeError('%r: wrong format, use [YYYY]MMDD[,[YYYY]MMDD]' % string)
 
@@ -157,11 +158,11 @@ def create_argument_parser():
         help="process the log lines related to a time range"
     )
     group.add_argument(
-        "--date", metavar="[YYYY]MMDD[,[YYYY]MMDD]", action="store", dest="period",
-        type=date_interval_spec, help="restrict the search scope to a date or a date range"
+        "--date", metavar="[YYYY]MMDD[,[YYYY]MMDD]", action="store", dest="time_period",
+        type=date_interval_spec, help="restrict the search scope to a date or a date interval"
     )
     group.add_argument(
-        "--last", action="store", dest="period", type=last_spec,
+        "--last", action="store", dest="time_period", type=last_period_spec,
         metavar="[hour|day|week|month|Nh|Nd|Nw|Nm]",
         help="restrict the search scope to a previous time period"
     )
@@ -335,57 +336,6 @@ def has_void_args(argv):
     n_args = len(argv)
     return n_args == 1 or n_args == 2 and argv[1].startswith('--conf=') or n_args == 3 and argv[1] == '--conf'
 
-
-
-"""
-import types
-
-def change_func_args(function, new_args):
-    code_obj = function.func_code
-    assert(0 <= len(new_args) <= code_obj.co_argcount)
-    # the arguments are just the first co_argcount co_varnames
-    # replace them with the new argument names in new_args
-    new_varnames = tuple(list(new_args[:code_obj.co_argcount]) +
-                         list(code_obj.co_varnames[code_obj.co_argcount:]))
-    # type help(types.CodeType) at the interpreter prompt for information
-    new_code_obj = types.CodeType(code_obj.co_argcount,
-                                  code_obj.co_nlocals,
-                                  code_obj.co_stacksize,
-                                  code_obj.co_flags,
-                                  code_obj.co_code,
-                                  code_obj.co_consts,
-                                  code_obj.co_names,
-                                  new_varnames,
-                                  code_obj.co_filename,
-                                  code_obj.co_name,
-                                  code_obj.co_firstlineno,
-                                  code_obj.co_lnotab,
-                                  code_obj.co_freevars,
-                                  code_obj.co_cellvars)
-    modified = types.FunctionType(new_code_obj, function.func_globals)
-    function.__code__ = modified.__code__  # replace code portion of original
-
-if __name__ == '__main__':
-
-    import inspect
-
-    def f(x, y):
-        return x+y
-
-    def g(a, b):
-        return f(a, b)
-
-    print('Before:')
-    print('inspect.getargspec(g).args: {}'.format(inspect.getargspec(g).args))
-    print('g(1, 2): {}'.format(g(1, 2)))
-
-    change_func_args(g, ['p', 'q'])
-
-    print('')
-    print('After:')
-    print('inspect.getargspec(g).args: {}'.format(inspect.getargspec(g).args))
-    print('g(1, 2): {}'.format(g(1, 2)))
-    """
 #
 # Library and CLI APIs
 def ruled_matcher(args):
@@ -410,7 +360,7 @@ def main():
 
     try:
         if has_void_args(sys.argv) and 'stdout' in args.channels:
-            # If the command is called with no significative args (eg. no args
+            # If the command is called with no relevant args (eg. no args
             # or only --conf argument) then prints the configuration and exit.
             args.patterns.append('')
             _lograptor = LogRaptor(args)
