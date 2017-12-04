@@ -333,10 +333,6 @@ These are the entries that can be declared within a report section:
     the title of the page (as in <title></title>) for html reports, or the
     main header for plain text reports.
 
-.. py:attribute:: formats
-
-    Can be one a comma-separated list of the following: *text*, *html*, or *csv*.
-
 .. envvar:: html_template
 
     Which template should be used for the final html reports.

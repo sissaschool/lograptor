@@ -2,19 +2,16 @@
  ${title}
 ***********************************************************
 
-### Process parameters and statistics ###
-
 Search patterns: ${patterns}
 Search patterns file: ${pattern_files}
 Filters: ${filters}
 Hostnames: ${hosts}
 Applications: ${apps}
 
-First event: ${start_time}
-Last event: ${end_time}
+First event: ${first_event}
+Last event: ${last_event}
 Processed files: ${files}
 Total files examined: ${tot_files}
-Total log lines parsed: ${tot_lines}
-------------------------------------------------
+Total log lines parsed: ${lines}
 ${subreports}
------ Brought to you by lograptor $version -----
+----- Brought to you by lograptor ${version} -----

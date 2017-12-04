@@ -277,9 +277,9 @@ class LogRaptorConfig(EnvConfigParser, object):
             'type': 'mail',
             'formats': 'text, html, csv',
             'mailto': 'root',
-            'include_rawlogs': False,
-            'rawlogs_limit': 200,
-            'gpg_encrypt': False,
+            'include_rawlogs': 'False',
+            'rawlogs_limit': '200',
+            'gpg_encrypt': 'False',
             'gpg_keyringdir': '/root/.gnupg',
             'gpg_recipients': '',
             'gpg_signers': '',
@@ -291,8 +291,8 @@ class LogRaptorConfig(EnvConfigParser, object):
             'pubdir': '/var/www/lograptor',
             'dirmask': '%Y-%b-%d_%a',
             'filemask': '%H%M',
-            'save_rawlogs': False,
-            'expire_in': 7,
+            'save_rawlogs': 'False',
+            'expire_in': '7',
             'pubroot': 'http://localhost/lograptor',
         }
     }

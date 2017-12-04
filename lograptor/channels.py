@@ -113,7 +113,7 @@ class BaseChannel(object):
     def set_tempdir(self):
         if self.TEMP_DIR:
             return
-        tmpdir = self.config.getstr('main', 'tmpdir')
+        tmpdir = self.config.get('main', 'tmpdir')
         if tmpdir:
             tempfile.tempdir = tmpdir
         try:
@@ -307,29 +307,29 @@ class MailChannel(NoTermChannel):
     def __init__(self, name, args, config):
         super(MailChannel, self).__init__(name, args, config)
         section = '%s_channel' % name
-        self.email_address = config.getstr('main', 'email_address')
-        self.smtp_server = config.getstr('main', 'smtp_server')
-        self.mailto = list(set(re.split('\s*, \s*', config.getstr('%s_channel' % name, 'mailto'))))
+        self.email_address = config.get('main', 'email_address')
+        self.smtp_server = config.get('main', 'smtp_server')
+        self.mailto = list(set(re.split('\s*, \s*', config.get('%s_channel' % name, 'mailto'))))
 
         # if self.args.report is not None and self.report.need_rawlogs():
-        self.rawlogs = config.getbool(section, 'include_rawlogs')
+        self.rawlogs = config.getboolean(section, 'include_rawlogs')
         if self.rawlogs:
             self.set_tempdir()
             self.rawlogs_limit = config.getint('%s_channel' % name, 'rawlogs_limit') * 1024
         else: 
             self.rawlogs_limit = 0
 
-        self.gpg_encrypt = config.getbool(section, 'gpg_encrypt')
+        self.gpg_encrypt = config.getboolean(section, 'gpg_encrypt')
         logger.debug('recipients = %r', self.mailto)
         logger.debug('rawlogs = %r', self.rawlogs)
         logger.debug('rawlogs_limit = %r', self.rawlogs_limit)
         logger.debug('gpg_encrypt = %r', self.gpg_encrypt)
 
         if self.gpg_encrypt:
-            self.gpg_keyringdir = config.getstr(section, 'gpg_keyringdir')
-            gpg_recipients = config.getstr(section, 'gpg_recipients')
+            self.gpg_keyringdir = config.get(section, 'gpg_keyringdir')
+            gpg_recipients = config.get(section, 'gpg_recipients')
             self.gpg_recipients = [keyid.strip() for keyid in gpg_recipients.split(',') if keyid.strip()]
-            gpg_signers = config.getstr(section, 'gpg_signers')
+            gpg_signers = config.get(section, 'gpg_signers')
             self.gpg_signers = [keyid.strip() for keyid in gpg_signers.split(',') if keyid.strip()]
             logger.debug('gpg_keyringdir = %r', self.gpg_recipients)
             logger.debug('gpg_recipients = %r', self.gpg_recipients)
@@ -479,9 +479,9 @@ class FileChannel(NoTermChannel):
         super(FileChannel, self).__init__(name, args, config)
         section = '%s_channel' % name
         self.expire = config.getint(section, 'expire_in')
-        self.dirmask = config.getstr(section, 'dirmask')
-        self.filemask = config.getstr(section, 'filemask')
-        self.pubdir = config.getstr(section, 'pubdir')
+        self.dirmask = config.get(section, 'dirmask')
+        self.filemask = config.get(section, 'filemask')
+        self.pubdir = config.get(section, 'pubdir')
         maskmsg = 'Invalid mask for {0}: {1}'
 
         try:
@@ -494,14 +494,14 @@ class FileChannel(NoTermChannel):
         except TypeError:
             LogRaptorConfigError(maskmsg.format('filemask', self.filemask))
 
-        self.rawlogs = config.getbool(section, 'save_rawlogs')
+        self.rawlogs = config.getboolean(section, 'save_rawlogs')
         if self.rawlogs:
             logger.info('Will save raw logs in the reports directory')
 
-        notify = config.getstr(section, 'notify')
+        notify = config.get(section, 'notify')
         self.notify = [addy.strip() for addy in notify.split(',') if addy.strip()]
         if self.notify:
-            self.pubroot = config.getstr(section, 'pubroot')
+            self.pubroot = config.get(section, 'pubroot')
             logger.debug('pubroot = %r', self.pubroot)
             if not self.pubroot:
                 raise LogRaptorConfigError('File channel requires a pubroot when notify is set')
@@ -598,8 +598,8 @@ class FileChannel(NoTermChannel):
 
         if self.notify:
             logger.info('Creating an email message')
-            email_address = self.config.getstr('main', 'email_address')
-            smtp_server = self.config.getstr('main', 'smtp_server')
+            email_address = self.config.get('main', 'email_address')
+            smtp_server = self.config.get('main', 'smtp_server')
             publoc = os.path.join(self.pubroot, self.dirname)
 
             eml = MIMEText('New lograptor report is available at:\r\n{0}'.format(publoc))

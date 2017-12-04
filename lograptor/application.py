@@ -364,10 +364,8 @@ class AppLogParser(object):
         self.rules = self.parse_rules()
 
         if self._report is not None:
-            self.report_data = [
-                item for item in self.get_report_data()
-                if item.subreport in self._report.subreports
-            ]
+            subreports = [sr.name for sr in self._report.subreports]
+            self.report_data = [e for e in self.get_report_data() if e.subreport in subreports]
 
         self.rules = [rule for rule in self.rules if rule.is_used()]  # Purge unused rules
         self.has_filters = any([rule.filter_keys for rule in self.rules])

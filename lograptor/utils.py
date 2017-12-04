@@ -139,16 +139,16 @@ def htmlsafe(unsafe):
     return unsafe
 
 
-def get_fmt_results(resdict, limit=5, sep='::', fmt=None):
+def get_fmt_results(results, limit=5, sep='::', fmt=None):
     """
     Return a list of formatttes strings representation on a result dictionary.
     The elements of the key are divided by a separator string. The result is
     appended after the key beetween parentheses. Apply a format transformation
     to odd elements of the key if a fmt parameter is passed.
     """
-    reslist = []
-    for key in sorted(resdict, key=lambda x: resdict[x], reverse=True):
-        if len(reslist) >= limit and resdict[key] <= 1:
+    result_list = []
+    for key in sorted(results, key=lambda x: results[x], reverse=True):
+        if len(result_list) >= limit and results[key] <= 1:
             break
         if fmt is not None:
             fmtkey = []
@@ -157,16 +157,16 @@ def get_fmt_results(resdict, limit=5, sep='::', fmt=None):
                     fmtkey.append(fmt.format(key[i]))
                 else:
                     fmtkey.append(key[i])
-            reslist.append(u'{0}({1})'.format(sep.join(fmtkey), resdict[key]))
+            result_list.append(u'{0}({1})'.format(sep.join(fmtkey), results[key]))
         else:
-            reslist.append(u'{0}({1})'.format(sep.join(key), resdict[key]))
+            result_list.append(u'{0}({1})'.format(sep.join(key), results[key]))
     else:
-        return reslist
+        return result_list
     if fmt is not None:
-        reslist.append(fmt.format(u'[%d more skipped]' % (len(resdict)-len(reslist))))
+        result_list.append(fmt.format(u'[%d more skipped]' % (len(results) - len(result_list))))
     else:
-        reslist.append(u'[%d more skipped]' % (len(resdict)-len(reslist)))
-    return reslist
+        result_list.append(u'[%d more skipped]' % (len(results) - len(result_list)))
+    return result_list
 
 
 def field_multisub(strings, field, values):

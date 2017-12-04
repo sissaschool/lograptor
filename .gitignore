@@ -3,6 +3,7 @@
 *~
 MANIFEST
 lograptor.conf
+test_lograptor.conf
 etc/lograptor/conf.d/testapp.conf
 !etc/lograptor/lograptor.conf
 exclude-list.txt

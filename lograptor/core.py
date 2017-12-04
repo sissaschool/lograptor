@@ -191,9 +191,9 @@ class LogRaptor(object):
     @protected_property
     def report(self):
         logger.debug("configure a %r report ...", self.args.report)
-        if self.args.report is None:
-            return None
-        elif self.args.report is True:
+        if self.args.report is False:
+            return False
+        elif self.args.report is None:
             return Report('default', self._patterns, self.args, self.config)
         else:
             return Report(self.args.report, self._patterns, self.args, self.config)
@@ -451,18 +451,20 @@ class LogRaptor(object):
             u'Total log events matched: %(matches)d',
         ]
         if run_stats['extra_tags']:
-            summary.append(u'Warning: found unknown extra app tags: %(extra_tags)s')
+            summary.append(u'WARNING: found unknown extra app tags: %(extra_tags)s')
         if run_stats['unknown'] > 0:
             summary.append(u'WARNING: Found %(unknown)d lines with an unknown log format')
         if run_stats['unparsed'] > 0:
             summary.append(u'WARNING: Found %(unparsed)d unparsed log lines')
         if any([app.matches or app.unparsed for app in self.apps.values()]):
             if self.matcher == 'unruled':
-                summary.append("Applications found (no application rules)")
+                summary.append("Applications found (application rules not used):")
+                for app in filter(lambda x: x.matches, self.apps.values()):
+                    summary.append(u'  %s(matches=%d)' % (app.name, app.matches))
             else:
                 summary.append("Applications found:")
-            for app in filter(lambda x: x.matches or x.unparsed, self.apps.values()):
-                summary.append(u'  %s(matches=%d, unparsed=%s)' % (app.name, app.matches, app.unparsed))
+                for app in filter(lambda x: x.matches or x.unparsed, self.apps.values()):
+                    summary.append(u'  %s(matches=%d, unparsed=%s)' % (app.name, app.matches, app.unparsed))
         summary.append('\n')
         return '\n'.join(summary) % run_stats
 
@@ -515,13 +517,12 @@ class LogRaptor(object):
                 unknown += result.unknown
                 unparsed += result.unparsed
                 extra_tags = extra_tags.union(result.extra_tags)
-                try:
+                if result.first_event is not None:
                     if first_event is None or first_event > result.first_event:
                         first_event = result.first_event
+                if result.last_event is not None:
                     if last_event is None or last_event < result.last_event:
                         last_event = result.last_event
-                except TypeError:
-                    pass
 
             except IOError as msg:
                 if self.args.loglevel:
@@ -554,11 +555,11 @@ class LogRaptor(object):
             ]
         }
 
-        # If final report is requested then purge all unmatched threads and set time stamps.
+        # If the final report is requested then purge all unmatched threads and set time stamps.
         # Otherwise send final run summary if messages are not disabled.
-        if matches > 0 and self.args.report:
+        if matches > 0 and self.report:
             self.report.set_stats(run_stats)
-            self.report.make(self._apps)
+            self._report.make(self._apps)
             self.send_report()
         elif self.args.loglevel and not self.args.quiet:
             self.send_message(self.get_run_summary(run_stats))

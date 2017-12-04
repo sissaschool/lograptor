@@ -238,7 +238,7 @@ def create_argument_parser():
 
     group = parser.add_argument_group("Output Data Control")
     group.add_argument(
-        "--report", metavar='NAME', nargs='?', default=None,
+        "--report", metavar='NAME', nargs='?', default=False,
         help="produce a report at the end of processing"
     )
     group.add_argument(
