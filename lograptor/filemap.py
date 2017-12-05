@@ -27,7 +27,7 @@ import glob
 import os
 import platform
 from datetime import datetime
-from collections import MutableMapping
+from collections import MutableMapping, OrderedDict
 from .timedate import strftimegen
 
 logger = logging.getLogger(__name__)
@@ -35,19 +35,16 @@ logger = logging.getLogger(__name__)
 
 class GlobDict(MutableMapping):
     """
-    A dictionary that use pathnames patterns as keys.
-    Include two additional methods glob and iglob to iterate
-    once over dictionary pathnames, returning a couple with filename
-    and a list of values, corresponding to the values of dictionary
-    keys that matches the filename.
+    A dictionary that uses glob patterns as keys. Includes two additional methods
+    glob and iglob to iterate once over dictionary glob patterns, returning couples
+    with a path and a list of values.
     """
-    def __init__(self, recursive=False, followlinks=False, include=None,
-                 exclude=None, exclude_dir=None, *args, **kwargs):
-        self._data = dict()
+    def __init__(self, recursive=False, follow_symlinks=False, include=None,
+                 exclude=None, exclude_dir=None, dict_class=dict):
+        self._data = dict_class()
         self._pathnames = []
-        self.update(*args, **kwargs)
         self.recursive = recursive
-        self.followlinks = followlinks
+        self.follow_symlinks = follow_symlinks
         self.include = include or []
         self.exclude = exclude or []
         self.exclude_dir = exclude_dir or []
@@ -108,6 +105,16 @@ class GlobDict(MutableMapping):
         return list(self.iglob(path))
 
     def iter_paths(self, pathnames=None, mapfunc=None):
+        """
+        Special iteration on paths. Yields couples of path and items. If a expanded path
+        doesn't match with any files a couple with path and `None` is returned.
+
+        :param pathnames: Iterable with a set of pathnames. If is `None` uses the all \
+        the stored pathnames.
+        :param mapfunc: A mapping function for building the effective path from various \
+        wildcards (eg. time spec wildcards).
+        :return: Yields 2-tuples.
+        """
         pathnames = pathnames or self._pathnames
         if self.recursive and not pathnames:
             pathnames = ['.']
@@ -115,44 +122,49 @@ class GlobDict(MutableMapping):
             yield []
 
         if mapfunc is not None:
-            for pathgen in map(mapfunc, pathnames):
-                for path in pathgen:
+            for mapped_paths in map(mapfunc, pathnames):
+                for path in mapped_paths:
                     if self.recursive and (os.path.isdir(path) or os.path.islink(path)):
-                        for t in os.walk(path, followlinks=self.followlinks):
+                        for t in os.walk(path, followlinks=self.follow_symlinks):
                             for filename, values in self.iglob(os.path.join(t[0], '*')):
                                 yield filename, values
                     else:
+                        empty_glob = True
                         for filename, values in self.iglob(path):
                             yield filename, values
+                            empty_glob = False
+                        if empty_glob:
+                            yield path, None
         else:
             for path in pathnames:
                 if self.recursive and (os.path.isdir(path) or os.path.islink(path)):
-                    for t in os.walk(path, followlinks=self.followlinks):
+                    for t in os.walk(path, followlinks=self.follow_symlinks):
                         for filename, values in self.iglob(os.path.join(t[0], '*')):
                             yield filename, values
                 else:
+                    empty_glob = True
                     for filename, values in self.iglob(path):
                         yield filename, values
+                        empty_glob = False
+                    if empty_glob:
+                        yield path, None
 
 
 class FileMap(object):
     """
     A class for building collections of files and for iterating over them.
     """
-    def __init__(self, time_range=None, *args, **kwargs):
+    def __init__(self, time_period=None, recursive=False, follow_symlinks=False, include=None,
+                 exclude=None, exclude_dir=None):
         """
-        :param start_dt: End datetime for filtering the iteration over files.
-        When is None no date filter is applied to selected files.
-        :param end_dt: End datetime for filtering the iteration over files.
-        If it is None no filter is applied.
-        :param include: list of include patterns
-
+        :param time_period: Time period for filtering the iteration over files. \
+        When is `(None, None)` no filter is applied to selected files.
         """
-        start_dt, end_dt = time_range or (None, None)
-        if start_dt is not None and start_dt > end_dt:
-            ValueError("start datetime mustn't be after the end datetime")
-        self._filemap = GlobDict(*args, **kwargs)
-        self._priority = {}
+        start_dt, end_dt = time_period or (None, None)
+        if start_dt is not None and end_dt is not None and start_dt > end_dt:
+            ValueError("start datetime must not be after the end datetime")
+        self._filemap = GlobDict(recursive=recursive, follow_symlinks=follow_symlinks, include=include,
+                                 exclude=exclude, exclude_dir=exclude_dir, dict_class=OrderedDict)
         self.start_dt = start_dt
         self.end_dt = end_dt
 
@@ -161,14 +173,14 @@ class FileMap(object):
         Iterate into the file map, with filename glob expansion.
         """
         if self.start_dt is None:
-            for filename, items in self._filemap.iter_paths():
-                items = [i for sublist in items for i in sublist]
-                yield filename, sorted(items, key=lambda x: self._priority[x])
+            for path, items in self._filemap.iter_paths():
+                yield path, items
         else:
-            for filename, items in self._filemap.iter_paths(mapfunc=strftimegen(self.start_dt, self.end_dt)):
-                items = [i for sublist in items for i in sublist]
-                if self.check_stat(filename):
-                    yield filename, sorted(items, key=lambda x: self._priority[x])
+            for path, items in self._filemap.iter_paths(mapfunc=strftimegen(self.start_dt, self.end_dt)):
+                if items is None:
+                    yield path, items
+                elif self.check_stat(path):
+                    yield path, items
 
     def __len__(self):
         return len(list(self.__iter__()))
@@ -178,7 +190,7 @@ class FileMap(object):
         Checks logfile stat information for excluding files not in datetime period.
         On Linux it's possible to checks only modification time, because file creation info
         are not available, so it's possible to exclude only older files.
-        In Unix BSD systems and windows informations about file creation date and times are available,
+        In Unix BSD systems and windows information about file creation date and times are available,
         so is possible to exclude too newer files.
         """
         statinfo = os.stat(path)
@@ -193,17 +205,16 @@ class FileMap(object):
             logger.warning("file %r not in datetime period!", path)
         return check
              
-    def add(self, fileset, name='*', priority=0):
+    def add(self, files, items):
         """
         Add a list of files with a reference to a name and a priority.
         """
-        self._priority[name] = priority
-        if isinstance(fileset, str):
-            fileset = iter([fileset])
-        for pathname in fileset:
+        if isinstance(files, (str, bytes)):
+            files = iter([files])
+        for pathname in files:
             try:
                 values = self._filemap[pathname]
             except KeyError:
-                self._filemap[pathname] = [name]
+                self._filemap[pathname] = items
             else:
-                values.append(name)
+                values.extend(items)

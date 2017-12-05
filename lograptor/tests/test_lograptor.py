@@ -21,8 +21,6 @@ Test script for lograptor.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import print_function
-
 import os
 import re
 import sys
@@ -35,43 +33,41 @@ pkg_search_path = os.path.abspath('../..')
 if sys.path[0] != pkg_search_path:
     sys.path.insert(0, pkg_search_path)
 
-from .. import __name__ as package_name
-from ..cli import create_argument_parser
-from ..exceptions import (
-    LogRaptorArgumentError, LogRaptorOptionError, LogRaptorConfigError, LogFormatError, FileMissingError, FileAccessError
+import lograptor
+from lograptor.exceptions import (
+    LogRaptorArgumentError, LogRaptorOptionError, LogRaptorConfigError,
+    LogFormatError, FileMissingError, FileAccessError
 )
-from ..core import LogRaptor
-
-# Extract sample files
-tar = tarfile.open('samples.tar', "r:")
-tar.extractall()
-tar.close()
 
 
 def pytest_report_header(config):
     return "lograptor test"
 
 
-class Testlograptor(object):
+class TestLograptor(object):
     """
     Test which lograptor applications have unparsed line issues.
     """
-    cli_parser = create_argument_parser()
+    cli_parser = lograptor.api.create_argument_parser()
 
     def setup_method(self, method):
         print("\n%s:%s" % (type(self).__name__, method.__name__))
 
     def exec_lograptor(self, cmd_line):
-        print(u"# {} {}".format(package_name, cmd_line))
+        print(u"# {} {}".format(lograptor.__name__, cmd_line))
         args = self.cli_parser.parse_args(args=cmd_line.split())
 
+        args.cfgfiles = ['../../etc/lograptor/lograptor.conf']
         args.patterns = [pat.strip('\'') for pat in args.patterns]
         if not args.patterns:
             pat = args.files.pop(0)
             args.patterns.append(pat.strip('\''))
 
         try:
-            _lograptor = LogRaptor(args)
+            print(args)
+            import pdb
+            pdb.set_trace()
+            _lograptor = lograptor.LogRaptor(args)
             try:
                 retval = _lograptor.__call__()
             finally:
@@ -88,15 +84,15 @@ class Testlograptor(object):
         except KeyboardInterrupt:
             print("\nCtrl-C pressed, terminate the process ...")
             sys.exit(1)
-
-        return 0 if retval else 1
+        else:
+            return 0 if retval else 1
 
     @pytest.mark.unparsed
     def test_unparsed(self, capsys):
         tests = (
-            "-U -s -c --apps postfix -e '' samples/postfix.log",
-            "-U -s -c --apps dovecot -e '' samples/dovecot.log",
-            "-U -s -c --apps sshd -e '' samples/sshd.log",
+            "-U -d 0 -c --apps postfix -e '' samples/postfix.log",
+            "-U -d 0 -c --apps dovecot -e '' samples/dovecot.log",
+            "-U -d 0 -c --apps sshd -e '' samples/sshd.log",
         )
         for cmd_line in tests:
             out, err = capsys.readouterr()

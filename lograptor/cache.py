@@ -21,8 +21,6 @@ application class instances.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import print_function
-
 import re
 import socket
 import string
@@ -201,7 +199,6 @@ class LineCache(deque):
         self.send_separator = chain([lambda *args: None], repeat(build_dispatcher(channels, 'send_separator')))
 
     def register_selected(self, filename, line_number, match=None, **kwargs):
-        print("QUATSI")
         next_line = line_number - len(self)
         if self.last_line == 0 or (next_line - self.last_line) > 1:
             next(self.send_separator)()

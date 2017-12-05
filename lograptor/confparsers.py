@@ -22,7 +22,6 @@ This module contains classes and methods to handle lograptor configurations.
 #
 import string
 import socket
-from collections import OrderedDict
 import re
 
 try:
@@ -34,7 +33,6 @@ finally:
     RawConfigParser = configparser.RawConfigParser
 
 from .exceptions import LogRaptorNoSectionError, LogRaptorNoOptionError, FileMissingError
-from .utils import normalize_path
 
 
 class EnvInterpolation(object):
@@ -94,11 +92,7 @@ class EnvConfigParser(RawConfigParser):
         self._interpolation = self._DEFAULT_INTERPOLATION   # Python 2.7 compatibility
 
         if cfgfiles:
-            self.cfgfile = ', '.join(self.read(cfgfiles))
-            if not self.cfgfile:
-                raise FileMissingError(
-                    "no configuration file in the list {} exists or is accessible!".format(cfgfiles)
-                )
+            self.cfgfile = self.read_first(cfgfiles)
         else:
             self.cfgfile = None
 
@@ -113,6 +107,23 @@ class EnvConfigParser(RawConfigParser):
             return self.__defaults[section][option]
         except KeyError:
             return None
+
+    def read_first(self, filenames):
+        for filename in filenames if isinstance(filenames, (list, tuple)) else [filenames]:
+            try:
+                with open(filename) as fp:
+                    try:
+                        self.readfp(fp)
+                    except AttributeError:
+                        getattr(self, 'read_file')(fp)
+            except IOError:
+                pass
+            else:
+                return filename
+        else:
+            raise FileMissingError(
+                "no configuration file in the list {} exists or is accessible!".format(filenames)
+            )
 
     def get(self, section, option, raw=False, vars=None):
         if section not in self._sections:

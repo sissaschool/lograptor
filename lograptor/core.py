@@ -42,7 +42,7 @@ from .cache import LookupCache
 from .report import Report
 from .channels import TermChannel, MailChannel, FileChannel
 from .timedate import get_datetime_interval
-from .utils import results_to_string, is_pipe, is_redirected, protected_property, normalize_path
+from .utils import is_pipe, is_redirected, protected_property, normalize_path
 
 logger = logging.getLogger(__package__)
 
@@ -104,6 +104,28 @@ class LogRaptor(object):
         if args.loglevel == 4:
             logger.debug("End of lograptor setup!!")
             prompt("press <ENTER> to continue ...")
+
+    def _read_apps(self):
+        """
+        Read the configuration of applications returning a dictionary
+
+        :return: A dictionary with application names as keys and configuration \
+        object as values.
+        """
+        apps = {}
+        for cfgfile in glob.iglob(os.path.join(self.confdir, '*.conf')):
+            name = os.path.basename(cfgfile)[0:-5]
+            try:
+                app = AppLogParser(name, cfgfile, self.args, self.logdir,
+                                   self.fields, self.name_cache, self.report)
+            except (LogRaptorOptionError, LogRaptorConfigError, LogFormatError) as err:
+                logger.error('cannot add app %r: %s', name, err)
+            else:
+                apps[name] = app
+
+        if not apps:
+            raise LogRaptorConfigError('no configured application in %r!' % self.confdir)
+        return apps
 
     # Argument properties
     @property
@@ -306,28 +328,6 @@ class LogRaptor(object):
         confdir = self.config.get('main', 'logdir')
         return normalize_path(confdir, base_path=os.path.dirname(self.config.cfgfile))
 
-    def _read_apps(self):
-        """
-        Read the configuration of applications returning a dictionary
-
-        :return: A dictionary with application names as keys and configuration \
-        object as values.
-        """
-        apps = {}
-        for cfgfile in glob.iglob(os.path.join(self.confdir, '*.conf')):
-            name = os.path.basename(cfgfile)[0:-5]
-            try:
-                app = AppLogParser(name, cfgfile, self.args, self.logdir,
-                                   self.fields, self.name_cache, self.report)
-            except (LogRaptorOptionError, LogRaptorConfigError, LogFormatError) as err:
-                logger.error('cannot add app %r: %s', name, err)
-            else:
-                apps[name] = app
-
-        if not apps:
-            raise LogRaptorConfigError('no configured application in %r!' % self.confdir)
-        return apps
-
     @protected_property
     def apps(self):
         """
@@ -371,18 +371,23 @@ class LogRaptor(object):
 
     @protected_property
     def logmap(self):
-        if not self.args.files and (is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO)):
+        if self.args.files:
+            logmap = FileMap(self._time_period, recursive=self.recursive, follow_symlinks=self.follow_symlinks,
+                             include=self.include, exclude=self.exclude, exclude_dir=self.exclude_dir)
+            logmap.add(self.args.files, self._apps.values())
+        elif is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO):
             # No files and input by a pipe
-            return [(sys.stdin, self._apps.values())]
+            logmap = [(sys.stdin, self._apps.values())]
         else:
-            # Build the LogMap instance adding the list of files to be scanned.
-            logmap = FileMap(self._time_period, self.recursive,
-                             self.follow_symlinks, self.include, self.exclude, self.exclude_dir)
-            for app in self._apps.values():
-                logmap.add(self.args.files or app.files, app, app.priority)
-            if len(logmap) > 1 and self.args.with_filename is None:
-                self.args.with_filename = True
-            return logmap
+            # Build the LogMap instance adding the list of files from app config files
+            logmap = FileMap(self._time_period, recursive=self.recursive, follow_symlinks=self.follow_symlinks,
+                             include=self.include, exclude=self.exclude, exclude_dir=self.exclude_dir)
+            for app in sorted(self._apps.values(), key=lambda x: x.priority):
+                logmap.add(app.files, [app])
+
+        if len(logmap) > 1 and self.args.with_filename is None:
+            self.args.with_filename = True
+        return logmap
 
     @protected_property
     def channels(self):
@@ -411,82 +416,8 @@ class LogRaptor(object):
                 raise LogRaptorConfigError('unknown channel type %r' % channel_type)
         return output_channels
 
-    def print_config(self):
-        """
-        Return a formatted text with main configuration parameters.
-        """
-        # Create a dummy report object if necessary
-        channels = [sect.rsplit('_')[0] for sect in self.config.sections(suffix='_channel')]
-        channels.sort()
-        disabled_apps = [app for app in self._config_apps.keys() if app not in self._apps]
-        return u''.join([
-            u"\n--- %s configuration ---" % __package__,
-            u"\nConfiguration file: %s" % self.config.cfgfile,
-            u"\nConfiguration directory: %s" % self.confdir,
-            u"\nConfigured applications: %s" % ', '.join(self._config_apps.keys()),
-            u"\nDisabled applications: %s" % ', '.join(disabled_apps) if disabled_apps else '',
-            u"\nFilter fields: %s" % ', '.join(self.config.options('fields')),
-            u"\nOutput channels: %s" % ', '.join(channels) if channels else u'No channels defined',
-            u"\nReports: %s\n" % ', '.join(
-                [section[:-7] for section in self.config.sections(suffix='_report')]
-            ),
-            ''
-        ])
-
-    def get_run_summary(self, run_stats):
-        """
-        Produce a text summary from run statistics.
-
-        :param run_stats: A dictionary containing run stats
-        :return: Formatted multiline string
-        """
-        run_stats = run_stats.copy()
-        run_stats['files'] = len(run_stats['files'])
-        summary = [
-            u'\n--- %s run summary ---' % __package__,
-            u'Number of processed files: %(files)d',
-            u'Total lines read: %(lines)d',
-            u'Total log events matched: %(matches)d',
-        ]
-        if run_stats['extra_tags']:
-            summary.append(u'WARNING: found unknown extra app tags: %(extra_tags)s')
-        if run_stats['unknown'] > 0:
-            summary.append(u'WARNING: Found %(unknown)d lines with an unknown log format')
-        if run_stats['unparsed'] > 0:
-            summary.append(u'WARNING: Found %(unparsed)d unparsed log lines')
-        if any([app.matches or app.unparsed for app in self.apps.values()]):
-            if self.matcher == 'unruled':
-                summary.append("Applications found (application rules not used):")
-                for app in filter(lambda x: x.matches, self.apps.values()):
-                    summary.append(u'  %s(matches=%d)' % (app.name, app.matches))
-            else:
-                summary.append("Applications found:")
-                for app in filter(lambda x: x.matches or x.unparsed, self.apps.values()):
-                    summary.append(u'  %s(matches=%d, unparsed=%s)' % (app.name, app.matches, app.unparsed))
-        summary.append('\n')
-        return '\n'.join(summary) % run_stats
-
-    def get_matcher_engine(self, parsers=None):
-        return create_matcher(
-            apptags=self.apptags,
-            channels=self.channels,
-            matcher=self.matcher,
-            parsers=parsers,
-            patterns=self.patterns,
-            hosts=self.hosts,
-            time_range=self.time_range,
-            time_period=self.time_period,
-            thread=self.args.thread,
-            invert=self.args.invert,
-            count=self.args.count,
-            files_with_match=self.args.files_with_match,
-            max_count=self.args.max_count,
-            only_matching=self.args.only_matching,
-            quiet=self.args.quiet,
-            before_context=max(self.args.before_context, self.args.context),
-            after_context=max(self.args.after_context, self.args.context),
-            name_cache=self.name_cache,
-        )
+    def __repr__(self):
+        return u"<%s %r at %#x>" % (self.__class__.__name__, self.config.cfgfile, id(self))
 
     def __call__(self, parsers=None):
         """
@@ -498,14 +429,20 @@ class LogRaptor(object):
         self.open()  # Open channels (maybe a dummy operation for some channels)
 
         files = []
-        lines = matches = unparsed = unknown =0
+        lines = matches = unparsed = unknown = 0
         extra_tags = set()
         first_event = last_event = None
 
         # Iter between log files. The iteration use the log files modified between the
         # initial and the final date, skipping the other files.
         for (source, apps) in self._logmap:
-            logger.debug('process %r for apps %r', source, apps)
+            if apps is not None:
+                logger.debug('process %r for apps %r', source, apps)
+            else:
+                if self.args.files:
+                    logger.error("%s: No such file or directory", source)
+                continue
+
             try:
                 result = matcher_engine(source, apps)
                 files.append(str(source))
@@ -561,8 +498,84 @@ class LogRaptor(object):
             self.send_report()
         elif self.args.loglevel and not self.args.quiet:
             self.send_message(self.get_run_summary(run_stats))
-
         return matches > 0
+
+    def get_matcher_engine(self, parsers=None):
+        return create_matcher(
+            apptags=self.apptags,
+            channels=self.channels,
+            matcher=self.matcher,
+            parsers=parsers,
+            patterns=self.patterns,
+            hosts=self.hosts,
+            time_range=self.time_range,
+            time_period=self.time_period,
+            thread=self.args.thread,
+            invert=self.args.invert,
+            count=self.args.count,
+            files_with_match=self.args.files_with_match,
+            max_count=self.args.max_count,
+            only_matching=self.args.only_matching,
+            quiet=self.args.quiet,
+            before_context=max(self.args.before_context, self.args.context),
+            after_context=max(self.args.after_context, self.args.context),
+            name_cache=self.name_cache,
+        )
+
+    def print_config(self):
+        """
+        Return a formatted text with main configuration parameters.
+        """
+        # Create a dummy report object if necessary
+        channels = [sect.rsplit('_')[0] for sect in self.config.sections(suffix='_channel')]
+        channels.sort()
+        disabled_apps = [app for app in self._config_apps.keys() if app not in self._apps]
+        return u''.join([
+            u"\n--- %s configuration ---" % __package__,
+            u"\nConfiguration file: %s" % self.config.cfgfile,
+            u"\nConfiguration directory: %s" % self.confdir,
+            u"\nConfigured applications: %s" % ', '.join(self._config_apps.keys()),
+            u"\nDisabled applications: %s" % ', '.join(disabled_apps) if disabled_apps else '',
+            u"\nFilter fields: %s" % ', '.join(self.config.options('fields')),
+            u"\nOutput channels: %s" % ', '.join(channels) if channels else u'No channels defined',
+            u"\nReports: %s\n" % ', '.join(
+                [section[:-7] for section in self.config.sections(suffix='_report')]
+            ),
+            ''
+        ])
+
+    def get_run_summary(self, run_stats):
+        """
+        Produce a text summary from run statistics.
+
+        :param run_stats: A dictionary containing run stats
+        :return: Formatted multiline string
+        """
+        run_stats = run_stats.copy()
+        run_stats['files'] = len(run_stats['files'])
+        summary = [
+            u'\n--- %s run summary ---' % __package__,
+            u'Number of processed files: %(files)d',
+            u'Total lines read: %(lines)d',
+            u'Total log events matched: %(matches)d',
+        ]
+        if run_stats['extra_tags']:
+            summary.append(u'WARNING: found unknown extra app tags: %(extra_tags)s')
+        if run_stats['unknown'] > 0:
+            summary.append(u'WARNING: Found %(unknown)d lines with an unknown log format')
+        if run_stats['unparsed'] > 0:
+            summary.append(u'WARNING: Found %(unparsed)d unparsed log lines')
+        if any([app.matches or app.unparsed for app in self.apps.values()]):
+            if self.matcher == 'unruled':
+                summary.append("Applications found (application rules not used):")
+                for app in filter(lambda x: x.matches, self.apps.values()):
+                    summary.append(u'  %s(matches=%d)' % (app.name, app.matches))
+            else:
+                summary.append("Applications found:")
+                for app in filter(lambda x: x.matches or x.unparsed, self.apps.values()):
+                    summary.append(u'  %s(matches=%d, unparsed=%s)' % (app.name, app.matches, app.unparsed))
+        summary.append('\n')
+        return '\n'.join(summary) % run_stats
 
     def open(self):
         for channel in self._channels:
