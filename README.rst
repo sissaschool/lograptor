@@ -20,6 +20,8 @@ system logs analysis. The log analysis is based on application or device
 that originated the message, using a set of rules for matching and for
 report composition.
 
+The project uses parts of Epylog under LGPL terms with author's permission.
+
 Please send feedback for bugs, feature requests, suggestions, comments and
 criticism.
 
@@ -35,14 +37,12 @@ Then go into the created directory (lograptor) to install or build the software.
 
 INSTALL
 -------
-Easiest way is to get and install the RPM/DEB package. To installing from
-source uncompact the tarball into a directory.
-Then cd in the directory and type::
+Easiest way is to get and install the RPM/DEB package. To installing from source
+extract the tarball into a directory, and then cd in the base directory and type::
 
   python setup.py build install
 
-Lograptor package and source requires python >= 2.6 (included python 3.0+).
-
+Lograptor package and source requires Python 2.7 or Python 3.3+.
 
 CONFIGURE
 ---------
@@ -59,7 +59,6 @@ For each application a configuration file is needed. Logs of unconfigured
 applications are simply ignored by the program. For more info please see
 "man lograptor-apps".
 
-
 USAGE
 -----
 ::
@@ -73,38 +72,29 @@ processes the log files of the last 24 hours.
 For more information on usage options see "lograptor --help" or
 "man lograptor".
 
-
 LICENSE
 -------
-Copyright (C) 2012-2014 by SISSA
+Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
 
-This program is free software; you can redistribute it and/or
-modify it under the terms of the GNU General Public License
-as published by the Free Software Foundation; either version 2
-of the License, or (at your option) any later version.
+Lograptor is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
 
-This program is distributed in the hope that it will be useful,
+This software is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
-02111-1307, USA.
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+file 'LICENSE' in the root directory of the present distribution
+for more details.
 
 AUTHOR
 ------
 Davide Brunato <brunato@sissa.it>,
 SISSA - Scuola Internazionale Superiore di Studi Avanzati/International School for Advanced Studies, Trieste, ITALY
 
+ROADMAP
+-------
 
-TODO
-----
-
-- Improve the anonymized output feature;
-- Introduce several different levels of details as a program option,
-  in order to produce more or less verbose reports;
-- Try an integration with RFC 3161 timestamp services, in order to
-  mark rotated log files and the produced reports;
-- Maybe examine the opportunity to translate a log format to another format.
+- Adding other log formats and output channels
+- Completing the develop of a library interface
+- Improving the anonymized output feature

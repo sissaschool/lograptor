@@ -7,23 +7,16 @@ This module define the matcher engine of lograptor package.
 #
 # This file is part of lograptor.
 #
-# Lograptor is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
+# Lograptor is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
 #
-# Lograptor is distributed in the hope that it will be useful,
+# This software is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with lograptor; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
-# 02111-1307, USA.
-#
-# See the file 'LICENSE' in the root directory of the present
-# distribution for more details.
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# file 'LICENSE' in the root directory of the present distribution
+# for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
@@ -220,6 +213,8 @@ def create_matcher(apptags, channels, matcher='ruled', parsers=None, hosts=tuple
 
             for line in logfile:
                 line_counter += 1
+                if line[-1] != '\n':
+                    line += '\n'
 
                 ###
                 # Parses the log line. If the parser doesn't match the log format
@@ -318,7 +313,7 @@ def create_matcher(apptags, channels, matcher='ruled', parsers=None, hosts=tuple
                             key=(app, app_thread),
                             filename=logfile_name,
                             line_number=line_counter,
-                            rawlog=line
+                            rawlog=rawlog
                         )
                         unparsed_counter += 1
                         continue
@@ -358,7 +353,7 @@ def create_matcher(apptags, channels, matcher='ruled', parsers=None, hosts=tuple
                         key=(app, app_thread),
                         filename=logfile_name,
                         line_number=line_counter,
-                        rawlog=line
+                        rawlog=rawlog
                     )
 
         try:

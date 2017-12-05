@@ -8,23 +8,16 @@ Command line interface of the lograptor package.
 #
 # This file is part of lograptor.
 #
-# Lograptor is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
+# Lograptor is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
 #
-# Lograptor is distributed in the hope that it will be useful,
+# This software is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with lograptor; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
-# 02111-1307, USA.
-#
-# See the file 'LICENSE' in the root directory of the present
-# distribution for more details.
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# file 'LICENSE' in the root directory of the present distribution
+# for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
@@ -141,12 +134,12 @@ def create_argument_parser():
 
     group = parser.add_argument_group("Scope Selection")
     group.add_argument(
-        "-a", "--apps", metavar='APP[,APP...]', type=comma_separated_string, dest="appnames",
-        default=[], help="process the log lines related to an application"
+        "-a", "--apps", metavar='APP[,APP...]', type=comma_separated_string,
+        default=[], help="process the log lines related to a list of applications"
     )
     group.add_argument(
         "--hosts", metavar="HOSTNAME/IP[,HOSTNAME/IP...]", type=comma_separated_string,
-        dest="hostnames", default=[], help="process the log lines related to an hostname/IP"
+        default=[], help="process the log lines related to an hostname/IP"
     )
     group.add_argument(
         "-F", "--filter", metavar="FIELD=PATTERN[,FIELD=PATTERN...]",
@@ -196,7 +189,7 @@ def create_argument_parser():
     )
     group.add_argument(
         "-v", "--invert-match", action="store_true", dest="invert", default=False,
-        help="invert the sense of regexp matching"
+        help="invert the sense of patterns regexp matching"
     )
     group.add_argument(
         "-w", "--word-regexp", action="store_true", dest="word", default=False,
@@ -336,18 +329,85 @@ def has_void_args(argv):
     n_args = len(argv)
     return n_args == 1 or n_args == 2 and argv[1].startswith('--conf=') or n_args == 3 and argv[1] == '--conf'
 
-#
-# Library and CLI APIs
-def ruled_matcher(args):
-    pass
 
+def lograptor(files, patterns=None, matcher='ruled', cfgfiles=None, apps=None, hosts=None,
+              filters=None, time_period=None, time_range=None, case=False, invert=False,
+              word=False, files_with_match=None, count=False, quiet=False, max_count=0,
+              only_matching=False, line_number=False, with_filename=None,
+              ip_lookup=False, uid_lookup=False, anonymize=False, thread=False,
+              before_context=0, after_context=0, context=0):
+    """
+    Run lograptor with arguments. Experimental feature to use the log processor into
+    generic Python scripts. This part is still under development, do not use.
 
-def unruled_matcher(args):
-    pass
+    :param files: Input files. Each argument can be a file path or a glob pathname.
+    :param patterns: Regex patterns, select the log line if at least one pattern matches.
+    :param matcher: Matcher engine, can be 'ruled' (default), 'unruled' or 'unparsed'.
+    :param cfgfiles: use a specific configuration file.
+    :param apps: process the log lines related to a list of applications.
+    :param hosts: process the log lines related to a list of hosts.
+    :param filters: process the log lines that match all the conditions for rule's field values.
+    :param time_range: process the log lines related to a time range.
+    :param time_period: restrict the search scope to a date or a date interval.
+    :param case: ignore case distinctions, defaults to `False`.
+    :param invert: invert the sense of patterns regexp matching.
+    :param word: force PATTERN to match only whole words.
+    :param files_with_match: get only names of FILEs containing matches, defaults is `False`.
+    :param count: get only a count of matching lines per FILE.
+    :param quiet: suppress all normal output.
+    :param max_count: stop after NUM matches.
+    :param only_matching: get only the part of a line matching PATTERN.
+    :param line_number: get line number with output lines.
+    :param with_filename: get or suppress the file name for each match.
+    :param ip_lookup: translate IP addresses to DNS names.
+    :param uid_lookup: translate numeric UIDs to usernames.
+    :param anonymize: anonymize defined rule's fields value.
+    :param thread: get the lines of logs related to each log line selected.
+    :param before_context: get NUM lines of leading context for each log line selected.
+    :param after_context: get NUM lines of trailing context for each log line selected.
+    :param context: get NUM lines of output context for each log line selected.
+    :return:
+    """
+    cli_parser = create_argument_parser()
+    args = cli_parser.parse_args()
+    args.files = files
+    args.matcher = matcher
+    args.cfgfiles = cfgfiles
+    args.time_period = time_period
+    args.time_range = time_range
+    args.case = case
+    args.invert = invert
+    args.word = word
+    args.files_with_match = files_with_match
+    args.count = count
+    args.quiet = quiet
+    args.max_count = max_count
+    args.only_matching = only_matching
+    args.line_number = line_number
+    args.with_filename = with_filename
+    args.anonymize = anonymize
+    args.ip_lookup = ip_lookup
+    args.uid_lookup = uid_lookup
+    args.thread = thread
+    args.context = context
+    args.after_context = after_context
+    args.before_context = before_context
+    args.patterns = [''] if patterns is None else patterns
 
+    if apps is not None:
+        args.apps = apps
+    if hosts is not None:
+        args.hosts = hosts
+    if filters is not None:
+        args.filters = filters
 
-def unparsed_matcher(args):
-    pass
+    _lograptor = LogRaptor(args)
+    try:
+        retval = _lograptor.__call__()
+    finally:
+        _lograptor.cleanup()
+
+    return retval
 
 
 def main():
@@ -369,7 +429,7 @@ def main():
 
         _lograptor = LogRaptor(args)
         try:
-            retval = _lograptor.process()
+            retval = _lograptor.__call__()
         finally:
             _lograptor.cleanup()
     except (LogRaptorArgumentError, LogRaptorOptionError, LogRaptorConfigError, LogFormatError,
@@ -384,8 +444,8 @@ def main():
     except KeyboardInterrupt:
         print("\nCtrl-C pressed, terminate the process ...")
         sys.exit(1)
-
-    sys.exit(0 if retval else 1)
+    else:
+        sys.exit(0 if retval else 1)
 
 
 if __name__ == '__main__':

@@ -7,23 +7,16 @@ Module to manage lograptor applications
 #
 # This file is part of lograptor.
 #
-# Lograptor is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
+# Lograptor is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
 #
-# Lograptor is distributed in the hope that it will be useful,
+# This software is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with lograptor; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
-# 02111-1307, USA.
-#
-# See the file 'LICENSE' in the root directory of the present
-# distribution for more details.
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# file 'LICENSE' in the root directory of the present distribution
+# for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
@@ -343,19 +336,14 @@ class AppLogParser(object):
         self._last_rule = None      # Last matched rule
         self._last_idx = None       # Last index matched
 
-        self.config = AppConfig(
-            cfgfiles=cfgfile,
-            logdir=logdir,
-            appname=name,
-            host=args.hostnames,
-        )
+        self.config = AppConfig(cfgfiles=cfgfile, appname=name, logdir=logdir)
 
         self.description = self.config.get('main', 'description')
         self.tags = list(set(re.split('\s*,\s*', self.config.get('main', 'tags'))))
         self._files = list(set(re.split('\s*,\s*', self.config.get('main', 'files'))))
         self.enabled = self.config.getboolean('main', 'enabled')
         self.priority = self.config.getint('main', 'priority')
-        self.files = field_multisub(self._files, 'host', args.hostnames or ['*'])
+        self.files = field_multisub(self._files, 'host', args.hosts or ['*'])
 
         logger.debug('app %r run tags: %r', name, self.tags)
         logger.debug('app %r run files: %r', name, self.files)
@@ -363,7 +351,7 @@ class AppLogParser(object):
 
         self.rules = self.parse_rules()
 
-        if self._report is not None:
+        if self._report:
             subreports = [sr.name for sr in self._report.subreports]
             self.report_data = [e for e in self.get_report_data() if e.subreport in subreports]
 

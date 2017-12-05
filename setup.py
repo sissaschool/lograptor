@@ -2,7 +2,24 @@
 """
 Setup script for lograptor
 """
-
+#
+# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
+#
+# This file is part of lograptor.
+#
+# Lograptor is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# file 'LICENSE' in the root directory of the present distribution
+# for more details.
+#
+# @Author Davide Brunato <brunato@sissa.it>
+#
 import glob
 import os
 import os.path
@@ -78,33 +95,31 @@ class my_bdist_rpm(distutils.command.bdist_rpm.bdist_rpm):
         msg = 'moving {0} -> {1}'
         print('cd dist/')
         os.chdir('dist')
-        filelist = glob.glob('*-[1-9].noarch.rpm') + glob.glob('*-[1-9][0-9].noarch.rpm') 
+        files = glob.glob('*-[1-9].noarch.rpm') + glob.glob('*-[1-9][0-9].noarch.rpm')
 
         distro = platform.linux_distribution(full_distribution_name=False)
         distro_name = distro[0].lower()
-        if distro_name in ['centos', 'redhat']:
-            tag = '.el' + distro[1].split('.')[0]
-        elif distro_name == 'fedora':
-            tag = '.fc' + distro[1].split('.')[0]
-        elif distro_name == 'ubuntu':
-            tag = 'ubuntu1'
-        
         if distro_name in ['centos', 'redhat', 'fedora']:
-            for filename in filelist:
-                newname = filename[:-11] + tag + filename[-11:]
-                print(msg.format(filename, newname))
-                os.rename(filename, newname)
+            if distro_name == 'fedora':
+                tag = '.fc' + distro[1].split('.')[0]
+            else:
+                tag = '.el' + distro[1].split('.')[0]
+            for filename in files:
+                new_name = filename[:-11] + tag + filename[-11:]
+                print(msg.format(filename, new_name))
+                os.rename(filename, new_name)
+
         elif distro_name in ['ubuntu', 'debian']:
-            for filename in filelist:
+            for filename in files:
                 print('alien -k {0}'.format(filename))
                 os.system('/usr/bin/alien -k {0}'.format(filename))
                 print('removing {0}'.format(filename))
                 os.unlink(filename)
                 if distro[0] == 'Ubuntu':
                     filename = filename[:-11].replace('-', '_', 1) + '_all.deb'
-                    newname = filename[:-8] + tag + '_all.deb'
-                    print(msg.format(filename, newname))
-                    os.rename(filename, newname)
+                    new_name = filename[:-8] + 'ubuntu1_all.deb'
+                    print(msg.format(filename, new_name))
+                    os.rename(filename, new_name)
         
 
 class my_install(distutils.command.install.install):
@@ -166,7 +181,7 @@ setup(
         'Environment :: Console',
         'Intended Audience :: System Administrators',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)',
+        'License :: OSI Approved :: GNU Lesser General Public License v2.1 or later (LGPLv2.1+)',
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python',
         'Topic :: Internet :: Log Analysis',

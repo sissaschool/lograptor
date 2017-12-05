@@ -17,6 +17,8 @@ The program can parse logs written in RFC 3164 and RFC 5424 formats. Lograptor r
 Python >= 2.7, and is provided with a base configuration for a set of well known applications.
 You can easily add new applications or new rules to match other unparsed logs.
 
+The project uses parts of Epylog under LGPL terms with author's permission.
+
 .. toctree::
    :maxdepth: 1
 

@@ -3,25 +3,20 @@
 This module contain core classes and methods for lograptor package.
 """
 #
+# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
+#
 # This file is part of lograptor.
 #
-# Lograptor is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
+# Lograptor is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
 #
-# Lograptor is distributed in the hope that it will be useful,
+# This software is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with lograptor; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
-# 02111-1307, USA.
-#
-# See the file 'LICENSE' in the root directory of the present
-# distribution for more details.
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# file 'LICENSE' in the root directory of the present distribution
+# for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
@@ -272,7 +267,7 @@ class LogRaptor(object):
 
     @protected_property
     def hosts(self):
-        hosts = [re.compile(fnmatch.translate(host)) for host in set(self.args.hostnames or ['*'])]
+        hosts = [re.compile(fnmatch.translate(host)) for host in set(self.args.hosts or ['*'])]
         logger.debug('hosts to be processed: %r', hosts)
         return hosts
 
@@ -340,15 +335,15 @@ class LogRaptor(object):
         """
         logger.debug("initialize applications ...")
         enabled = None
-        appnames = self.args.appnames or self._config_apps.keys()
-        unknown = set(appnames) - set(self._config_apps.keys())
+        apps = self.args.apps or self._config_apps.keys()
+        unknown = set(apps) - set(self._config_apps.keys())
         if unknown:
             raise LogRaptorArgumentError("--apps", "not found apps %r" % list(unknown))
 
-        if appnames or enabled is None:
-            return {k: v for k, v in self._config_apps.items() if k in appnames}
+        if apps or enabled is None:
+            return {k: v for k, v in self._config_apps.items() if k in apps}
         else:
-            return {k: v for k, v in self._config_apps.items() if k in appnames and v.enabled == enabled}
+            return {k: v for k, v in self._config_apps.items() if k in apps and v.enabled == enabled}
 
     @protected_property
     def apptags(self):
@@ -356,13 +351,13 @@ class LogRaptor(object):
         Map from log app-name to an application.
         """
         logger.debug("populate tags map ...")
-        appnames = self._apps.keys()
-        unknown = set(appnames)
+        apps = self._apps.keys()
+        unknown = set(apps)
         unknown.difference_update(self._config_apps.keys())
         if unknown:
             raise ValueError("unknown apps: %r" % list(unknown))
 
-        apps = [v for v in self._config_apps.values() if v.name in appnames]
+        apps = [v for v in self._config_apps.values() if v.name in apps]
         tagmap = {}
         for app in sorted(apps, key=lambda x: (x.priority, x.name)):
             for tag in app.tags:
@@ -431,7 +426,10 @@ class LogRaptor(object):
             u"\nConfigured applications: %s" % ', '.join(self._config_apps.keys()),
             u"\nDisabled applications: %s" % ', '.join(disabled_apps) if disabled_apps else '',
             u"\nFilter fields: %s" % ', '.join(self.config.options('fields')),
-            u"\nOutput channels: %s\n" % ', '.join(channels) if channels else u'No channels defined',
+            u"\nOutput channels: %s" % ', '.join(channels) if channels else u'No channels defined',
+            u"\nReports: %s\n" % ', '.join(
+                [section[:-7] for section in self.config.sections(suffix='_report')]
+            ),
             ''
         ])
 
@@ -490,7 +488,7 @@ class LogRaptor(object):
             name_cache=self.name_cache,
         )
 
-    def process(self, parsers=None):
+    def __call__(self, parsers=None):
         """
         Log processing main routine. Iterate over the log files calling
         the processing internal routine for each file.
@@ -506,10 +504,10 @@ class LogRaptor(object):
 
         # Iter between log files. The iteration use the log files modified between the
         # initial and the final date, skipping the other files.
-        for (source, applist) in self._logmap:
-            logger.debug('process %r for apps %r', source, applist)
+        for (source, apps) in self._logmap:
+            logger.debug('process %r for apps %r', source, apps)
             try:
-                result = matcher_engine(source, applist)
+                result = matcher_engine(source, apps)
                 files.append(str(source))
 
                 lines += result.lines
