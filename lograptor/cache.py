@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-This module contains class to handle caching for lograptor's
-application class instances.
+This module contains class to handle lograptor's lookup cache.
 """
 #
 # Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
@@ -24,22 +23,18 @@ application class instances.
 import re
 import socket
 import string
-from itertools import chain, repeat
-from collections import OrderedDict, deque
 
 try:
     import pwd
 except ImportError:
     pwd = None
 
-from .utils import build_dispatcher
-
 
 class LookupCache(object):
     """
     Name cache for names, that maps IPs to DNS names, UIDs to usernames.
     The names can be mapped into random generated values for obfuscate
-    the input names, maintaining a correspondance for the entire process.
+    the input names, maintaining a correspondence for the entire process.
     """
 
     def __init__(self, args, config):
@@ -183,110 +178,3 @@ class LookupCache(object):
 
         self.uidsmap[uid] = name
         return name
-
-
-class LineCache(deque):
-
-    def __init__(self, channels, before_context, after_context):
-        super(LineCache, self).__init__(maxlen=before_context)
-        self.channels = channels
-        self.before_context = before_context
-        self.after_context = after_context
-        self.last_line = 0
-        self.context_until = 0
-        self.send_selected = build_dispatcher(channels, 'send_selected')
-        self.send_context = build_dispatcher(channels, 'send_context')
-        self.send_separator = chain([lambda *args: None], repeat(build_dispatcher(channels, 'send_separator')))
-
-    def register_selected(self, filename, line_number, match=None, **kwargs):
-        next_line = line_number - len(self)
-        if self.last_line == 0 or (next_line - self.last_line) > 1:
-            next(self.send_separator)()
-        for n_line in range(line_number - len(self), line_number):
-            self.send_context(
-                filename=filename,
-                line_number=n_line,
-                rawlog=self.popleft(),
-                match=match
-            )
-        self.last_line = line_number
-        self.context_until = line_number + self.after_context
-        self.send_selected(filename=filename, line_number=line_number, match=match, **kwargs)
-
-    def register_context(self, line_number, rawlog, **kwargs):
-        if self.after_context and self.context_until >= line_number:
-            self.send_context(line_number=line_number, rawlog=rawlog, **kwargs)
-            self.last_line = line_number
-        elif self.before_context:
-            self.append(rawlog)
-
-    def reset(self):
-        self.last_line = 0
-        self.context_until = 0
-        self.clear()
-
-
-class ThreadsCache(OrderedDict):
-    """
-    A cache for multiple threads.
-    """
-    def __init__(self, channels, before_context, after_context, max_threads=1000):
-        super(ThreadsCache, self).__init__()
-        self.channels = channels
-        if before_context <= 0:
-            raise ValueError("before_context must be a positive integer")
-        if after_context <= 0:
-            raise ValueError("after_context must be a positive integer")
-        self.before_context = before_context
-        self.after_context = after_context
-        self.context = before_context + after_context + 1
-        self.max_threads = max_threads
-        self.send_selected = build_dispatcher(channels, 'send_selected')
-        self.send_context = build_dispatcher(channels, 'send_context')
-        self.send_separator = chain([lambda *args: None], repeat(build_dispatcher(channels, 'send_separator')))
-
-    def flush(self, key):
-        line_cache, matched, after_context = self[key]
-        if not matched:
-            del self[key]
-            return
-
-        next(self.send_separator)()
-        for entry in line_cache:
-            if entry['match']:
-                self.send_selected(**entry)
-            else:
-                self.send_context(**entry)
-        del self[key]
-
-    def register_selected(self, key, **kwargs):
-        try:
-            line_cache, matched, after_context = self[key]
-        except KeyError:
-            line_cache = deque()
-            line_cache.append(kwargs)
-            self[key] = (line_cache, True, 0)
-        else:
-            if line_cache.maxlen is not None:
-                line_cache = deque()
-            del self[key]
-            line_cache.append(kwargs)
-            self[key] = (line_cache, True, 0)
-
-    def register_context(self, key, **kwargs):
-        try:
-            line_cache, matched, after_context = self[key]
-        except KeyError:
-            line_cache = deque(maxlen=self.before_context)
-            line_cache.append(kwargs)
-            self[key] = (line_cache, False, 0)
-        else:
-            if after_context >= self.after_context:
-                self.flush(key)
-            else:
-                del self[key]
-                line_cache.append(kwargs)
-                self[key] = (line_cache, matched, 0 if not matched else after_context + 1)
-
-    def reset(self):
-        self.clear()

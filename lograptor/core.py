@@ -39,6 +39,7 @@ from .application import AppLogParser
 from .matcher import create_matcher
 from .filemap import FileMap
 from .cache import LookupCache
+from .dispatchers import UnbufferedDispatcher, LineBufferDispatcher, ThreadedDispatcher
 from .report import Report
 from .channels import TermChannel, MailChannel, FileChannel
 from .timedate import get_datetime_interval
@@ -191,7 +192,7 @@ class LogRaptor(object):
                 handler = logging.StreamHandler()
             else:
                 try:
-                    handler = logging.FileHandler(self.config.getstr('main', 'logfile'))
+                    handler = logging.FileHandler(self.config.get('main', 'logfile'))
                 except (IOError, OSError, TypeError, AttributeError):
                     handler = logging.StreamHandler()
             logger.addHandler(handler)
@@ -419,19 +420,24 @@ class LogRaptor(object):
     def __repr__(self):
         return u"<%s %r at %#x>" % (self.__class__.__name__, self.config.cfgfile, id(self))
 
-    def __call__(self, parsers=None):
+    def __call__(self, dispatcher=None, parsers=None):
         """
         Log processing main routine. Iterate over the log files calling
         the processing internal routine for each file.
         """
         logger.info('processing log files ...')
-        matcher_engine = self.get_matcher_engine(parsers=parsers)
-        self.open()  # Open channels (maybe a dummy operation for some channels)
+        if dispatcher is None:
+            dispatcher = self.create_dispatcher()
+
+        matcher_engine = self.create_matcher(dispatcher, parsers=parsers)
+        dispatcher.open()
 
         files = []
         lines = matches = unparsed = unknown = 0
         extra_tags = set()
         first_event = last_event = None
+        if self.args.report:
+            self.report.cleanup()
 
         # Iter between log files. The iteration use the log files modified between the
         # initial and the final date, skipping the other files.
@@ -495,17 +501,38 @@ class LogRaptor(object):
         if matches > 0 and self.report:
             self.report.set_stats(run_stats)
             self._report.make(self._apps)
-            self.send_report()
+            formats = list(set([fmt for channel in self._channels for fmt in channel.formats]))
+            report_parts = self._report.get_report_parts(self._apps, formats)
+            dispatcher.send_report(report_parts)
         elif self.args.loglevel and not self.args.quiet:
-            self.send_message(self.get_run_summary(run_stats))
+            dispatcher.send_message(self.get_run_summary(run_stats))
+        dispatcher.close()
         return matches > 0
 
-    def get_matcher_engine(self, parsers=None):
+    def create_dispatcher(self):
+        """
+        Return a dispatcher for configured channels.
+        """
+        before_context = max(self.args.before_context, self.args.context)
+        after_context = max(self.args.after_context, self.args.context)
+
+        if self.args.files_with_match is not None or self.args.count or self.args.only_matching or self.args.quiet:
+            # Sending of log lines disabled by arguments
+            return UnbufferedDispatcher(self._channels)
+        elif before_context == 0 and after_context == 0:
+            # Don't need line buffering
+            return UnbufferedDispatcher(self._channels)
+        elif self.args.thread:
+            return ThreadedDispatcher(self._channels, before_context, after_context)
+        else:
+            return LineBufferDispatcher(self._channels, before_context, after_context)
+
+    def create_matcher(self, dispatcher, parsers=None):
         return create_matcher(
-            apptags=self.apptags,
-            channels=self.channels,
-            matcher=self.matcher,
+            dispatcher=dispatcher,
             parsers=parsers,
+            apptags=self.apptags,
+            matcher=self.matcher,
             patterns=self.patterns,
             hosts=self.hosts,
             time_range=self.time_range,
@@ -517,8 +544,6 @@ class LogRaptor(object):
             max_count=self.args.max_count,
             only_matching=self.args.only_matching,
             quiet=self.args.quiet,
-            before_context=max(self.args.before_context, self.args.context),
-            after_context=max(self.args.after_context, self.args.context),
             name_cache=self.name_cache,
         )
 
@@ -576,23 +601,3 @@ class LogRaptor(object):
                     summary.append(u'  %s(matches=%d, unparsed=%s)' % (app.name, app.matches, app.unparsed))
         summary.append('\n')
         return '\n'.join(summary) % run_stats
-
-    def open(self):
-        for channel in self._channels:
-            channel.open()
-
-    def send_message(self, message):
-        for channel in self._channels:
-            channel.send_message(message)
-
-    def send_report(self):
-        formats = list(set([fmt for channel in self._channels for fmt in channel.formats]))
-        report_parts = self.report.get_report_parts(self._apps, formats)
-        for channel in self._channels:
-            channel.send_report(report_parts)
-
-    def cleanup(self):
-        for channel in self._channels:
-            channel.close()
-        if self.args.report:
-            self.report.cleanup()

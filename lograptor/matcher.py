@@ -27,8 +27,7 @@ import logging
 from collections import namedtuple
 
 from .logparsers import CycleParsers
-from .utils import dummy, build_dispatcher, open_resource
-from .cache import LineCache, ThreadsCache
+from .utils import open_resource
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +140,7 @@ def create_search_function(invert, only_matching):
 
 host_cache = set()
 
+
 def has_host_match(log_data, hosts):
     """
     Match the data with a list of hostname patterns. If the log line data
@@ -157,10 +157,10 @@ def has_host_match(log_data, hosts):
     return True
 
 
-def create_matcher(apptags, channels, matcher='ruled', parsers=None, hosts=tuple(), time_range=None,
+def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(), time_range=None,
                    time_period=(None, None), patterns=tuple(), invert=False, count=False,
                    files_with_match=None, max_count=0, only_matching=False, quiet=False,
-                   thread=False, before_context=0, after_context=0, name_cache=None):
+                   thread=False, name_cache=None):
     """
     Create a matcher engine.
     :return: A matcher function.
@@ -172,19 +172,8 @@ def create_matcher(apptags, channels, matcher='ruled', parsers=None, hosts=tuple
     register_log_lines = not (quiet or count or files_with_match is not None)
     start_dt, end_dt = get_mktime_period(time_period)
     pattern_search = create_search_function(invert, only_matching)
-
-    # Define functions for processing of the context.
-    if not register_log_lines or not (before_context + after_context) or only_matching:
-        register_selected = build_dispatcher(channels, 'send_selected')
-        register_context = context_reset = dummy
-    else:
-        if thread:
-            context_cache = ThreadsCache(channels, before_context, after_context)
-        else:
-            context_cache = LineCache(channels, before_context, after_context)
-        register_selected = context_cache.register_selected
-        register_context = context_cache.register_context
-        context_reset = context_cache.reset
+    dispatch_selected = dispatcher.dispatch_selected
+    dispatch_context = dispatcher.dispatch_context
 
     def process_logfile(source, apps):
         first_event = None
@@ -199,7 +188,7 @@ def create_matcher(apptags, channels, matcher='ruled', parsers=None, hosts=tuple
         matching_counter = 0
         unparsed_counter = 0
         extra_tags = set()
-        context_reset()
+        dispatcher.reset()
 
         with open_resource(source) as logfile:
             # Set counters and status
@@ -242,7 +231,7 @@ def create_matcher(apptags, channels, matcher='ruled', parsers=None, hosts=tuple
                             app = log_parser.app or get_app(prev_data, apptags, extra_tags) or source_app
                             app.increase_last(repeat)
                             app.matches += 1
-                            register_context(
+                            dispatch_context(
                                 key=(app, app_thread),
                                 filename=logfile_name,
                                 line_number=line_counter,
@@ -289,14 +278,14 @@ def create_matcher(apptags, channels, matcher='ruled', parsers=None, hosts=tuple
                 # Search log line with provided not-empty pattern(s)
                 pattern_matched, match, rawlog = pattern_search(line, patterns)
                 if not pattern_matched and not thread:
-                    register_context(filename=logfile_name, line_number=line_counter, rawlog=rawlog)
+                    dispatch_context(filename=logfile_name, line_number=line_counter, rawlog=rawlog)
                     continue
 
                 ###
                 # Get the app from parser or from the app-tag extracted from the log line.
                 app = log_parser.app or get_app(log_data, apptags, extra_tags) or source_app
                 if app is None:
-                    # TODO: check the logparser class if the appname maybe None!!
+                    # TODO: check the log parser class if the appname maybe None!!
                     continue
 
                 ###
@@ -307,9 +296,9 @@ def create_matcher(apptags, channels, matcher='ruled', parsers=None, hosts=tuple
                         unparsed_counter += 1
                         continue
                     if map_dict:
-                        line = name_cache.match_to_string(log_match, log_parser.parser.groupindex, map_dict)
+                        rawlog = name_cache.match_to_string(log_match, log_parser.parser.groupindex, map_dict)
                     if (not (app_matched ^ unparsed)) or (app_matched and not has_full_match and app.has_filters):
-                        register_context(
+                        dispatch_context(
                             key=(app, app_thread),
                             filename=logfile_name,
                             line_number=line_counter,
@@ -340,7 +329,7 @@ def create_matcher(apptags, channels, matcher='ruled', parsers=None, hosts=tuple
                     if files_with_match:
                         break
                     if register_log_lines:
-                        register_selected(
+                        dispatch_selected(
                             key=(app, app_thread),
                             filename=logfile_name,
                             line_number=line_counter,
@@ -349,7 +338,7 @@ def create_matcher(apptags, channels, matcher='ruled', parsers=None, hosts=tuple
                             match=match
                         )
                 elif register_log_lines and not only_matching:
-                    register_context(
+                    dispatch_context(
                         key=(app, app_thread),
                         filename=logfile_name,
                         line_number=line_counter,
@@ -357,16 +346,16 @@ def create_matcher(apptags, channels, matcher='ruled', parsers=None, hosts=tuple
                     )
 
         try:
-            for key in list(context_cache.keys()):
-                context_cache.flush(key)
+            for key in list(dispatcher.keys()):
+                dispatcher.flush(key)
         except (NameError, AttributeError):
             pass
 
         # If count option is enabled then register only the number of matched lines.
         if files_with_match and matching_counter or files_with_match is False and not matching_counter:
-            register_selected(filename=logfile.name)
+            dispatch_selected(filename=logfile.name)
         elif count:
-            register_selected(filename=logfile.name, counter=matching_counter)
+            dispatch_selected(filename=logfile.name, counter=matching_counter)
 
         return MatcherResult(
             lines=line_counter,

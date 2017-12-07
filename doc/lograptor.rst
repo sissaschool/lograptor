@@ -195,6 +195,10 @@ General Output Control
     Quiet; do not write anything  to standard output. Exit immediately with zero
     status if any match  is found, even if an error was detected.
 
+.. option:: -s, --no-messages
+
+    Suppress error messages about nonexistent or unreadable files. Equivalent to -d 0.
+
 
 Output Data Control
 -------------------

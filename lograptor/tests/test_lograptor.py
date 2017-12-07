@@ -25,7 +25,6 @@ import os
 import re
 import sys
 import pytest
-import tarfile
 
 # Move into the test directory and adds the path of the package that contains the test.
 os.chdir(os.path.dirname(__file__))
@@ -64,9 +63,6 @@ class TestLograptor(object):
             args.patterns.append(pat.strip('\''))
 
         try:
-            print(args)
-            import pdb
-            pdb.set_trace()
             _lograptor = lograptor.LogRaptor(args)
             try:
                 retval = _lograptor.__call__()
@@ -85,14 +81,15 @@ class TestLograptor(object):
             print("\nCtrl-C pressed, terminate the process ...")
             sys.exit(1)
         else:
+            print("RETVAL: ", retval)
             return 0 if retval else 1
 
     @pytest.mark.unparsed
     def test_unparsed(self, capsys):
         tests = (
-            "-U -d 0 -c --apps postfix -e '' samples/postfix.log",
-            "-U -d 0 -c --apps dovecot -e '' samples/dovecot.log",
-            "-U -d 0 -c --apps sshd -e '' samples/sshd.log",
+            "-U -s -c --apps postfix -e '' samples/postfix.log",
+            "-U -s -c --apps dovecot -e '' samples/dovecot.log",
+            "-U -s -c --apps sshd -e '' samples/sshd.log",
         )
         for cmd_line in tests:
             out, err = capsys.readouterr()

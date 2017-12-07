@@ -228,6 +228,10 @@ def create_argument_parser():
     group.add_argument(
         "-q", "--quiet", action="store_true", default=False, help="suppress all normal output"
     )
+    group.add_argument(
+        "-s", "--no-messages", action="store_const", const=0, dest='loglevel',
+        help="suppress error messages (equivalent to -d 0)"
+    )
 
     group = parser.add_argument_group("Output Data Control")
     group.add_argument(
@@ -402,12 +406,7 @@ def lograptor(files, patterns=None, matcher='ruled', cfgfiles=None, apps=None, h
         args.filters = filters
 
     _lograptor = LogRaptor(args)
-    try:
-        retval = _lograptor.__call__()
-    finally:
-        _lograptor.cleanup()
-
-    return retval
+    return _lograptor()
 
 
 def main():
@@ -428,10 +427,7 @@ def main():
             sys.exit(0)
 
         _lograptor = LogRaptor(args)
-        try:
-            retval = _lograptor.__call__()
-        finally:
-            _lograptor.cleanup()
+        retval = _lograptor()
     except (LogRaptorArgumentError, LogRaptorOptionError, LogRaptorConfigError, LogFormatError,
             FileMissingError, FileAccessError) as err:
         if 'stdout' not in args.channels:

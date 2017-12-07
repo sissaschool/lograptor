@@ -82,7 +82,7 @@ class grep_colors:
 GREP_COLORS = grep_colors(os.environ.get('GREP_COLORS'))
 
 
-class BaseChannel(object):
+class AbstractChannel(object):
     """
     Abstract base class for lograptor's channels.
     """
@@ -143,7 +143,7 @@ class BaseChannel(object):
         return
 
 
-class TermChannel(BaseChannel):
+class TermChannel(AbstractChannel):
     """
     Terminal capable Output Channel
     """
@@ -245,7 +245,7 @@ class TermChannel(BaseChannel):
                     self._channel.write('\n')
 
 
-class NoTermChannel(BaseChannel):
+class NoTermChannel(AbstractChannel):
 
     __metaclass__ = abc.ABCMeta
 
