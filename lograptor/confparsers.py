@@ -148,15 +148,7 @@ class EnvConfigParser(RawConfigParser):
             return self._interpolation.before_get(self, section, option, value, self.options(section))
 
     def _get(self, section, conv, option, **kwargs):
-        default = self.get_default(section, option)
-        value = conv(self.get(section, option))
-        if default is None or type(default) is type(value):
-            return value
-        else:
-            raise TypeError(' '.join([
-                "wrong type for option ", repr(option), " in section ",
-                repr(section), ", ", repr(type(default)), "expected."
-            ]))
+        return conv(self.get(section, option))
 
     def read_dict(self, dictionary, source='<dict>'):
         for section, options in dictionary.items():

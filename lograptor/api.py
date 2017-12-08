@@ -30,7 +30,8 @@ import sre_constants
 from .core import LogRaptor
 from .info import __version__, __description__
 from .exceptions import (
-    LogRaptorConfigError, LogRaptorOptionError, LogFormatError, FileMissingError, FileAccessError, LogRaptorArgumentError
+    LogRaptorConfigError, LogRaptorOptionError, LogFormatError, FileMissingError,
+    FileAccessError, LogRaptorArgumentError
 )
 from .timedate import get_datetime_interval, parse_date_period, parse_last_period, TimeRange
 
@@ -50,7 +51,8 @@ class StoreOptionAction(argparse.Action):
             default=None,
             type=str,
             required=required,
-            help=help
+            help=help,
+            metavar=metavar,
         )
 
     def __call__(self, parser, namespace, values, option_string=None):
@@ -423,7 +425,7 @@ def main():
             # or only --conf argument) then prints the configuration and exit.
             args.patterns.append('')
             _lograptor = LogRaptor(args)
-            print(_lograptor.print_config())
+            print(_lograptor.get_config())
             sys.exit(0)
 
         _lograptor = LogRaptor(args)

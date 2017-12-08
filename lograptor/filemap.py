@@ -98,8 +98,8 @@ class GlobDict(MutableMapping):
     def iglob(self, path):
         for filename in glob.iglob(path):
             if self.is_included(filename):
-                values = [v for k, v in self._data.items() if fnmatch.fnmatch(filename, k)]
-                yield filename, values
+                values = {app for k, v in self._data.items() if fnmatch.fnmatch(filename, k) for app in v}
+                yield filename, list(values)
 
     def glob(self, path):
         return list(self.iglob(path))
@@ -202,12 +202,12 @@ class FileMap(object):
             check = st_mtime >= self.start_dt and st_ctime <= self.end_dt
 
         if not check:
-            logger.warning("file %r not in datetime period!", path)
+            logger.info("file %r not in datetime period!", path)
         return check
              
     def add(self, files, items):
         """
-        Add a list of files with a reference to a name and a priority.
+        Add a list of files with a reference to a list of objects.
         """
         if isinstance(files, (str, bytes)):
             files = iter([files])

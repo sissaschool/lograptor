@@ -122,14 +122,6 @@ class AppRule(object):
         if idx is not None:
             self.results[idx] += k
 
-    def is_used(self):
-        return (
-            True or
-            not self.args.filters or self.filter_keys or
-            self.args.thread and 'thread' in self.regexp.groupindex or
-            self.used_by_report or self.args.unparsed
-        )
-
     def total_events(self, cond, valfld=None):
         """
         Return total number of events in the rule'result set. A condition
@@ -319,7 +311,7 @@ class AppLogParser(object):
         :param name_cache: Optional name cache (--ip-lookup/--uid-lookup/--anonymize options)
         :param report: Optional report (--report option)
         """
-        logger.info('initialize app %r', name)
+        logger.debug('initialize app %r', name)
 
         self.name = name            # Application name
         self.cfgfile = cfgfile      # App configuration file
@@ -355,7 +347,6 @@ class AppLogParser(object):
             subreports = [sr.name for sr in self._report.subreports]
             self.report_data = [e for e in self.get_report_data() if e.subreport in subreports]
 
-        self.rules = [rule for rule in self.rules if rule.is_used()]  # Purge unused rules
         self.has_filters = any([rule.filter_keys for rule in self.rules])
 
         if self.has_filters:
@@ -366,7 +357,7 @@ class AppLogParser(object):
         else:
             for rule in self.rules:
                 rule.full_match = True
-            logger.info('created %d rules for app %r', len(self.rules), name)
+        logger.info('initialized app %r with %d pattern rules', name, len(self.rules))
 
     def __repr__(self):
         return u"<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
@@ -401,7 +392,7 @@ class AppLogParser(object):
 
         rules = []
         for option, value in rule_options:
-            pattern = value.replace('\n', '')  # Strip newlines for multiline declarations
+            pattern = value.replace('\n', '')  # Strip newlines for multi-line declarations
             if not self.args.filters:
                 # No filters case: substitute the filter fields with the corresponding patterns.
                 pattern = string.Template(pattern).safe_substitute(self.fields)
@@ -419,7 +410,7 @@ class AppLogParser(object):
 
     def increase_last(self, k):
         """
-        Increase the counter of the last mached rule by k.
+        Increase the counter of the last matched rule by k.
         """
         rule = self._last_rule
         if rule is not None:
@@ -431,8 +422,8 @@ class AppLogParser(object):
         Return a tuple with this data:
 
             Element #0 (app_matched): True if a rule match, False otherwise;
-            Element #1 (has_full_match): True if a rule match and is a filter or the app
-                has not filters; False if a rule match but is not a filter;
+            Element #1 (has_full_match): True if a rule match and is a filter or the
+                app has not filters; False if a rule match but is not a filter;
                 None otherwise;
             Element #2 (app_thread): Thread value if a rule match and it has a "thread"
                 group, None otherwise;
@@ -473,9 +464,6 @@ class AppLogParser(object):
                         rule.add_result(values)
                     return True, rule.full_match, None, map_dict
 
-        # No rule match: the application log message is unparsable
-        # by enabled rules.
+        # No rule match: the application log message is not parsable with enabled rules.
         self._last_rule = None
-        if not self.has_filters:
-            self.unparsed += 1
         return False, None, None, None

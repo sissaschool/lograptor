@@ -181,6 +181,19 @@ def exact_sub(s, mapping):
     return s, fields
 
 
+def safe_expand(template, mapping):
+    """
+    Safe string template expansion. Raises an error if the provided substitution mapping has circularities.
+    """
+    for _ in range(len(mapping) + 1):
+        _template = template
+        template = string.Template(template).safe_substitute(mapping)
+        if template == _template:
+            return template
+    else:
+        raise ValueError("circular mapping provided!")
+
+
 def results_to_string(results):
     return u', '.join([
         u'%s(%s)' % (key, results[key])

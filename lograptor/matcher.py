@@ -24,7 +24,7 @@ import os
 import time
 import datetime
 import logging
-from collections import namedtuple
+from collections import namedtuple, Counter
 
 from .logparsers import CycleParsers
 from .utils import open_resource
@@ -40,8 +40,10 @@ MONTHMAP = {
     '07': '07', '08': '08', '09': '09', '10': '10', '11': '11', '12': '12'
 }
 
+NILVALUE = '-'  # RFC-5424 NILVALUE
+
 MatcherResult = namedtuple(
-    'MatcherResult', "lines matches unknown extra_tags unparsed first_event, last_event"
+    'MatcherResult', "lines matches unknown extra_tags first_event, last_event"
 )
 
 
@@ -71,29 +73,38 @@ def get_mktime_period(time_period):
         return start_dt, time.mktime((2222, 2, 2, 0, 0, 0, 0, 0, 0))
 
 
-def get_app(log_data, tags, extra_tags):
+def get_app(log_data, apps, tags, extra_tags):
     apptag = getattr(log_data, 'apptag', None)
-    if apptag is not None:
-        # Find app using the app-tag
-        try:
-            tag_apps = tags[apptag]
-        except KeyError:
-            tag_apps = [
-                app for tag, _apps in tags.items() if apptag.startswith(tag)
-                for app in _apps
-            ]
-        if not tag_apps:
-            # Tag unmatched, skip the line
-            extra_tags.add(apptag)
-            return
-        elif len(tag_apps) == 1:
-            return tag_apps[0]
+    if apptag is None or apptag == NILVALUE or apptag.isdigit():
+        # The app-tag is missing or has not a significative value
+        for app in apps:
+            if app.match_rules(log_data)[0]:
+                return app
+        return
+
+    # Find app using the app-tag
+    try:
+        tag_apps = tags[apptag]
+    except KeyError:
+        tag_apps = [
+            app for tag, _apps in tags.items() if apptag.startswith(tag)
+            for app in _apps
+        ]
+
+    if not tag_apps:
+        # Tag unmatched, skip the line
+        extra_tags.update([apptag])
+        return
+    elif len(tag_apps) == 1:
+        return tag_apps[0]
+    else:
+        # Match the tag using app's rules
+        for app in tag_apps:
+            if app.match_rules(log_data)[0]:
+                return app
         else:
-            # Match the tab using app's rules
-            for app in tag_apps:
-                rule_match, full_match, app_thread, map_dict = app.match_rules(log_data)
-                if rule_match:
-                    return app
+            # Return the first app (the line will be registered as unparsed)
+            return tag_apps[0]
 
 
 def create_search_function(invert, only_matching):
@@ -168,7 +179,7 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
     parsers = CycleParsers(parsers)
     max_matches = 1 if quiet else max_count
     use_app_rules = matcher != 'unruled'
-    unparsed = matcher == 'unparsed'
+    select_unparsed = matcher == 'unparsed'
     register_log_lines = not (quiet or count or files_with_match is not None)
     start_dt, end_dt = get_mktime_period(time_period)
     pattern_search = create_search_function(invert, only_matching)
@@ -176,18 +187,15 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
     dispatch_context = dispatcher.dispatch_context
 
     def process_logfile(source, apps):
+        log_parser = next(parsers)
         first_event = None
         last_event = None
         app_thread = None
-        prev_data = None
-        log_parser = next(parsers)
-        source_app = apps[0] if len(apps) == 1 else None
-
+        selected_data = None
         line_counter = 0
         unknown_counter = 0
-        matching_counter = 0
-        unparsed_counter = 0
-        extra_tags = set()
+        selected_counter = 0
+        extra_tags = Counter()
         dispatcher.reset()
 
         with open_resource(source) as logfile:
@@ -206,29 +214,30 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
                     line += '\n'
 
                 ###
-                # Parses the log line. If the parser doesn't match the log format
-                # then try another available parser. If any the change the active parser.
+                # Parses the line and extracts the log data
                 log_match = log_parser.match(line)
                 if log_match is None:
+                    # The current parser doesn't match: try another available parser.
                     next_parser, log_match = parsers.detect(line)
                     if log_match is not None:
                         log_parser = next_parser
+                    elif line_counter == 1:
+                        logger.warning("the file '{}' has an unknown format, skip ...".format(logfile_name))
+                        break
                     else:
                         unknown_counter += 1
                         continue
-
-                # Extract log data tuple from named matching groups
                 log_data = log_parser.get_data(log_match)
 
                 ###
                 # Process last event repetition (eg. 'last message repeated N times' RFC 3164's logs)
                 if getattr(log_data, 'repeat', None) is not None:
-                    if prev_data is not None:
+                    if selected_data is not None:
                         repeat = int(log_data.repeat)
                         if not thread:
-                            matching_counter += repeat
+                            selected_counter += repeat
                         if use_app_rules:
-                            app = log_parser.app or get_app(prev_data, apptags, extra_tags) or source_app
+                            app = log_parser.app or get_app(selected_data, apps, apptags, extra_tags)
                             app.increase_last(repeat)
                             app.matches += 1
                             dispatch_context(
@@ -237,44 +246,42 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
                                 line_number=line_counter,
                                 rawlog=line
                             )
-                        prev_data = None
+                        selected_data = None
                     continue
-                else:
-                    prev_data = None
+                selected_data = None
 
                 ###
-                # Checks event time with selected scope.
-                # Converts log's timestamp into the time in seconds since the epoch
-                # as a floating point number, in order to speed up comparisons.
+                # Parse the log's timestamp and gets the event datetime
                 year = getattr(
                     log_data, 'year',
                     prev_year if MONTHMAP[log_data.month] != '01' and file_month == 1 else file_year
                 )
-                event_time = get_mktime(
+                event_dt = get_mktime(
                     year=year,
                     month=log_data.month,
                     day=log_data.day,
                     ltime=log_data.ltime
                 )
 
-                # Skip errors and the lines older than the initial datetime
-                if event_time is None or event_time < start_dt:
+                ###
+                # Scope exclusions
+                if event_dt is None or event_dt < start_dt:
+                    # Excludes lines older than the start datetime
                     continue
-
-                # Skip the rest of the file if the event is newer than the final datetime
-                if event_time > end_dt:
-                    if fstat.st_mtime < event_time:
+                elif event_dt > end_dt:
+                    # Excludes lines newer than the end datetime
+                    if fstat.st_mtime < event_dt:
                         logger.error("found anomaly with mtime of file %r at line %d", logfile_name, line_counter)
                     logger.warning("newer event at line %d: skip the rest of the file %r", line_counter, logfile_name)
                     break
-
-                # Skip the lines not in time range
-                if time_range is not None and not time_range.between(log_data.ltime):
+                elif time_range is not None and not time_range.between(log_data.ltime):
+                    # Excludes lines not in time range
+                    continue
+                elif hosts and not has_host_match(log_data, hosts):
+                    # Excludes lines with host restriction
                     continue
 
-                if hosts and not has_host_match(log_data, hosts):
-                    continue
-
+                ###
                 # Search log line with provided not-empty pattern(s)
                 pattern_matched, match, rawlog = pattern_search(line, patterns)
                 if not pattern_matched and not thread:
@@ -282,50 +289,58 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
                     continue
 
                 ###
-                # Get the app from parser or from the app-tag extracted from the log line.
-                app = log_parser.app or get_app(log_data, apptags, extra_tags) or source_app
+                # App parsing: get the app from parser or from the log data
+                app = log_parser.app or get_app(log_data, apps, apptags, extra_tags)
                 if app is None:
-                    # TODO: check the log parser class if the appname maybe None!!
+                    # Unmatchable tag --> skip the line
                     continue
-
-                ###
-                # Parse the log message with app's rules
-                if use_app_rules and (pattern_matched or thread):
-                    app_matched, has_full_match, app_thread, map_dict = app.match_rules(log_data)
+                elif use_app_rules:
+                    # Parse the log message with app's rules
+                    app_matched, has_full_match, app_thread, output_data = app.match_rules(log_data)
                     if not pattern_matched and app_matched and app_thread is None:
-                        unparsed_counter += 1
                         continue
-                    if map_dict:
-                        rawlog = name_cache.match_to_string(log_match, log_parser.parser.groupindex, map_dict)
-                    if (not (app_matched ^ unparsed)) or (app_matched and not has_full_match and app.has_filters):
-                        dispatch_context(
-                            key=(app, app_thread),
-                            filename=logfile_name,
-                            line_number=line_counter,
-                            rawlog=rawlog
-                        )
-                        unparsed_counter += 1
-                        continue
+                    if output_data:
+                        rawlog = name_cache.match_to_string(log_match, log_parser.parser.groupindex, output_data)
+
+                    if app_matched:
+                        app.matches += 1
+                        if not has_full_match or select_unparsed:
+                            dispatch_context(
+                                key=(app, app_thread),
+                                filename=logfile_name,
+                                line_number=line_counter,
+                                rawlog=rawlog
+                            )
+                            continue
+                    else:
+                        app.unparsed += 1
+                        if not select_unparsed:
+                            dispatch_context(
+                                key=(app, app_thread),
+                                filename=logfile_name,
+                                line_number=line_counter,
+                                rawlog=rawlog
+                            )
+                            continue
 
                 ###
-                # Event matched: register event's data and datetime
-                prev_data = log_data
+                # Event selected: register event's data and datetime
+                selected_data = log_data
 
                 if first_event is None:
-                    first_event = event_time
-                    last_event = event_time
+                    first_event = event_dt
+                    last_event = event_dt
                 else:
-                    if first_event > event_time:
-                        first_event = event_time
-                    if last_event < event_time:
-                        last_event = event_time
+                    if first_event > event_dt:
+                        first_event = event_dt
+                    if last_event < event_dt:
+                        last_event = event_dt
 
                 if pattern_matched:
-                    if max_matches and matching_counter >= max_matches:
-                        # Stops iteration if max_count matchings is exceeded
+                    if max_matches and selected_counter >= max_matches:
+                        # Stops iteration if max_count matches is exceeded
                         break
-                    matching_counter += 1
-                    app.matches += 1
+                    selected_counter += 1
                     if files_with_match:
                         break
                     if register_log_lines:
@@ -338,6 +353,7 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
                             match=match
                         )
                 elif register_log_lines and not only_matching:
+                    # Thread matching
                     dispatch_context(
                         key=(app, app_thread),
                         filename=logfile_name,
@@ -352,17 +368,16 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
             pass
 
         # If count option is enabled then register only the number of matched lines.
-        if files_with_match and matching_counter or files_with_match is False and not matching_counter:
+        if files_with_match and selected_counter or files_with_match is False and not selected_counter:
             dispatch_selected(filename=logfile.name)
         elif count:
-            dispatch_selected(filename=logfile.name, counter=matching_counter)
+            dispatch_selected(filename=logfile.name, counter=selected_counter)
 
         return MatcherResult(
             lines=line_counter,
-            matches=matching_counter,
+            matches=selected_counter,
             unknown=unknown_counter,
             extra_tags=extra_tags,
-            unparsed=unparsed_counter,
             first_event=first_event,
             last_event=last_event
         )

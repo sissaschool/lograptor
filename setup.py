@@ -153,7 +153,6 @@ setup(
             'etc/lograptor/conf.d/*.conf',
             'man/lograptor*.gz',
             'lograptor/*.py',
-            'scripts/lograptor'
         ],
     },
     data_files=[('/usr/share/man/man8', ['man/lograptor.8.gz']),

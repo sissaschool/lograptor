@@ -29,7 +29,7 @@ import logging
 import fileinput
 import sys
 import fnmatch
-import string
+from collections import Counter
 
 from .exceptions import (
     LogRaptorConfigError, FileMissingError, LogFormatError, LogRaptorOptionError, LogRaptorArgumentError
@@ -43,7 +43,7 @@ from .dispatchers import UnbufferedDispatcher, LineBufferDispatcher, ThreadedDis
 from .report import Report
 from .channels import TermChannel, MailChannel, FileChannel
 from .timedate import get_datetime_interval
-from .utils import is_pipe, is_redirected, protected_property, normalize_path
+from .utils import is_pipe, is_redirected, protected_property, normalize_path, safe_expand
 
 logger = logging.getLogger(__package__)
 
@@ -66,7 +66,7 @@ class LogRaptor(object):
     """
     DEFAULT_CONFIG_FILES = (
         'lograptor.conf',
-        '%s/.config/lograptor/lograptor.conf' % os.path.expanduser('~'),
+        os.path.expanduser('~/.config/lograptor/lograptor.conf'),
         '/etc/lograptor/lograptor.conf'
     )
 
@@ -92,8 +92,6 @@ class LogRaptor(object):
         self._time_period = self.time_period
         self._fields = self.fields
         self._hosts = self.hosts
-        self._channels = self.channels
-        self._report = self.report
 
         # Load applications
         self._config_apps = self._read_apps()
@@ -101,6 +99,10 @@ class LogRaptor(object):
         self._apps = self.apps
         self._tags = self.apptags
         self._logmap = self.logmap
+
+        # Setup output channels
+        self._channels = self.channels
+        self._report = self.report
 
         if args.loglevel == 4:
             logger.debug("End of lograptor setup!!")
@@ -269,7 +271,7 @@ class LogRaptor(object):
 
         patterns = {k: v for k, v in self.config.items('patterns')}
         return {
-            k: string.Template(v).safe_substitute(patterns) for k, v in self.config.items('fields')
+            k: safe_expand(v, patterns) for k, v in self.config.items('fields')
         }
 
     @protected_property
@@ -372,22 +374,31 @@ class LogRaptor(object):
 
     @protected_property
     def logmap(self):
+        apps = sorted(self._apps.values(), key=lambda x: x.priority)
         if self.args.files:
             logmap = FileMap(self._time_period, recursive=self.recursive, follow_symlinks=self.follow_symlinks,
                              include=self.include, exclude=self.exclude, exclude_dir=self.exclude_dir)
-            logmap.add(self.args.files, self._apps.values())
+            logmap.add(self.args.files, apps)
         elif is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO):
             # No files and input by a pipe
-            logmap = [(sys.stdin, self._apps.values())]
+            logmap = [(sys.stdin, apps)]
         else:
             # Build the LogMap instance adding the list of files from app config files
             logmap = FileMap(self._time_period, recursive=self.recursive, follow_symlinks=self.follow_symlinks,
                              include=self.include, exclude=self.exclude, exclude_dir=self.exclude_dir)
-            for app in sorted(self._apps.values(), key=lambda x: x.priority):
+            for app in apps:
                 logmap.add(app.files, [app])
 
-        if len(logmap) > 1 and self.args.with_filename is None:
-            self.args.with_filename = True
+        if self.args.with_filename is None:
+            iter_logmap = iter(logmap)
+            try:
+                next(iter_logmap)
+                next(iter_logmap)
+            except StopIteration:
+                pass
+            else:
+                # the logmap has more than one file --> prefix log with filename
+                self.args.with_filename = True
         return logmap
 
     @protected_property
@@ -434,7 +445,7 @@ class LogRaptor(object):
 
         files = []
         lines = matches = unparsed = unknown = 0
-        extra_tags = set()
+        extra_tags = Counter()
         first_event = last_event = None
         if self.args.report:
             self.report.cleanup()
@@ -456,8 +467,8 @@ class LogRaptor(object):
                 lines += result.lines
                 matches += result.matches
                 unknown += result.unknown
-                unparsed += result.unparsed
-                extra_tags = extra_tags.union(result.extra_tags)
+                if result.extra_tags:
+                    extra_tags.update(result.extra_tags)
                 if result.first_event is not None:
                     if first_event is None or first_event > result.first_event:
                         first_event = result.first_event
@@ -489,12 +500,14 @@ class LogRaptor(object):
             'matches': matches,
             'lines': lines,
             'unknown': unknown,
-            'unparsed': unparsed,
-            'extra_tags': [
-                tag for tag in extra_tags
-                if tag not in self._config_tags and not tag.isdigit()
-            ]
+            'extra_tags': extra_tags,
         }
+
+        if unknown > 0:
+            logger.warning('found {} lines with an unknown log format'.format(unknown))
+        if extra_tags:
+            num_lines = sum(extra_tags.values())
+            logger.warning(u'found {} unknown extra app tags: {}'.format(num_lines, dict(extra_tags)))
 
         # If the final report is requested then purge all unmatched threads and set time stamps.
         # Otherwise send final run summary if messages are not disabled.
@@ -507,6 +520,7 @@ class LogRaptor(object):
         elif self.args.loglevel and not self.args.quiet:
             dispatcher.send_message(self.get_run_summary(run_stats))
         dispatcher.close()
+
         return matches > 0
 
     def create_dispatcher(self):
@@ -547,7 +561,7 @@ class LogRaptor(object):
             name_cache=self.name_cache,
         )
 
-    def print_config(self):
+    def get_config(self):
         """
         Return a formatted text with main configuration parameters.
         """
@@ -584,12 +598,6 @@ class LogRaptor(object):
             u'Total lines read: %(lines)d',
             u'Total log events matched: %(matches)d',
         ]
-        if run_stats['extra_tags']:
-            summary.append(u'WARNING: found unknown extra app tags: %(extra_tags)s')
-        if run_stats['unknown'] > 0:
-            summary.append(u'WARNING: Found %(unknown)d lines with an unknown log format')
-        if run_stats['unparsed'] > 0:
-            summary.append(u'WARNING: Found %(unparsed)d unparsed log lines')
         if any([app.matches or app.unparsed for app in self.apps.values()]):
             if self.matcher == 'unruled':
                 summary.append("Applications found (application rules not used):")
