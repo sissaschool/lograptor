@@ -59,7 +59,7 @@ USAGE
 -----
 ::
 
-  lograptor [options] [FILE ...]
+  lograptor [options] PATTERN [FILE ...]
   lograptor [options] [-e PATTERN | -f PATTERNS_FILE ] [FILE ...]
 
 Lograptor has many CLI options. Some options are identical to those of
