@@ -160,7 +160,7 @@ setup(
         'Environment :: Console',
         'Intended Audience :: System Administrators',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: GNU Lesser General Public License v2.1 or later (LGPLv2.1+)',
+        'License :: OSI Approved :: GNU Lesser General Public License v2 or later (LGPLv2+)',
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python',
         'Topic :: Internet :: Log Analysis',
