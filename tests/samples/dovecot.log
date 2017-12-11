@@ -1,0 +1,20 @@
+Apr  1 10:00:02 raptor dovecot: IMAP(trex): Disconnected: Logged out bytes=748/17264
+Apr  1 10:00:02 raptor dovecot: imap-login: Login: user=<admin>, PID=12151, method=PLAIN, rip=192.168.0.1, lip=10.0.0.1
+Apr  1 10:00:02 raptor dovecot: pop3-login: Login: user=<root>, PID=12143, method=PLAIN, rip=10.0.0.2, lip=10.0.0.3
+Apr  1 10:00:02 raptor dovecot: pop3-login: Login: user=<dino>, PID=12140, method=PLAIN, rip=192.168.190.12, lip=192.168.190.13, TLS
+Apr  1 10:00:02 raptor dovecot: POP3(root): Disconnected: Logged out top=0/0, retr=0/0, del=0/0, size=0
+Apr  1 10:00:03 raptor dovecot: imap-login: Login: user=<triceratops>, PID=12150, method=PLAIN, rip=192.168.41.96, lip=192.168.190.13
+Apr  1 10:00:03 raptor dovecot: POP3(dino): Disconnected: Logged out top=0/0, retr=0/0, del=0/0, size=0
+Apr  1 10:00:03 raptor dovecot: lda(allosaurus): sieve: msgid=<1411372801.459659.538183694@raptor.dinos.test>: stored mail into mailbox 'INBOX'
+Apr  1 10:00:03 raptor dovecot: lda(brontosaurus): sieve: msgid=<1411372801.650044.112704023@raptor.dinos.test>: stored mail into mailbox 'INBOX'
+Apr  1 10:00:06 raptor dovecot: imap-login: Maximum number of connections from user+IP exceeded (mail_max_userip_connections): user=<oviraptor>, PID=12150, method=PLAIN, rip=10.0.0.18, lip=192.168.190.13, TLS
+Apr  1 10:00:09 raptor deliver(apatosaurus): msgid=<moodlepost1111@sauropoda.dinos.test>: saved mail to INBOX
+Apr  1 10:00:09 raptor deliver(diplodocus): msgid=<cc6b7b41-7e41-46dc-9d63-423a1530da4d@gallimimus>: saved mail to INBOX
+Apr  1 10:00:09 raptor dovecot: IMAP(brachiosaurus): Disconnected in IDLE bytes=7467/14209865
+Apr  1 10:00:10 raptor dovecot: IMAP(oviraptor): Disconnected in IDLE bytes=212/37305
+Apr  1 10:00:12 raptor dovecot: imap-login: Login: user=<tarbosauros>, PID=12150, method=PLAIN, rip=192.168.19.178, lip=192.168.190.13, TLS
+Apr  1 10:00:12 raptor dovecot: pop3(archaeopteryx): Connection closed top=0/0, retr=0/0, del=0/1074, size=294785727
+Apr  1 10:00:13 raptor dovecot: imap-login: Login: user=<tarbosauros>, PID=12150, method=PLAIN, rip=192.168.19.178, lip=192.168.190.13, TLS
+Apr  1 10:00:13 raptor dovecot: IMAP(coelophysis): Disconnected: Logged out bytes=1719/139719
+Apr  1 10:00:13 raptor dovecot: IMAP(spinosaurus): Disconnected: Logged out bytes=807/3976
+Apr  1 10:00:14 raptor deliver(baryonyx): msgid=<moodlepost1111@sauropoda.dinos.test>: forwarded to <baryonyx@ceratops.dinos.test>

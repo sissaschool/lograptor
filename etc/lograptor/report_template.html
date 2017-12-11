@@ -1,41 +1,41 @@
 <html>
   <head>
-    <title>$title</title>
+    <title>${title}</title>
     <style type="text/css">
       h1 {color: gray; border-bottom: 3px double silver}
       h2,h3 {color: gray; border-bottom: 1px solid silver}
     </style>
   </head>
   <body>
-    <h1>$localhost</h1>
+    <h1>${title}</h1>
     
     <h3>Process parameters and statistics</h3>
         <table border=1>
         <tr><td width="20%" align="rigth">Search patterns:</td>
-            <td><strong>$patterns</strong></td></tr>
+            <td><strong>${patterns}</strong></td></tr>
         <tr><td width="20%" align="rigth">Search patterns file: </td>
-            <td><strong>$pattern_file</strong></td></tr>
+            <td><strong>${pattern_files}</strong></td></tr>
         <tr><td width="20%" align="rigth">Filters:</td>
-            <td><strong>$filters</strong></td></tr>
+            <td><strong>${filters}</strong></td></tr>
         <tr><td width="20%" align="rigth">Hostname:</td>
-            <td><strong>$hosts</strong></td></tr>
+            <td><strong>${hosts}</strong></td></tr>
         <tr><td width="20%" align="rigth">Applications:</td>
-            <td><strong>$apps</strong></td></tr>
+            <td><strong>${apps}</strong></td></tr>
         <tr><td width="20%" align="rigth">First event:</td>
-            <td><strong>$starttime</strong></td></tr>
+            <td><strong>${first_event}</strong></td></tr>
         <tr><td width="20%" align="rigth">Last event:</td>
-            <td><strong>$endtime</strong></td></tr>
+            <td><strong>${last_event}</strong></td></tr>
         <tr><td width="20%" align="rigth">Files:</td>
-            <td><tt><strong>$logfiles</strong></tt></td></tr>
+            <td><tt><strong>${files}</strong></tt></td></tr>
         <tr><td width="20%" align="rigth">Total files examined:</td>
-            <td><strong>$tot_files</strong></td></tr>
+            <td><strong>${tot_files}</strong></td></tr>
         <tr><td width="20%" align="rigth">Total log lines parsed:</td>
-            <td><strong>$tot_lines</strong></td></tr>
+            <td><strong>${lines}</strong></td></tr>
         </table>
         
     $subreports
 
     <p align="right">Brought to you by 
-      <a href="http:///lograptor/">Lograptor $version</a></p>
+      <a href="http:///lograptor/">lograptor ${version}</a></p>
   </body>
 </html>

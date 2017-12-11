@@ -1,33 +1,25 @@
-#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
-This module contains class to handle output mapping and lookup
-internal caching for Lograptor's application class instances.
+This module contains class to handle lograptor's lookup cache.
 """
-##
-# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
 #
-# This file is part of Lograptor.
+# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
 #
-# Lograptor is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
+# This file is part of lograptor.
 #
-# Lograptor is distributed in the hope that it will be useful,
+# Lograptor is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# This software is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Lograptor; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
-# 02111-1307, USA.
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# file 'LICENSE' in the root directory of the present distribution
+# for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-##
-from __future__ import print_function
-
 import re
 import socket
 import string
@@ -38,26 +30,41 @@ except ImportError:
     pwd = None
 
 
-class OutMap(object):
+class LookupCache(object):
     """
-    Output mapping class: translate matching groups for output.
+    Name cache for names, that maps IPs to DNS names, UIDs to usernames.
+    The names can be mapped into random generated values for obfuscate
+    the input names, maintaining a correspondence for the entire process.
     """
 
-    def __init__(self, config):
-        self.mapexp = config['mapexp']
+    def __init__(self, args, config):
+        self._maps = {}
+        self.mapexp = config.getint('main', 'mapexp')
         self.mapmax = 10 ** self.mapexp
-        self.ip_lookup = config['ip_lookup']
-        self.uid_lookup = config['uid_lookup']
-        self.anonymyze = config['anonymize']
-        self.maps = dict()
-        for flt in set(['host', 'thread', 'uid'] + config.options('filters')):
-            self.maps[flt] = {}
-        self.hostsmap = self.maps['host']
-        self.uidsmap = self.maps['uid']
+        self.ip_lookup = args.ip_lookup
+        self.uid_lookup = args.uid_lookup
+        self.anonymyze = args.anonymize
+        self.fields = config.options('fields')
         self.base_gid_pattern = re.compile('^([a-zA-Z_]+)')
-        self.ip_pattern = re.compile(u'({0}|{1})'.format(config['ipv4_pattern'], config['ipv6_pattern']))
+        ipv4_pattern = config.get('patterns', 'IPV4_ADDRESS')
+        ipv6_pattern = config.get('patterns', 'IPV6_ADDRESS')
+        self.ip_pattern = re.compile(u'({0}|{1})'.format(ipv4_pattern, ipv6_pattern))
+        self.clear()
 
-    def map_value(self, gid, value):
+    def clear(self):
+        self._maps.clear()
+        for flt in set(self.fields) | {'host', 'thread', 'uid'}:
+            self._maps[flt] = {}
+
+    @property
+    def hostsmap(self):
+        return self._maps['host']
+
+    @property
+    def uidsmap(self):
+        return self._maps['uid']
+
+    def map_value(self, value, gid):
         """
         Return the value for a group id, applying requested mapping.
         Map only groups related to a filter, ie when the basename of
@@ -66,12 +73,12 @@ class OutMap(object):
         base_gid = self.base_gid_pattern.search(gid).group(1)
         if self.anonymyze:
             try:
-                if value in self.maps[base_gid]:
-                    return self.maps[base_gid][value]
+                if value in self._maps[base_gid]:
+                    return self._maps[base_gid][value]
                 else:
-                    k = (len(self.maps[base_gid]) + 1) % self.mapmax
+                    k = (len(self._maps[base_gid]) + 1) % self.mapmax
                     new_item = u'{0}_{1:0{2}d}'.format(base_gid.upper(), k, self.mapexp)
-                    self.maps[base_gid][value] = new_item
+                    self._maps[base_gid][value] = new_item
                     return new_item
             except KeyError:
                 return value
@@ -91,19 +98,19 @@ class OutMap(object):
         else:
             return value
 
-    def map2dict(self, gids, match):
+    def match_to_dict(self, match, gids):
         """
         Map values from match into a dictionary.
         """
         values = {}
         for gid in gids:
             try:
-                values[gid] = self.map_value(gid, match.group(gid))
+                values[gid] = self.map_value(match.group(gid), gid)
             except IndexError:
                 pass
         return values
 
-    def map2str(self, gids, match, values=None):
+    def match_to_string(self, match, gids, values=None):
         """
         Return the mapped string from match object. If a dictionary of
         values is provided then use it to build the string.
@@ -114,7 +121,7 @@ class OutMap(object):
         for gid in sorted(gids, key=lambda x: gids[x]):
             if values is None:
                 try:
-                    value = self.map_value(gid, match.group(gid))
+                    value = self.map_value(match.group(gid), gid)
                     parts.append(s[k:match.start(gid)])
                     parts.append(value)
                     k = match.end(gid)
@@ -156,7 +163,7 @@ class OutMap(object):
 
     def getuname(self, uid):
         """
-        Get username for a given uid
+        Get the username of a given uid.
         """
         uid = int(uid)
         try:

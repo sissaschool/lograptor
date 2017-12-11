@@ -1,20 +1,17 @@
-*********************************************************
- $title
-*********************************************************
+***********************************************************
+ ${title}
+***********************************************************
 
-### Process parameters and statistics ###
+Search patterns: ${patterns}
+Search patterns file: ${pattern_files}
+Filters: ${filters}
+Hostnames: ${hosts}
+Applications: ${apps}
 
-Search patterns: $patterns
-Search patterns file: $pattern_file
-Filters: $filters
-Hostnames: $hosts
-Applications: $apps
-
-First event: $starttime
-Last event: $endtime
-Processed files: $logfiles
-Total files examined: $tot_files
-Total log lines parsed: $tot_lines
----------------------------------------------------------
-$subreports
------ Brought to you by Lograptor $version -----
+First event: ${first_event}
+Last event: ${last_event}
+Processed files: ${files}
+Total files examined: ${tot_files}
+Total log lines parsed: ${lines}
+${subreports}
+----- Brought to you by lograptor ${version} -----

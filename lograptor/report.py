@@ -1,119 +1,86 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-This module is used to build and publish the report produced by a run
-of Lograptor instance.
+This module define classes for building the report produced by a program run.
 """
-##
-# Copyright (C) 2003 by Duke University
-# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
 #
-# This file is part of Lograptor.
+# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
 #
-# Lograptor is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
+# This file is part of lograptor.
 #
-# Lograptor is distributed in the hope that it will be useful,
+# Lograptor is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# This software is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Lograptor; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
-# 02111-1307, USA.
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# file 'LICENSE' in the root directory of the present distribution
+# for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-##
-from __future__ import print_function
-
 import logging
 import re
+import os
 import socket
 import time
-from collections import namedtuple
+from collections import namedtuple, OrderedDict, MutableMapping
 from string import Template
 
-from lograptor.utils import get_fmt_results
-
-try:
-    from collections import UserDict
-except ImportError:
-    # Fall back for Python 2.x
-    from UserDict import IterableUserDict as UserDict
-
-try:
-    import configparser
-except ImportError:
-    # Fall back for Python 2.x
-    import ConfigParser as configparser
-
-import lograptor.info
-import lograptor.publishers
-import lograptor.tui
-import lograptor.utils
-
-try:
-    from collections import OrderedDict
-except ImportError:
-    # Backport for Python 2.4-2.6 (from PyPI)
-    from lograptor.backports.ordereddict import OrderedDict
+from .info import __version__
+from .exceptions import (LogRaptorNoOptionError, LogRaptorNoSectionError, LogRaptorOptionError,
+                         RuleMissingError, LogRaptorConfigError)
+from . import tui
+from .utils import get_fmt_results, htmlsafe, get_value_unit, normalize_path
 
 
-logger = logging.getLogger('lograptor')
+logger = logging.getLogger(__package__)
 
-TextPart = namedtuple('TextPart', 'title text ext')
+TextPart = namedtuple('TextPart', 'fmt text ext')
 
 
-class ReportItem(UserDict):
+class ReportData(MutableMapping):
     """
     Class to manage the report items defined for an
-    application's logs parsed by Lograptor.
+    application's logs parsed by lograptor.
     """
     # RE fixed object to check and extract report table parameters
-    _color_regexp = re.compile(r'^([a-z]+|\#[0-9a-f]{6})', re.IGNORECASE)
-    _function_regexp = re.compile(r'^(?P<function>table|top|total)(\((\s*(?P<topnum>\d+)\s*,)?'
-                                  r'\s*(?P<headers>(\"[^\"]*\"(\s*,\s*)?)+)\s*\)|)')
-    _reprule_regexp = re.compile(r'^\(\s*(?P<condition>\*|(?P<field>(\w)+)(!=|==)\"[^\"]*\")\s*,'
-                                 r'\s*(?P<fields>((\w|\"[^\"]*\")(\s*,\s*)?)+)'
-                                 r'(\s*:\s*(?P<add2res>\+)?(?P<valfld>\w+)(\[(?P<unit>(|K|M|G|T)'
-                                 r'(b|bits|B|Bytes))\])?)?\s*\)')
+    _color_regexp = re.compile(r'^([a-z]+|#[0-9a-f]{6})', re.IGNORECASE)
+    _function_regexp = re.compile(
+        r'^(?P<function>table|top|total)(\((\s*(?P<topnum>\d+)\s*,)?'
+        r'\s*(?P<headers>(\"[^\"]*\"(\s*,\s*)?)+)\s*\)|)')
+    _report_data_regexp = re.compile(
+        r'^\(\s*(?P<condition>\*|(?P<field>(\w)+)(!=|==)\"[^\"]*\")\s*,'
+        r'\s*(?P<fields>((\w|\"[^\"]*\")(\s*,\s*)?)+)'
+        r'(\s*:\s*(?P<add2res>\+)?(?P<valfld>\w+)(\[(?P<unit>(|K|M|G|T)'
+        r'(b|bits|B|Bytes))\])?)?\s*\)')
     
-    def __init__(self, section, section_items, subreports, rules):
-        """
-        Init the report item. Redefine UserDict dictionary as OrderedDict,
-        so disable the call to parent class __init__ function.
-        """
-        self.data = OrderedDict()
-        self.name = section
+    def __init__(self, name, options, rules):
+        self._data = OrderedDict()
+        self.name = name
         self.subreport = self.title = self.color = self.function = None
         self.rules = dict()
         self.results = []
-        self.plain_text = None
-        self.html_text = None
-        self.csv_text = None
+        self.text = None
+        self.html = None
+        self.csv = None
         n_headers = 0
-        
-        for opt, value in section_items:
+
+        for opt, value in options:
             # Check fixed options
             if opt == 'subreport':
-                if value not in subreports:
-                    msg = '"{0}" is not a subreport!'.format(value)
-                    raise lograptor.OptionError('subreport', msg)
                 self.subreport = value
             elif opt == 'title':
                 self.title = value
             elif opt == 'color':
                 if self._color_regexp.search(value) is None:
-                    raise lograptor.OptionError('color')
+                    raise LogRaptorOptionError('color')
                 self.color = value
             elif opt == 'function':
                 match = self._function_regexp.search(value)
                 if not match:
-                    raise lograptor.OptionError('function')
+                    raise LogRaptorOptionError('function')
 
                 self.function = match.group('function')
                 self.topnum = match.group('topnum')
@@ -126,44 +93,39 @@ class ReportItem(UserDict):
                 
                 # Parameters value checking
                 if self.function == "total" and n_headers > 0:
-                    msg = 'function "total" doesn\'t have headers!'
-                    raise lograptor.OptionError('function', msg)
+                    raise LogRaptorOptionError('function', 'function "total" doesn\'t have headers!')
                 elif self.function == "top":
                     try:
                         if int(self.topnum) < 0:
                             raise ValueError
                     except (ValueError, TypeError):
-                        msg = 'First parameter of function "top" must be a positive integer'
-                        raise lograptor.OptionError('function', msg)
+                        msg = 'the first argument of function "top" must be a positive integer'
+                        raise LogRaptorOptionError('function', msg)
             else:
-                # Load and check names of report rule options
+                # Load and check names of report data options
                 for rule in rules:
                     if rule.name == opt or (opt[-1].isdigit() and opt[:-1] == rule.name):
                         rule.used_by_report = True
                         self.rules[opt] = rule
                         break
                 else:
-                    msg = u"Skip report rule '%s' because use undefined or not active app rule!" % self.name
-                    raise lograptor.RuleMissingError(msg)
-                self.data[opt] = value
+                    msg = u"skip report data %r because use undefined or not active app rule!" % self.name
+                    raise RuleMissingError(msg)
+                self._data[opt] = value
 
-        # Check if fixed options are all defined
+        # Raise if a required option is missing
         if self.subreport is None:
-            raise configparser.NoOptionError('subreport', section)
+            raise LogRaptorNoOptionError('subreport', name)
         elif self.title is None:
-            raise configparser.NoOptionError('title', section)
+            raise LogRaptorNoOptionError('title', name)
         elif self.function is None:
-            raise configparser.NoOptionError('function', section)
+            raise LogRaptorNoOptionError('function', name)
 
-        # Check the values of report rule options
+        # Check the values of report data options
         for opt in self:
-            logger.debug('Check report rule "{0}"'.format(opt))
-            
-            match = self._reprule_regexp.search(self.data[opt])
-            
+            match = self._report_data_regexp.search(self._data[opt])
             if not match:
-                msg = 'syntax error in report rule'
-                raise lograptor.OptionError(opt, msg)
+                raise LogRaptorOptionError(opt, 'a syntax error in report data')
 
             valfld = match.group('valfld')
             cond = match.group('condition')
@@ -171,55 +133,61 @@ class ReportItem(UserDict):
             
             fields = re.split('\s*,\s*', match.group('fields'))
             if len(fields) < n_headers:
-                msg = 'too many headers with respect to the number of fields of the rules'
-                raise lograptor.OptionError('function', msg)
+                raise LogRaptorOptionError('function', 'more headers than fields in the rule!')
 
-            # Report rule check by function
+            # Check report data function declaration
             if self.function == 'total':
-                if cond != "*" and condfield not in self.rules[opt].regexp.groupindex:
-                    msg = 'condition field "{0}" not in rule {1} gids'.format(condfield, opt)
-                    raise lograptor.OptionError('function', msg)
+                if cond != '*' and condfield not in self.rules[opt].regexp.groupindex:
+                    raise LogRaptorOptionError('function', 'condition %r not in rule %r gids' % (condfield, opt))
                 if valfld is not None and valfld not in self.rules[opt].regexp.groupindex:
-                    msg = 'field "{0}" not in rule {1} gids'.format(valfld, opt)
-                    raise lograptor.OptionError(opt, msg)
+                    raise LogRaptorOptionError(opt, 'field %r not in rule %r gids' % (valfld, opt))
                 if len(fields) > 1:
-                    msg = 'multiple row descriptions!'
-                    raise lograptor.OptionError(opt, msg)
+                    raise LogRaptorOptionError(opt, 'multiple row descriptions!')
                 if fields[0][0] != '"':
-                    msg = 'the row description must be between double-quotes!'
-                    raise lograptor.OptionError(opt, msg)
-
+                    raise LogRaptorOptionError(opt, 'a description must be double-quoted!')
             elif self.function == 'top':
                 if valfld is not None and valfld not in self.rules[opt].regexp.groupindex:
-                    msg = 'field "{0}" not in rule {1} gids'.format(valfld, opt)
-                    raise lograptor.OptionError(opt, msg)                    
+                    raise LogRaptorOptionError(opt, 'field %r not in rule %r gids' % (valfld, opt))
                 if len(fields) != 1 or fields[0][0] == '"':
-                    msg = 'missing field specification!'
-                    raise lograptor.OptionError(opt, msg)
-
+                    raise LogRaptorOptionError(opt, 'missing field specification!')
             elif self.function == 'table':
                 if valfld is not None:
-                    msg = 'syntax error in report rule'
-                    raise lograptor.OptionError(opt, msg)
-                if cond != "*" and condfield not in self.rules[opt].regexp.groupindex:
-                    msg = 'filter field "{0}" not in rule {1} gids'.format(condfield, opt)
-                    raise lograptor.OptionError('function', msg)
+                    raise LogRaptorOptionError(opt, 'syntax error in report data')
+                if cond != '*' and condfield not in self.rules[opt].regexp.groupindex:
+                    raise LogRaptorOptionError('function', 'field %r not in rule %r gids' % (condfield, opt))
 
-            # Checking report rule's fields
-            logger.debug('Checking fields: {0}'.format(fields)) 
+            # Checking report data fields
+            logger.debug('checking fields: %s', fields)
             for field in fields:
                 if field[0] == '"' and field[-1] == '"':
                     continue
                 if field == "host":
                     continue
                 if field not in self.rules[opt].regexp.groupindex:
-                    msg = 'field "{0}" not in rule gids'.format(field)
-                    raise lograptor.OptionError(opt, msg)
+                    raise LogRaptorOptionError(opt, 'field %r not in rule gids' % field)
+
+    def __repr__(self):
+        return u"<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __setitem__(self, key, value):
+        self._data[key] = value
+
+    def __delitem__(self, key):
+        del self._data[key]
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)
 
     def __eq__(self, repitem):
         """
         Compare two 'table' report items. When True the report items
-        results are mergeable. 
+        results are mergeable.
         """
         if self.function != 'table' or repitem.function != 'table':
             return False
@@ -238,12 +206,12 @@ class ReportItem(UserDict):
 
         # TODO if requested: matching also report item gids
         
-    def make_text_plain(self, width):
+    def make_text(self, width):
         """
-        Make the text representation of a report element as plain text.
+        Make the text representation of a report data element.
         """
         def mformat(reslist):
-            plaintext = ""
+            _text = ""
             _buffer = reslist[0]
             for j in range(1, len(reslist)):
                 if (_buffer == "") or (len(_buffer) + len(reslist[j])) <= (width - len(filling)):
@@ -252,10 +220,10 @@ class ReportItem(UserDict):
                     else:
                         _buffer = '{0}, {1}'.format(_buffer, reslist[j])
                 else:
-                    plaintext = '{0}{1}\n{2}'.format(plaintext, _buffer, filling)
+                    _text = '{0}{1}\n{2}'.format(_text, _buffer, filling)
                     _buffer = reslist[j]
-            plaintext = '{0}{1}'.format(plaintext, _buffer)
-            return plaintext
+            _text = '{0}{1}'.format(_text, _buffer)
+            return _text
 
         text = '\n----- {0} -----\n\n'.format(self.title.strip())
 
@@ -306,53 +274,53 @@ class ReportItem(UserDict):
                     text = '{0}{1}{2}| '.format(text, res[i], ' ' * (colwidth[i]-len(res[i])))
                 lastcol = get_fmt_results(res[-1], limit=5)
                 text = '{0}{1}\n'.format(text, mformat(lastcol))
-        self.plain_text = text
+        self.text = text
 
-    def make_text_html(self):
+    def make_html(self):
         """
         Make the text representation of a report element as html.
         """
-        text = None
+        html = None
         if self.function == 'total':
-            text = u'<table border="0" width="100%" rules="cols" cellpadding="2">\n'\
+            html = u'<table border="0" width="100%" rules="cols" cellpadding="2">\n'\
                    '<tr><th colspan="2" align="left"><h3><font color="{1}">'\
                    '{0}</font></h3></th></tr>\n'\
-                   .format(lograptor.utils.htmlsafe(self.title.strip()), self.color)
+                   .format(htmlsafe(self.title.strip()), self.color)
 
             for res in self.results:
-                text = u'{0}<tr><td valign="top" align="right">{1}</td>'\
+                html = u'{0}<tr><td valign="top" align="right">{1}</td>'\
                        '<td valign="top" width="90%">{2}</td></tr>'\
-                       .format(text, res[0], res[1])
+                       .format(html, res[0], res[1])
 
         elif self.function == 'top':
-            text = u'<table border="0" width="100%" rules="cols" cellpadding="2">\n'\
+            html = u'<table border="0" width="100%" rules="cols" cellpadding="2">\n'\
                    '<tr><th colspan="2" align="left"><h3><font color="{1}">'\
                    '{0}</font></h3></th></tr>\n'\
-                   .format(lograptor.utils.htmlsafe(self.title.strip()), self.color)
+                   .format(htmlsafe(self.title.strip()), self.color)
 
             if self.results[0] is not None:
                 for res in self.results:
                     if res is not None:
-                        text = u'{0}<tr><td valign="top" align="right">{1}</td>'\
+                        html = u'{0}<tr><td valign="top" align="right">{1}</td>'\
                                '<td valign="top" width="90%">{2}</td></tr>'\
-                               .format(text, res[0], ', '.join(res[1]))
+                               .format(html, res[0], ', '.join(res[1]))
             else:
-                text = u'{0}<tr><td valign="top" align="left">{1}</td>'\
-                       .format(text, "None")
+                html = u'{0}<tr><td valign="top" align="left">{1}</td>'\
+                       .format(html, "None")
                 
         elif self.function == 'table':
-            text = u'<h3><font color="{1}">{0}</font></h3>'\
+            html = u'<h3><font color="{1}">{0}</font></h3>'\
                    '<table width="100%" rules="cols" cellpadding="2">\n'\
                    '<tr bgcolor="#aaaaaa">'\
-                   .format(lograptor.utils.htmlsafe(self.title.strip()), self.color)
+                   .format(htmlsafe(self.title.strip()), self.color)
             
             headers = re.split('\s*,\s*', self.headers)
             for i in range(len(headers)):
-                text = '{0}<th align="center" colspan="1">'\
+                html = '{0}<th align="center" colspan="1">'\
                        '<font color="black">{1}</font></th>'\
-                       .format(text, headers[i].strip('"'))
+                       .format(html, headers[i].strip('"'))
 
-            text = u'{0}</tr>\n'.format(text)
+            html = u'{0}</tr>\n'.format(html)
             
             oddflag = False
             lastval = ""            
@@ -360,49 +328,46 @@ class ReportItem(UserDict):
                 if lastval != res[0]:
                     oddflag = not oddflag
                     if oddflag:
-                        text = u'{0}<tr bgcolor="#dddddd">'.format(text)
+                        html = u'{0}<tr bgcolor="#dddddd">'.format(html)
                     else:
-                        text = u'{0}<tr>'.format(text)
+                        html = u'{0}<tr>'.format(html)
 
-                    text = u'{0}<td valign="top" width="15%">{1}</td>'\
-                           .format(text, res[0])
+                    html = u'{0}<td valign="top" width="15%">{1}</td>'\
+                           .format(html, res[0])
                 else:
                     if oddflag:
-                        text = u'{0}<tr bgcolor="#dddddd">'.format(text)
+                        html = u'{0}<tr bgcolor="#dddddd">'.format(html)
                     else:
-                        text = u'{0}<tr>'.format(text)
+                        html = u'{0}<tr>'.format(html)
 
-                    text = u'{0}<td valign="top" width="15%">&nbsp;</td>'.format(text)
+                    html = u'{0}<td valign="top" width="15%">&nbsp;</td>'.format(html)
                 lastval = res[0]
                 
                 for i in range(1, len(headers)-1):
-                    text = u'{0}<td valign="top" width="15%">{1}</td>'.format(text, res[i])
+                    html = u'{0}<td valign="top" width="15%">{1}</td>'.format(html, res[i])
                 lastcol = get_fmt_results(res[-1], limit=10, fmt=u'<font color="darkred">{0}</font>')
 
                 if lastcol[-1].find(u" more skipped]") > -1:
-                    text = u'{0}<td valign="top" width="{1}%">{2} {3}</td></tr>\n'\
-                           .format(text, 100-15*(len(headers)-1),
+                    html = u'{0}<td valign="top" width="{1}%">{2} {3}</td></tr>\n'\
+                           .format(html, 100-15*(len(headers)-1),
                                    u', '.join(lastcol[:-1]), lastcol[-1])
                 else:
-                    text = u'{0}<td valign="top" width="{1}%">{2}</td></tr>\n'\
-                           .format(text, 100-15*(len(headers)-1), u', '.join(lastcol))
+                    html = u'{0}<td valign="top" width="{1}%">{2}</td></tr>\n'\
+                           .format(html, 100-15*(len(headers)-1), u', '.join(lastcol))
 
-        self.html_text = u'{0}</table>\n<p>\n'.format(text)
+        self.html = u'{0}</table>\n<p>\n'.format(html)
 
-    def make_text_csv(self):
+    def make_csv(self):
         """
         Get the text representation of a report element as csv.
         """
         import csv
-        import io
-
         try:
-            import cStringIO
-            out = cStringIO.StringIO()
+            from StringIO import StringIO  # Python 2.7
         except ImportError:
-            import io
-            out = io.StringIO()            
-            
+            from io import StringIO
+
+        out = StringIO()
         writer = csv.writer(out, delimiter='|', lineterminator='\n', quoting=csv.QUOTE_MINIMAL)
 
         if self.function == 'total':
@@ -427,13 +392,12 @@ class ReportItem(UserDict):
                 else:
                     row.append(u', '.join(lastcol))
                 rows.append(row)
-                
             writer.writerows(rows)
 
-        self.csv_text = out.getvalue()
+        self.csv = out.getvalue()
 
-    def parse_report_rule(self, opt):
-        return self._reprule_regexp.search(self.data[opt])
+    def parse_report_data(self, opt):
+        return self._report_data_regexp.search(self._data[opt])
 
 
 class Subreport(object):
@@ -444,86 +408,86 @@ class Subreport(object):
     def __init__(self, name, title):
         self.name = name
         self.title = title
-        self.repitems = []
+        self.report_data = []
         self.reptext = ""
 
-    def __bool__(self):
-        return len(self.repitems) > 0
+    def __len__(self):
+        return len(self.report_data)
+
+    def __repr__(self):
+        return u"<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
 
     def make(self, apps):
         """
-        Make of subreport items from results
+        Make subreport items from results.
         """
         for (appname, app) in sorted(apps.items(), key=lambda x: (x[1].priority, x[0])):
-            logger.info('Getting report results from "{0}"'.format(appname))
-            
-            for repitem in app.repitems:
-                
-                if repitem.subreport != self.name:
+            logger.info('Getting report results from %r', appname)
+
+            for report_data in app.report_data:
+                if report_data.subreport != self.name:
                     continue
 
-                if repitem.function == 'total':
-                    for opt in repitem:
-                        match = repitem.parse_report_rule(opt)
-
+                if report_data.function == 'total':
+                    for opt in report_data:
+                        match = report_data.parse_report_data(opt)
                         cond = match.group('condition')
                         valfld = match.group('valfld')
                         unit = match.group('unit')
                         itemtitle = match.group('fields').strip('"')
 
-                        total = repitem.rules[opt].total_events(cond, valfld)
+                        total = report_data.rules[opt].total_events(cond, valfld)
                         if total == 0:
                             continue
 
                         if unit is not None:
-                            total, unit = lograptor.utils.get_value_unit(total, unit, 'T')
+                            total, unit = get_value_unit(total, unit, 'T')
                             total = '{0} {1}'.format(total, unit)
                         else:
                             total = str(total)
+                        report_data.results.append(tuple([total, itemtitle]))
 
-                        repitem.results.append(tuple([total, itemtitle]))
-
-                elif repitem.function == 'top':
-                    k = int(repitem.topnum)
-                    for opt in repitem:
-                        match = repitem.parse_report_rule(opt)
+                elif report_data.function == 'top':
+                    k = int(report_data.topnum)
+                    for opt in report_data:
+                        match = report_data.parse_report_data(opt)
 
                         valfld = match.group('valfld')
                         field = match.group('fields')
                         usemax = match.group('add2res') is None
 
-                        toplist = repitem.rules[opt].top_events(k, valfld, usemax, field)
-                        repitem.results.extend(toplist)
+                        toplist = report_data.rules[opt].top_events(k, valfld, usemax, field)
+                        report_data.results.extend(toplist)
                         
-                elif repitem.function == 'table':
-                    cols = len(re.split('\s*,\s*', repitem.headers))
-                    for opt in repitem:
-                        match = repitem.parse_report_rule(opt)
+                elif report_data.function == 'table':
+                    cols = len(re.split('\s*,\s*', report_data.headers))
+                    for opt in report_data:
+                        match = report_data.parse_report_data(opt)
                         cond = match.group('condition')
                         fields = re.split('\s*,\s*', match.group('fields'))
-                        tablelist = repitem.rules[opt].list_events(cond, cols, fields)
-                        repitem.results.extend(tablelist)
+                        tablelist = report_data.rules[opt].list_events(cond, cols, fields)
+                        report_data.results.extend(tablelist)
 
-                if repitem.results:
-                    self.repitems.append(repitem)
+                if report_data.results:
+                    self.report_data.append(report_data)
 
         # Sort and rewrite results as strings with units 
-        for repitem in self.repitems:
-            if repitem.function == 'top':
+        for report_data in self.report_data:
+            if report_data.function == 'top':
                 # Sort values
-                repitem.results = sorted(repitem.results, key=lambda x: x[0], reverse=True)
+                report_data.results = sorted(report_data.results, key=lambda x: x[0], reverse=True)
 
                 # Get the unit if any and convert numeric results to strings
                 unit = None
-                for opt in repitem:
-                    match = repitem.parse_report_rule(opt)
+                for opt in report_data:
+                    match = report_data.parse_report_data(opt)
                     unit = match.group('unit')
                     if unit is not None:
                         break
 
-                for res in repitem.results:
+                for res in report_data.results:
                     if unit is not None:
-                        v, u = lograptor.utils.get_value_unit(res[0], unit, 'T')
+                        v, u = get_value_unit(res[0], unit, 'T')
                         res[0] = '{0} {1}'.format(v, u)
                     else:
                         res[0] = str(res[0])
@@ -532,17 +496,17 @@ class Subreport(object):
         """
         Make subreport text in a specified format         
         """
-        if not self.repitems:
+        if not self.report_data:
             return
         
-        for repitem in self.repitems:
-            if repitem.results:
-                if fmt is None or fmt == 'plain':
-                    repitem.make_text_plain(width)
+        for data_item in self.report_data:
+            if data_item.results:
+                if fmt is None or fmt == 'text':
+                    data_item.make_text(width)
                 elif fmt == 'html':
-                    repitem.make_text_html()
+                    data_item.make_html()
                 elif fmt == 'csv':
-                    repitem.make_text_csv()
+                    data_item.make_csv()
 
     def compact_tables(self):
         """
@@ -550,285 +514,176 @@ class Subreport(object):
         same subreport is merged into one. The data are ordered by 1st column.
         """
         items_to_del = set()
-        for i in range(len(self.repitems)):
+        for i in range(len(self.report_data)):
             if i in items_to_del:
                 continue
-            if self.repitems[i].function[0:5] == 'table':
-                for j in range(i+1, len(self.repitems)):
-                    if self.repitems[j].function[0:5] == 'table':
-                        if self.repitems[i] == self.repitems[j]:
+            if self.report_data[i].function[0:5] == 'table':
+                for j in range(i+1, len(self.report_data)):
+                    if self.report_data[j].function[0:5] == 'table':
+                        if self.report_data[i] == self.report_data[j]:
                             logger.debug('Merge of 2 identical report tables: {0}'
-                                         .format(self.repitems[i].title)) 
+                                         .format(self.report_data[i].title)) 
                             items_to_del.add(j)
-                            self.repitems[i].results.extend(self.repitems[j].results)
+                            self.report_data[i].results.extend(self.report_data[j].results)
         if items_to_del:
             for i in reversed(sorted(items_to_del, key=lambda x: x)):
-                self.repitems.pop(i)
+                self.report_data.pop(i)
 
                 
 class Report(object):
     """
     This helper class holds the contents of a report before it is
-    published using publisher classes.
+    sent to selected channels.
     """
-    def __init__(self, patterns, apps, config):
-        logger.info('Starting Report object initialization')
-
-        ##
-        # publishers    : list of publisher objects
-        # subreports    : list of subreports
-        # stats         : statistics of lograptor's run       
-        self.publishers = []
-        self.subreports = []
-        self.formats = []
-        self.stats = dict()
-        
-        self.runtime = time.localtime()
+    def __init__(self, name, patterns, args, config):
+        self.name = name
         self.patterns = patterns
-        self.apps = apps
+        self.args = args
         self.config = config
 
-        # Initalize the subreports structure
-        for subreport in config.parser.options('subreports'):
-            logger.debug('Add "{0}" to subreports.'.format(subreport))
-            self.subreports.append(Subreport(name=subreport, title=config[subreport]))
+        self.stats = dict()
+        self.runtime = time.localtime()
 
-        # Read the parameters from config files
-        self.title = config['title']
-        self.html_template = config['html_template'].strip()
-        self.text_template = config['text_template'].strip()
+        # Read the report options from the config file
+        try:
+            options = dict(config.items('%s_report' % name))
+        except LogRaptorNoSectionError:
+            raise LogRaptorConfigError("no configured report for name %r." % name)
 
-        self.filters = {
-            'user': config['user'] if not config.is_default('user') else "",
-            'from': config['from'] if not config.is_default('from') else "",
-            'rcpt': config['rcpt'] if not config.is_default('rcpt') else "",
-            'client': config['client'] if not config.is_default('client') else "",
-            'pid': config['pid'] if not config.is_default('pid') else ""
-            }
-        
-        self.unparsed = config['unparsed']
-
-        titlevars = {
+        self.title = Template(options['title']).safe_substitute({
             'localhost': socket.gethostname(),
             'localtime': time.strftime('%c', self.runtime)
-        }
+        })
+        base_path = os.path.dirname(self.config.cfgfile)
+        self.html_template = normalize_path(options['html_template'], base_path)
+        self.text_template = normalize_path(options['text_template'], base_path)
 
-        logger.debug('Before title={0}'.format(self.title))
-        self.title = Template(self.title).safe_substitute(titlevars)
-        logger.debug('After title={0}'.format(self.title))
+        self.subreports = [
+            Subreport(name=opt.partition('_')[0], title=value)
+            for opt, value in options.items() if opt.endswith('_subreport')
+        ]
 
-        logger.debug('html_template={0}'.format(self.html_template))
-        logger.debug('text_template={0}'.format(self.text_template))
-        logger.debug('filters={0}'.format(self.filters))
-        logger.debug('unparsed={0}'.format(self.unparsed))
-
-        if config['publish'] is not None:
-            logger.debug('publishers={0}'.format(config['publish']))
-            logger.info('Initializing publishers')
-
-            for sec in config['publish'].split(','):
-                sec = sec.strip()
-                try:
-                    method = config.getstr(sec, 'method')
-                except configparser.NoSectionError:
-                    msg = 'section for "{0}" not found'.format(sec)
-                    if config['publish'] is not None:
-                        raise lograptor.OptionError('--publish', msg)
-                    else:                        
-                        raise lograptor.ConfigError(msg)
-                except configparser.NoOptionError:
-                    raise lograptor.ConfigError('Publishing method not defined in "{0}" section!'
-                                                .format(sec))
-                if method == 'file':
-                    publisher = lograptor.publishers.FilePublisher(sec, config)
-                elif method == 'mail':
-                    publisher = lograptor.publishers.MailPublisher(sec, config)
-                else:
-                    raise lograptor.ConfigError('Publishing method "{0}" not supported'
-                                                .format(method))
-                logger.debug('Add {0} publisher \'{1}\''.format(method, sec))
-                self.publishers.append(publisher)
-
-    def need_rawlogs(self):
-        """
-        Check if rawlogs are requested by almost one report's publisher.
-        """
-        return any([publisher.rawlogs for publisher in self.publishers])
-
-    def make(self):
+    def make(self, apps):
         """
         Create the report from application results
         """
-
         for subreport in self.subreports:
-            logger.info('Make subreport "{0}"'.format(subreport.name))
-            subreport.make(self.apps)        
+            logger.debug('Make subreport "{0}"'.format(subreport.name))
+            subreport.make(apps)
 
         for subreport in self.subreports:
             subreport.compact_tables()
-        return not self.is_empty()
 
-    def make_formats(self, formats):
+    def cleanup(self):
+        pass
+
+    def get_report_parts(self, apps, formats):
         """
-        Make report item texts in a specified format
+        Make report item texts in a specified format.
         """
-        self.formats = formats
         for fmt in formats:
-            width = 100 if fmt is not None else lograptor.tui.getTerminalSize()[0]
-            for subrep in self.subreports:
-                subrep.make_format(fmt, width)
+            width = 100 if fmt is not None else tui.getTerminalSize()[0]
+            for sr in self.subreports:
+                sr.make_format(fmt, width)
+
+        logger.debug('Build a map for arguments and run\'s statistics ...')
+        value_mapping = {
+            'title': self.title,
+            'patterns': ', '.join([repr(pattern) for pattern in self.args.patterns]) or None,
+            'pattern_files': ', '.join(self.args.pattern_files) or None,
+            'hosts': ', '.join(self.args.hosts) or None,
+            'apps': u', '.join([
+                u'%s(%d)' % (app.name, app.matches) for app in apps.values() if app.matches > 0
+            ]),
+            'version': __version__
+        }
+
+        filters = []
+        for flt in self.args.filters:
+            filters.append(' AND '.join(['%s=%r' % (k, v.pattern) for k, v in flt.items()]))
+        if filters:
+            value_mapping['filters'] = ' OR '.join(['(%s)' % item for item in filters])
+        else:
+            value_mapping['filters'] = filters[0] if filters else None
+
+        value_mapping.update(self.stats)
+
+        report = []
+        for fmt in formats:
+            if fmt == 'text':
+                logger.info('appends a text page report')
+                report.append(self.make_text_page(value_mapping))
+            elif fmt == 'html':
+                logger.info('appends a html page report')
+                report.append(self.make_html_page(value_mapping))
+            elif fmt == 'csv':
+                logger.info('extends with a list of csv subreports')
+                report.extend(self.make_csv_tables())
+        return report
 
     def is_empty(self):
         """
-        Check if the report is empty (=all subreports are empty)
+        A report is empty when it hasn't subreports or when all subreports are empty.
         """
         return not any(self.subreports)
 
-    def set_stats(self, stats):
+    def set_stats(self, run_stats):
         """
-        Set run statistics for the report (timestamps, totals, etc.).
+        Set run statistics for the report.
         """
-        for key, value in stats.items():
-            self.stats[key] = value
-            logger.debug('{0}={1}'.format(key, value))
-
-    def publish(self, apps, rawfh):
-        """
-        Publishes the report with attachments or files, using all enabled publishers.
-        """
-        if self.is_empty():
-            logger.info("The report is empty: skip publishing.")
-            return
-
-        logger.info('Retrieve parameters and run\'s statistics')
-
-        valumap = {
-            'title': self.title,
-            'localhost': socket.gethostname(),
-            'patterns': [pattern.pattern for pattern in self.patterns],
-            'pattern_file': self.config['pattern_file'],
-            'hosts': self.config['hosts'],
-            'apps': u', '.join([u'%s(%d)' % (app.name, app.counter)
-                                for app in apps.values() if app.counter > 0]),
-            'version': lograptor.info.__version__
-            }
-
-        logger.debug('Provide filtering informations')
-        filters = ''
-        for key, flt in self.filters.items():
-            if flt != '':
-                filters = '{0}--{1}="{2}", '.format(filters, key, flt)
-        
-        if filters == '':
-            filters = 'None'
-        elif self.config['and_filters']:
-            filters = 'all({0})'.format(filters[:-2])
-        else:
-            filters = 'any({0})'.format(filters[:-2])
-        valumap['filters'] = filters        
-
-        logger.debug('Get run\'s stats')
-        for key in self.stats:
-            valumap[key] = self.stats[key]            
-
-        report_parts = []
-        for fmt in self.formats:
-            if fmt == 'plain':
-                logger.info('Creating a plain text page report')
-                report_parts.append(self.make_text_page(valumap))
-            elif fmt == 'html':
-                logger.info('Creating a standard html page report')
-                report_parts.append(self.make_html_page(valumap))
-            elif fmt == 'csv':
-                logger.info('Creating a list of csv files')
-                report_parts.extend(self.make_csv_tables())
-        
-        if self.publishers:
-            print(u'\n--- Publishing report ---')
-            for publisher in self.publishers:
-                logger.info('Invoking publisher "{0}"'.format(publisher.name))
-                publisher.publish(self.title, report_parts, rawfh)
-        elif self.formats[0] == 'plain':
-            print('\n{0}'.format(report_parts[0].text))
+        self.stats = run_stats.copy()
+        self.stats['files'] = ', '.join(self.stats['files'])
+        self.stats['tot_files'] = len(run_stats['files'])
+        self.stats['extra_tags'] = ', '.join(self.stats['extra_tags'])
 
     def make_html_page(self, valumap):
         """
         Builds the report as html page, using the template page from file.
         """
-        logger.info('Making a standard report page')
-
-        logger.info('Reading in the template file "{0}"'.format(self.html_template))
+        logger.info('Making an html report using template %r.', self.html_template)
         fh = open(self.html_template)
         template = fh.read()
         fh.close()
 
-        logger.info('Concatenating the subreports together')
-
-        allsubrep = ''
-        for subrep in self.subreports:
-            if subrep.repitems:
-                logger.info('Processing report for "{0}"'.format(subrep.name))
-                allsubrep = '{0}\n<h2>{1}</h2>\n'\
-                            .format(allsubrep, subrep.title, subrep.reptext)
-                for repitem in subrep.repitems:
-                    allsubrep = '{0}{1}'.format(allsubrep, repitem.html_text)
-                allsubrep = '{0}<hr />'.format(allsubrep)
+        parts = []
+        for sr in self.subreports:
+            report_data = [item.html for item in sr.report_data if item.html]
+            if report_data:
+                parts.append('\n<h2>{1}</h2>\n'.format(sr.title, sr.reptext))
+                parts.extend(report_data)
+                parts.append('\n<hr/>')
         
-        valumap['subreports'] = allsubrep
-
-        logger.info('Create the final report')
-        endpage = Template(template).safe_substitute(valumap)
-
-        logger.debug('----htmlreport starts----')
-        logger.debug(endpage)
-        logger.debug('----htmlreport ends-----')
-
-        return TextPart("Lograptor report", endpage, 'html')
+        valumap['subreports'] = '\n'.join(parts) # or "\n<<NO SUBREPORT RELATED EVENTS>>\n"
+        html_page = Template(template).safe_substitute(valumap)
+        return TextPart(fmt='html', text=html_page, ext='html')
 
     def make_text_page(self, valumap):
         """
         Builds the report as text page, using the template page from file.
         """
-        
-        logger.info('Making a standard report text page')
-
-        logger.info('Reading in the template file "{0}"'.format(self.text_template))
+        logger.info('Making a text report page using template %r.', self.text_template)
         fh = open(self.text_template)
         template = fh.read()
         fh.close()
         
-        logger.info('Concatenating the subreports together')
+        parts = []
+        for sr in self.subreports:
+            report_data = [item.text for item in sr.report_data if item.text]
+            if report_data:
+                parts.append('\n{1}\n***** {0} *****\n{1}'.format(sr.title, '*' * (len(sr.title)+12)))
+                parts.extend(report_data)
 
-        allsubrep = ''
-        for subrep in self.subreports:
-            if subrep.repitems:
-                logger.info('Processing report for "{0}"'.format(subrep.name))
-                allsubrep = '{0}\n\n{2}\n***** {1} *****\n{2}'\
-                            .format(allsubrep, subrep.title, '*' * (len(subrep.title)+12))
-                for repitem in subrep.repitems:
-                    allsubrep = '{0}\n{1}'.format(allsubrep, repitem.plain_text)
-
-        valumap['subreports'] = allsubrep
-        
-        logger.info('Create the final report')
-        endpage = Template(template).safe_substitute(valumap)
-
-        logger.debug('----textreport starts----')
-        logger.debug(endpage)
-        logger.debug('----textreport ends-----')
-
-        return TextPart("Lograptor report", endpage, 'txt')
+        valumap['subreports'] = '\n'.join(parts) # "\n<<NO SUBREPORT RELATED EVENTS>>\n"
+        text_page = Template(template).safe_substitute(valumap)
+        return TextPart(fmt='text', text=text_page, ext='txt')
 
     def make_csv_tables(self):
         """
         Builds the report as a list of csv tables with titles.
         """
-        logger.info('Adding csv report tables as attachments')
-
+        logger.info('Generate csv report tables')
         report_parts = []
-        for subrep in self.subreports:
-            if subrep.repitems:
-                for repitem in subrep.repitems:
-                    report_parts.append(TextPart(repitem.title, repitem.csv_text, 'csv'))
-
+        for sr in self.subreports:
+            for data_item in sr.report_data:
+                report_parts.append(TextPart(fmt='csv', text=data_item.csv, ext='csv'))
         return report_parts

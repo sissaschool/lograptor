@@ -1,35 +1,46 @@
-#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 This module contains additional class and functions to handle time
-and date values for Lograptor package.
+and date values for lograptor package.
 """
-##
-# Copyright (C) 2003 by Duke University
-# Copyright (C) 2012-2016 by SISSA - International School for Advanced Studies
 #
-# This file is part of Lograptor.
+# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
 #
-# Lograptor is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
+# This file is part of lograptor.
 #
-# Lograptor is distributed in the hope that it will be useful,
+# Lograptor is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# This software is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Lograptor; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
-# 02111-1307, USA.
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# file 'LICENSE' in the root directory of the present distribution
+# for more details.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-##
+import datetime
+import re
 
 
-def parse_last(last):
+DATE_FORMATS = (
+    ('%%', re.compile(r"(%%)")),        # a literal %
+    ('%a', re.compile(r"(?<!%)(%a)")),  # locale's abbreviated weekday name (e.g., Sun)
+    ('%A', re.compile(r"(?<!%)(%A)")),  # locale's full weekday name (e.g., Sunday)
+    ('%b', re.compile(r"(?<!%)(%b)")),  # locale's abbreviated month name (e.g., Jan)
+    ('%B', re.compile(r"(?<!%)(%B)")),  # locale's full month name (e.g., January)
+    ('%d', re.compile(r"(?<!%)(%d)")),  # day of month (e.g., 01)
+    ('%j', re.compile(r"(?<!%)(%j)")),  # day of the year as zero padded decimal number (0 .. 366)
+    ('%m', re.compile(r"(?<!%)(%m)")),  # month (01..12)
+    ('%w', re.compile(r"(?<!%)(%w)")),  # day of the week (0 .. 6), 1 is monday
+    ('%y', re.compile(r"(?<!%)(%y)")),  # last two digits of year (00..99)
+    ('%Y', re.compile(r"(?<!%)(%Y)"))   # year
+)
+
+
+def parse_last_period(last):
     """
     Parse the --last value and return the time difference in seconds.
     """
@@ -68,19 +79,18 @@ def parse_last(last):
     return diff
 
 
-def get_interval(timestamp, diff, offset=0):
+def get_datetime_interval(timestamp, diff, offset=0):
     """
     Returns datetime interval from timestamp backward in the past,
     computed using the milliseconds difference passed as argument.
     The final datetime is corrected with an optional offset.
     """
-    import datetime
     fin_datetime = datetime.datetime.fromtimestamp(timestamp + offset)
     ini_datetime = datetime.datetime.fromtimestamp(timestamp - diff)
-    return fin_datetime, ini_datetime
+    return ini_datetime, fin_datetime
 
 
-def parse_date(date):
+def parse_date_period(date):
     """
     Parse the --date value and return a couple of datetime object.
     The format is [YYYY]MMDD[,[YYYY]MMDD].
@@ -133,40 +143,59 @@ class TimeRange(object):
     """
     A simple class to manage time range intervals
     """
-    h1 = m1 = h2 = m2 = 0
-
-    def __init__(self, tr=""):
+    def __init__(self, time_range):
         """
         Constructor from timerange string.
         The time range format is HH:MM,HH:MM.
         """
+        try:
+            start_time, end_time = time_range.split(',')
+        except ValueError:
+            raise ValueError("%r is not a time range specification, use: HH:MM,HH:MM")
 
-        if len(tr) < 11:
-            raise ValueError
-        if tr[2] != ':' or tr[5] != ',' or tr[8] != ':':
-            raise ValueError
-            
-        self.h1 = int(tr[0:2])
-        self.m1 = int(tr[3:5])
-        self.h2 = int(tr[6:8])
-        self.m2 = int(tr[9:])
+        self.start_time = datetime.datetime.strptime(start_time.strip(), '%H:%M').time()
+        self.end_time = datetime.datetime.strptime(end_time.strip(), '%H:%M').time()
+        if self.start_time == self.end_time:
+            raise ValueError("times must be differents!")
 
-        if (self.h1 not in range(0, 23) or
-                self.h2 not in range(0, 23) or
-                self.m1 not in range(0, 59) or
-                self.m2 not in range(0, 59) or
-                self.h1 > self.h2 or
-                (self.h1 == self.h2 and self.m1 > self.m2)):
-            raise ValueError
+        self.h1 = self.start_time.hour
+        self.m1 = self.start_time.minute
+        self.h2 = self.end_time.hour
+        self.m2 = self.end_time.minute
 
-    def between(self, mytime):
+    def between(self, time_):
         """
         Compare if the parameter HH:MM is in the time range.
         """
-        hour = int(mytime[0:2])
-        minute = int(mytime[3:5])
+        hour = int(time_[0:2])
+        minute = int(time_[3:5])
         return not (
             hour < self.h1 or hour > self.h2 or
             (hour == self.h1 and minute < self.m1) or
             (hour == self.h2 and minute > self.m2)
         )
+
+
+def strftimegen(start_dt, end_dt):
+    """
+    Return a generator function for datetime format strings.
+    The generator produce a day-by-day sequence starting from the first datetime
+    to the second datetime argument.
+    """
+    if start_dt > end_dt:
+        raise ValueError("the start datetime is after the end datetime: (%r,%r)" % (start_dt, end_dt))
+
+    def iterftime(string):
+        date_subs = [i for i in DATE_FORMATS if i[1].search(string) is not None]
+        if not date_subs:
+            yield string
+        else:
+            dt = start_dt
+            date_path = string
+            while end_dt >= dt:
+                for item in date_subs:
+                    date_path = item[1].sub(dt.strftime(item[0]), date_path)
+                yield date_path
+                dt = dt + datetime.timedelta(days=1)
+
+    return iterftime
