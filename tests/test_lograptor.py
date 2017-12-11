@@ -37,7 +37,7 @@ def pytest_report_header(config):
     return "lograptor test"
 
 
-CONFIG_FILES = ('test_lograptor.conf',) + lograptor.LogRaptor.DEFAULT_CONFIG_FILES
+CONFIG_FILES = ('lograptor.conf', 'test_lograptor.conf')
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -419,11 +419,11 @@ class TestLograptor(object):
         """
         tests = [
             ('--anonymize -a postfix -m 3 -e triceratops samples/dovecot.log samples/postfix.log',
-             r'HOST_0001.*: THREAD_0001: from=<', 0),
+             r'HOST_000\d.*: THREAD_000\d: from=<', 0),
             ('--anonymize -a dovecot -m 3 -e triceratops samples/dovecot.log samples/postfix.log',
-             r'HOST_0001 dovecot: imap-login: Login: user=<', 0),
+             r'HOST_000\d dovecot: imap-login: Login: user=<', 0),
             ('--anonymize -m 3 -e triceratops samples/*.log',
-             r'postfix\/pickup\[7350\]: THREAD_0002: uid=300 ', 0)
+             r'postfix\/pickup\[7350\]: THREAD_000\d: uid=300 ', 0)
         ]
         for cmd_line, result, retval in tests:
             assert retval == self.exec_lograptor(cmd_line)

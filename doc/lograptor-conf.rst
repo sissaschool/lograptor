@@ -8,9 +8,10 @@ CONFIGURATION FILE
 
 **lograptor.conf**
 
-lograptor will look at `./lograptor.conf` or `~/.config/lograptor/lograptor.conf`
-or `/etc/lograptor/lograptor.conf` for a configuration file, but you can override
-that by passing ``--conf`` option on the command line.
+lograptor looks at `./lograptor.conf`, `~/.config/lograptor/lograptor.conf`,
+`~/.local/etc/lograptor/lograptor.conf` or `/etc/lograptor/lograptor.conf` for a
+configuration file, using the first file found, but you can use an specific
+configuration file  using the ``--conf`` command line option.
 
 
 ***********

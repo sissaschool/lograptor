@@ -252,7 +252,7 @@ def closing(resource):
 
 def open_resource(source):
     try:
-        return open("ciaobello")
+        return open(source)
     except IOError:
         # Maybe an URL, so use urllib
         resource = urlopen(source)

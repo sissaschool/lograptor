@@ -23,7 +23,7 @@ This module contain general info about lograptor package.
 __author__ = "Davide Brunato"
 __copyright__ = "Copyright 2011-2017, SISSA"
 __license__ = "LGPLv2.1+"
-__version__ = "1.2b1"
+__version__ = "1.2"
 __maintainer__ = "Davide Brunato"
 __email__ = "brunato@sissa.it"
 __status__ = "Development"
@@ -32,7 +32,7 @@ __description__ = ("Command-line utility for processing log files. "
 LONG_DESCRIPTION = """
 lograptor is a tool which provides a command-line interface for system logs processing.
 
-Pattern matching's searches can be performed together with filtering
+Pattern matching searches can be performed together with filtering
 rules and scope delimitation options. Each run can produce data and
 a report that can be easily sent by e-mail or saved into a file system
 directory.

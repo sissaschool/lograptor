@@ -51,9 +51,10 @@ General Options
 .. option:: --conf FILE
 
     Use a specific configuration file. For default try to find and use a *lograptor.conf*
-    file located in the current directory, in the ~/.config/lograptor/ directory or in the
-    /etc/lograptor/ directory. If you call the program from the command line without
-    other options and arguments a summary of configuration settings is dumped to stdout.
+    file located in the current directory, in the *~/.config/lograptor/* directory, in the
+    *~/.local/etc/lograptor/* directory or in the */etc/lograptor/* directory.
+    If you call the program from the command line without other options and arguments a
+    summary of configuration settings is dumped to stdout.
 
 .. option:: -d [0-4]
 
@@ -222,7 +223,8 @@ Output Data Control
 
     Anonymize defined application rule's fields value. Translation tables are built
     in volatile memory for each run. The anonymous tokens have the format FILTER_NNN.
-    This option overrides --ip-lookup and --uid-lookup options.
+    This option overrides --ip-lookup and --uid-lookup options. WARNING: this is an
+    experimental feature.
 
 
 Output Line Prefix Control

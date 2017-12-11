@@ -25,24 +25,20 @@ The project uses parts of Epylog under LGPL terms with author's permission.
 Please send feedback for bugs, feature requests, suggestions, comments and
 criticism.
 
-OBTAINING
----------
-Clone the git repository, choosing one of those commands::
-
-  git clone https://github.com/brunato/lograptor
-  git clone git://github.com/brunato/lograptor.git
-
-or download the zip archive from the site and extract the content to a folder.
-Then go into the created directory (lograptor) to install or build the software.
-
 INSTALL
 -------
-Easiest way is to get and install the RPM/DEB package. To installing from source
-extract the tarball into a directory, and then cd in the base directory and type::
 
-  python setup.py build install
+Installing from package::
 
-Lograptor package and source requires Python 2.7 or Python 3.3+.
+    sudo pip install lograptor    # System wide installation, require root access.
+    pip install --user lograptor  # Installation into the user space.
+
+Installing from source::
+
+    git clone https://github.com/brunato/lograptor
+    cd lograptor/
+    python setup.py install
+    python setup.py install_data
 
 CONFIGURE
 ---------
@@ -96,5 +92,6 @@ ROADMAP
 -------
 
 - Adding other log formats and output channels
+- Accepting Logstash's Grok syntax in application pattern rules
 - Completing the develop of a library interface
-- Improving the anonymized output feature
+- Completing the anonymized output feature, that is still an experimental feature

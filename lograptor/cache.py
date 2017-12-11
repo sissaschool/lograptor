@@ -44,7 +44,7 @@ class LookupCache(object):
         self.ip_lookup = args.ip_lookup
         self.uid_lookup = args.uid_lookup
         self.anonymyze = args.anonymize
-        self.filters = args.filters
+        self.fields = config.options('fields')
         self.base_gid_pattern = re.compile('^([a-zA-Z_]+)')
         ipv4_pattern = config.get('patterns', 'IPV4_ADDRESS')
         ipv6_pattern = config.get('patterns', 'IPV6_ADDRESS')
@@ -53,7 +53,7 @@ class LookupCache(object):
 
     def clear(self):
         self._maps.clear()
-        for flt in set(self.filters) | {'host', 'thread', 'uid'}:
+        for flt in set(self.fields) | {'host', 'thread', 'uid'}:
             self._maps[flt] = {}
 
     @property

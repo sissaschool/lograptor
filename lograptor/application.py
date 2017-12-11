@@ -427,7 +427,7 @@ class AppLogParser(object):
                 None otherwise;
             Element #2 (app_thread): Thread value if a rule match and it has a "thread"
                 group, None otherwise;
-            Element #3 (map_dict): Mapping dictionary if a rule match and a map
+            Element #3 (output_data): Mapping dictionary if a rule match and a map
                 of output is requested (--anonymize/--ip/--uid options).
         """
         for rule in self.rules:
@@ -438,7 +438,7 @@ class AppLogParser(object):
                 if self.name_cache is not None:
                     values = self.name_cache.match_to_dict(match, rule.key_gids)
                     values['host'] = self.name_cache.map_value(log_data.host, 'host')
-                    map_dict = {
+                    output_data = {
                         'host': values['host'],
                         'message': self.name_cache.match_to_string(match, gids, values),
                     }
@@ -446,7 +446,7 @@ class AppLogParser(object):
                     values = {'host': log_data.host}
                     for gid in gids:
                         values[gid] = match.group(gid)
-                    map_dict = None
+                    output_data = None
 
                 if self._thread and 'thread' in rule.regexp.groupindex:
                     thread = match.group('thread')
@@ -455,14 +455,14 @@ class AppLogParser(object):
                         return False, None, None, None
                     if self._report:
                         rule.add_result(values)
-                    return True, rule.full_match, thread, map_dict
+                    return True, rule.full_match, thread, output_data
                 else:
                     if rule.filter_keys is not None and \
                             any([values[key] is None for key in rule.filter_keys]):
                         return False, None, None, None
                     elif self._report or (rule.filter_keys is not None or not self.has_filters):
                         rule.add_result(values)
-                    return True, rule.full_match, None, map_dict
+                    return True, rule.full_match, None, output_data
 
         # No rule match: the application log message is not parsable with enabled rules.
         self._last_rule = None

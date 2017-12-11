@@ -22,6 +22,7 @@ The project uses parts of Epylog under LGPL terms with author's permission.
 .. toctree::
    :maxdepth: 1
 
+   installation
    lograptor
    lograptor-conf
    lograptor-apps

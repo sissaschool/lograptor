@@ -26,12 +26,9 @@ import os.path
 import platform
 import shutil
 
-import distutils.command.sdist
-import distutils.command.build
-import distutils.command.build_scripts
-import distutils.command.bdist_rpm
-import distutils.command.install
-from distutils.core import setup
+import setuptools.command.sdist
+import setuptools.command.bdist_rpm
+from setuptools import setup
 
 import lograptor.info
 
@@ -45,20 +42,17 @@ distro_tags = {
 MAN_SOURCE_DIR = 'doc/_build/man/'
 PDF_SOURCE_DIR = 'doc/_build/latex/'
 
+DOC_INSTALL_DIR = '/usr/share/doc/lograptor' if os.access('/usr', os.W_OK) else 'doc/lograptor'
+MAN_INSTALL_DIR = '/usr/share/man' if os.access('/usr', os.W_OK) else 'man'
+CONFIG_INSTALL_DIR = '/etc/lograptor' if os.access('/etc', os.W_OK) else 'etc/lograptor'
 
-class my_sdist(distutils.command.sdist.sdist):
+
+class my_sdist(setuptools.command.sdist.sdist):
     """
     Custom version of sdist command, to update master script
     and compressed version of manual pages.
     """
-    
     def run(self):
-        if os.path.isfile('lograptor.py'):
-            if not os.path.isdir('scripts'):
-                os.mkdir('scripts')
-            print("Copy lograptor.py -> scripts/lograptor")
-            shutil.copyfile("lograptor.py", "scripts/lograptor")
-
         print("Copy {0}lograptor.pdf -> doc/lograptor.pdf".format(PDF_SOURCE_DIR))
         os.system("cp -p {0}lograptor.pdf doc/lograptor.pdf".format(PDF_SOURCE_DIR))
         print("Compress {0}lograptor.8 -> man/lograptor.8.gz".format(MAN_SOURCE_DIR))
@@ -69,28 +63,28 @@ class my_sdist(distutils.command.sdist.sdist):
         os.system("gzip -c {0}lograptor-apps.5 > man/lograptor-apps.5.gz".format(MAN_SOURCE_DIR))
         print("Compress {0}lograptor-examples.8 -> man/lograptor-examples.8.gz".format(MAN_SOURCE_DIR))
         os.system("gzip -c {0}lograptor-examples.8 > man/lograptor-examples.8.gz".format(MAN_SOURCE_DIR))
-        distutils.command.sdist.sdist.run(self)
+        setuptools.command.sdist.sdist.run(self)
 
 
-class my_bdist_rpm(distutils.command.bdist_rpm.bdist_rpm):
+class my_bdist_rpm(setuptools.command.bdist_rpm.bdist_rpm):
 
     def _make_spec_file(self):
         """
         Customize spec file inserting %config section
         """
-        spec_file = distutils.command.bdist_rpm.bdist_rpm._make_spec_file(self)
+        spec_file = setuptools.command.bdist_rpm.bdist_rpm._make_spec_file(self)
         spec_file.append('%config(noreplace) /etc/lograptor/lograptor.conf')
         spec_file.append('%config(noreplace) /etc/lograptor/report_template.*')
         spec_file.append('%config(noreplace) /etc/lograptor/conf.d/*.conf')
         return spec_file
 
     def initialize_options(self):
-        distutils.command.bdist_rpm.bdist_rpm.initialize_options(self)
+        setuptools.command.bdist_rpm.bdist_rpm.initialize_options(self)
         distro = platform.linux_distribution()
         self.distribution_name = "{0} {1}".format(distro[0], distro[1].split('.')[0])
 
     def run(self):
-        distutils.command.bdist_rpm.bdist_rpm.run(self)
+        setuptools.command.bdist_rpm.bdist_rpm.run(self)
 
         msg = 'moving {0} -> {1}'
         print('cd dist/')
@@ -120,14 +114,6 @@ class my_bdist_rpm(distutils.command.bdist_rpm.bdist_rpm):
                     new_name = filename[:-8] + 'ubuntu1_all.deb'
                     print(msg.format(filename, new_name))
                     os.rename(filename, new_name)
-        
-
-class my_install(distutils.command.install.install):
-
-    def run(self):
-        distutils.command.install.install.run(self)
-        # os.system('cat INSTALLED_FILES | grep -v "/etc/lograptor" > INSTALLED_FILES.new')
-        # os.system('mv INSTALLED_FILES.new INSTALLED_FILES')
 
 
 setup(
@@ -141,29 +127,24 @@ setup(
     long_description=lograptor.info.LONG_DESCRIPTION,
     url='https://github.com/brunato/lograptor',
     packages=['lograptor'],
-    platform='linux2',
     package_data={
         'lograptor': [
-            'README',
             'LICENSE',
-            'doc/lograptor.pdf',
-            'etc/lograptor/lograptor.conf',
-            'etc/lograptor/report_template.html',
-            'etc/lograptor/report_template.txt',
-            'etc/lograptor/conf.d/*.conf',
-            'man/lograptor*.gz',
             'lograptor/*.py',
         ],
     },
-    data_files=[('/usr/share/man/man8', ['man/lograptor.8.gz']),
-                ('/usr/share/man/man5', ['man/lograptor.conf.5.gz']),
-                ('/usr/share/man/man5', ['man/lograptor-apps.5.gz']),
-                ('/usr/share/man/man8', ['man/lograptor-examples.8.gz']),
-                ('/etc/lograptor', [
-                    'etc/lograptor/lograptor.conf',
-                    'etc/lograptor/report_template.html',
-                    'etc/lograptor/report_template.txt']),
-                ('/etc/lograptor/conf.d', glob.glob('etc/lograptor/conf.d/*.conf'))],
+    data_files=[
+        (CONFIG_INSTALL_DIR, [
+            'etc/lograptor/lograptor.conf',
+            'etc/lograptor/report_template.html',
+            'etc/lograptor/report_template.txt']),
+        ('%s/conf.d' % CONFIG_INSTALL_DIR, glob.glob('etc/lograptor/conf.d/*.conf')),
+        (DOC_INSTALL_DIR, ['README.rst', 'doc/lograptor.pdf']),
+        ('%s/man8' % MAN_INSTALL_DIR, ['man/lograptor.8.gz']),
+        ('%s/man5' % MAN_INSTALL_DIR, ['man/lograptor.conf.5.gz']),
+        ('%s/man5' % MAN_INSTALL_DIR, ['man/lograptor-apps.5.gz']),
+        ('%s/man8' % MAN_INSTALL_DIR, ['man/lograptor-examples.8.gz']),
+    ],
     entry_points={
         'console_scripts': [
             'lograptor=lograptor.api:main'
@@ -172,7 +153,6 @@ setup(
     requires=['python (>=2.7)'],
     cmdclass={
         "sdist": my_sdist,
-        "install": my_install,
         "bdist_rpm": my_bdist_rpm
     },
     classifiers=[
