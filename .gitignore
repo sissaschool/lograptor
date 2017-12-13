@@ -3,8 +3,8 @@
 *~
 MANIFEST
 lograptor.conf
-!etc/lograptor/lograptor.conf
-etc/lograptor/conf.d/testapp.conf
+!etc/config/lograptor.conf
+etc/config/conf.d/testapp.conf
 exclude-list.txt
 package-build
 project-sync.py

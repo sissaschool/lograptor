@@ -67,7 +67,8 @@ class LogRaptor(object):
     DEFAULT_CONFIG_FILES = (
         'lograptor.conf',
         os.path.expanduser('~/.config/lograptor/lograptor.conf'),
-        '/etc/lograptor/lograptor.conf'
+        '/etc/lograptor/lograptor.conf',
+        os.path.join(os.path.dirname(__file__), 'config/lograptor.conf'),
     )
 
     def __init__(self, args):

@@ -31,6 +31,7 @@ are in order::
     ~/.config/lograptor/lograptor.conf
     ~/.local/etc/lograptor/lograptor.conf
     /etc/lograptor/lograptor.conf
+    <package source location>/config/lograptor.conf
 
 
 **********************

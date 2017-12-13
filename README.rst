@@ -40,10 +40,13 @@ Installing from source::
     python setup.py install
     python setup.py install_data
 
+To verify if the program is installed type *lograptor* without arguments on the command
+line. The default configuration location and settings will be shown.
+
 CONFIGURE
 ---------
-After the installation edit the files in /etc/lograptor to reflect your
-environment::
+After the installation copy the default configuration files of the package source into
+*/etc/lograptor* to define your custom configurations::
 
   /etc/lograptor/lograptor.conf        Default main configuration file
   /etc/lograptor/report_template.html  Report HTML template
