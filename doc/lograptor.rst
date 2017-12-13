@@ -9,7 +9,7 @@ SYNOPSIS
 
 ::
 
-    lograptor [options] [FILE ...]
+    lograptor [options] PATTERN [FILE ...]
     lograptor [options] [-e PATTERN | -f PATTERNS_FILE ] [FILE ...]
 
 

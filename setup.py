@@ -24,7 +24,7 @@ import glob
 import os
 import os.path
 import platform
-import shutil
+import sys
 
 import setuptools.command.sdist
 import setuptools.command.bdist_rpm
@@ -42,9 +42,26 @@ distro_tags = {
 MAN_SOURCE_DIR = 'doc/_build/man/'
 PDF_SOURCE_DIR = 'doc/_build/latex/'
 
-DOC_INSTALL_DIR = '/usr/share/doc/lograptor' if os.access('/usr', os.W_OK) else 'doc/lograptor'
-MAN_INSTALL_DIR = '/usr/share/man' if os.access('/usr', os.W_OK) else 'man'
-CONFIG_INSTALL_DIR = '/etc/lograptor' if os.access('/etc', os.W_OK) else 'etc/lograptor'
+
+def is_virtual_environment():
+    if hasattr(sys, 'real_prefix'):
+        # py2/py3 virtualenv environment
+        return True
+    try:
+        # py3 pyvenv environment
+        return getattr(sys, 'base_prefix') != sys.prefix
+    except AttributeError:
+        return False
+
+
+if is_virtual_environment():
+    DOC_INSTALL_DIR = 'doc/lograptor'
+    MAN_INSTALL_DIR = 'man'
+    CONFIG_INSTALL_DIR = 'etc/lograptor'
+else:
+    DOC_INSTALL_DIR = '/usr/share/doc/lograptor'
+    MAN_INSTALL_DIR = '/usr/share/man'
+    CONFIG_INSTALL_DIR = '/etc/lograptor'
 
 
 class my_sdist(setuptools.command.sdist.sdist):
@@ -115,7 +132,6 @@ class my_bdist_rpm(setuptools.command.bdist_rpm.bdist_rpm):
                     print(msg.format(filename, new_name))
                     os.rename(filename, new_name)
 
-
 setup(
     name='lograptor',
     version=lograptor.info.__version__,
@@ -138,12 +154,10 @@ setup(
             'etc/lograptor/lograptor.conf',
             'etc/lograptor/report_template.html',
             'etc/lograptor/report_template.txt']),
-        ('%s/conf.d' % CONFIG_INSTALL_DIR, glob.glob('etc/lograptor/conf.d/*.conf')),
+        (CONFIG_INSTALL_DIR + '/conf.d', glob.glob('etc/lograptor/conf.d/*.conf')),
         (DOC_INSTALL_DIR, ['README.rst', 'doc/lograptor.pdf']),
-        ('%s/man8' % MAN_INSTALL_DIR, ['man/lograptor.8.gz']),
-        ('%s/man5' % MAN_INSTALL_DIR, ['man/lograptor.conf.5.gz']),
-        ('%s/man5' % MAN_INSTALL_DIR, ['man/lograptor-apps.5.gz']),
-        ('%s/man8' % MAN_INSTALL_DIR, ['man/lograptor-examples.8.gz']),
+        (MAN_INSTALL_DIR + '/man5', ['man/lograptor.conf.5.gz', 'man/lograptor-apps.5.gz']),
+        (MAN_INSTALL_DIR + '/man8', ['man/lograptor.8.gz', 'man/lograptor-examples.8.gz']),
     ],
     entry_points={
         'console_scripts': [

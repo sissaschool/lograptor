@@ -1,6 +1,6 @@
 include LICENSE
 include README.rst
 include doc/lograptor.pdf
-include lograptor *.py
+include lograptor/*.py
 recursive-include etc/lograptor *.conf *.txt *.html
 recursive-include man *.5.gz *.8.gz
