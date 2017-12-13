@@ -53,6 +53,8 @@ General Options
     Use a specific configuration file. For default try to find and use a *lograptor.conf*
     file located in the current directory, in the *~/.config/lograptor/* directory, in the
     *~/.local/etc/lograptor/* directory or in the */etc/lograptor/* directory.
+    If none of them exist then uses the default configuration provided within the package
+    into the subdirectory *config/*.
     If you call the program from the command line without other options and arguments a
     summary of configuration settings is dumped to stdout.
 

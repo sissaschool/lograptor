@@ -54,14 +54,51 @@ def is_virtual_environment():
         return False
 
 
-if is_virtual_environment():
-    DOC_INSTALL_DIR = 'doc/lograptor'
-    MAN_INSTALL_DIR = 'man'
-    CONFIG_INSTALL_DIR = 'etc/lograptor'
+###
+# Set data files depending on the command argument
+DOC_FILES = ['README.rst', 'LICENSE', 'doc/lograptor.pdf']
+MAN5_FILES = ['man/lograptor.conf.5.gz', 'man/lograptor-apps.5.gz']
+MAN8_FILES = ['man/lograptor.8.gz', 'man/lograptor-examples.8.gz']
+
+if 'bdist_rpm' in sys.argv:
+    package_data = {}
+    data_files = [
+        ('/etc/lograptor', [
+            'lograptor/config/lograptor.conf',
+            'lograptor/config/report_template.html',
+            'lograptor/config/report_template.txt']),
+        ('/etc/lograptor/conf.d', glob.glob('etc/lograptor/conf.d/*.conf')),
+        ('/usr/share/doc/lograptor', DOC_FILES),
+        ('/usr/share/man/man5', MAN5_FILES),
+        ('/usr/share/man/man8', MAN8_FILES),
+    ]
 else:
-    DOC_INSTALL_DIR = '/usr/share/doc/lograptor'
-    MAN_INSTALL_DIR = '/usr/share/man'
-    CONFIG_INSTALL_DIR = '/etc/lograptor'
+    package_data = {
+        'lograptor': [
+            'config/lograptor.conf',
+            'config/report_template.html',
+            'config/report_template.txt',
+            'config/conf.d/*.conf',
+        ],
+    }
+    if 'bdist_wheel' in sys.argv:
+        data_files = [
+            ('share/doc/lograptor', DOC_FILES),
+            ('share/man/man5', MAN5_FILES),
+            ('share/man/man8', MAN8_FILES),
+        ]
+    elif is_virtual_environment():
+        data_files = [
+            ('doc/lograptor', DOC_FILES),
+            ('man/man5', MAN5_FILES),
+            ('man/man8', MAN8_FILES),
+        ]
+    else:
+        data_files = [
+            ('/usr/share/doc/lograptor', DOC_FILES),
+            ('/usr/share/man/man5', MAN5_FILES),
+            ('/usr/share/man/man8', MAN8_FILES),
+        ]
 
 
 class my_sdist(setuptools.command.sdist.sdist):
@@ -132,6 +169,7 @@ class my_bdist_rpm(setuptools.command.bdist_rpm.bdist_rpm):
                     print(msg.format(filename, new_name))
                     os.rename(filename, new_name)
 
+
 setup(
     name='lograptor',
     version=lograptor.info.__version__,
@@ -143,22 +181,8 @@ setup(
     long_description=lograptor.info.LONG_DESCRIPTION,
     url='https://github.com/brunato/lograptor',
     packages=['lograptor'],
-    package_data={
-        'lograptor': [
-            'LICENSE',
-            'lograptor/*.py',
-        ],
-    },
-    data_files=[
-        (CONFIG_INSTALL_DIR, [
-            'etc/lograptor/lograptor.conf',
-            'etc/lograptor/report_template.html',
-            'etc/lograptor/report_template.txt']),
-        (CONFIG_INSTALL_DIR + '/conf.d', glob.glob('etc/lograptor/conf.d/*.conf')),
-        (DOC_INSTALL_DIR, ['README.rst', 'doc/lograptor.pdf']),
-        (MAN_INSTALL_DIR + '/man5', ['man/lograptor.conf.5.gz', 'man/lograptor-apps.5.gz']),
-        (MAN_INSTALL_DIR + '/man8', ['man/lograptor.8.gz', 'man/lograptor-examples.8.gz']),
-    ],
+    package_data=package_data,
+    data_files=data_files,
     entry_points={
         'console_scripts': [
             'lograptor=lograptor.api:main'
