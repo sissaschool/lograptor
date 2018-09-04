@@ -36,7 +36,7 @@ class TestUtils(object):
         print("\n%s:%s" % (type(self).__name__, method.__name__))
 
     @pytest.mark.unparsed
-    def test_open_resource(self, capsys):
+    def test_open_resource(self):
         open_resource("samples/postfix.log")
         with pytest.raises((OSError,IOError)):
             open_resource("samples/nofile.log")
