@@ -74,6 +74,12 @@ Other sections can be added in order to configure additional output channels or 
 
         smtp_server = /usr/sbin/sendmail -t
 
+.. envvar:: encodings
+
+    A comma-separated list of
+    `standard encodings's codecs <https://docs.python.org/3.6/library/codecs.html#standard-encodings>`_
+    to use for accessing the log resources. For default its value is 'uft-8, latin1, latin2'.
+
 .. envvar:: mapexp
 
     The dimension of translation tables for

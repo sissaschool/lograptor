@@ -227,7 +227,8 @@ class LogRaptorConfig(EnvConfigParser, object):
             'logfile': '/var/log/lograptor.log',
             'email_address': 'root@{0}'.format(socket.gethostname()),
             'smtp_server': '/usr/sbin/sendmail -t',
-            'mapexp': 4
+            'encodings': 'utf_8, latin1, latin2',
+            'mapexp': 4,
         },
         'patterns': {
             'ASCII': r'[\x01-\x7f]*',

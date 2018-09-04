@@ -26,6 +26,7 @@ import datetime
 import logging
 from collections import namedtuple, Counter
 
+
 from .logparsers import CycleParsers
 from .utils import open_resource
 
@@ -186,7 +187,7 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
     dispatch_selected = dispatcher.dispatch_selected
     dispatch_context = dispatcher.dispatch_context
 
-    def process_logfile(source, apps):
+    def process_logfile(source, apps, encoding='utf-8'):
         log_parser = next(parsers)
         first_event = None
         last_event = None
@@ -209,6 +210,7 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
             prev_year = file_year - 1
 
             for line in logfile:
+                line = line.decode(encoding)
                 line_counter += 1
                 if line[-1] != '\n':
                     line += '\n'
