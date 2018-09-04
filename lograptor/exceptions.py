@@ -70,7 +70,7 @@ class LogRaptorNoSectionError(LogRaptorException, configparser.NoSectionError):
 
 
 class LogRaptorNoOptionError(LogRaptorException, configparser.NoOptionError):
-    def __init__(self, section, option):
+    def __init__(self, option, section):
         super(LogRaptorNoOptionError, self).__init__(option, section)
 
 

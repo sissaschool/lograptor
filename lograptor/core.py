@@ -77,7 +77,7 @@ class LogRaptor(object):
     def __init__(self, args):
         try:
             self.config = LogRaptorConfig(cfgfiles=args.cfgfiles or self.DEFAULT_CONFIG_FILES)
-        except IOError as err:
+        except (IOError, OSError) as err:
             logger.critical('no configuration available in files %r: %r', args.cfgfiles, err)
             raise FileMissingError('abort %r for previous errors' % __package__)
         else:

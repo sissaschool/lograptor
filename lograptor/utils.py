@@ -259,10 +259,15 @@ def open_resource(source):
     """
     try:
         return open(source, mode='rb')
-    except IOError:
-        resource = urlopen(source)
-        resource.name = resource.url
-        if hasattr(resource, '__enter__'):
-            return resource
+    except (IOError, OSError) as err:
+        try:
+            resource = urlopen(source)
+        except ValueError:
+            pass
         else:
-            return closing(resource)
+            resource.name = resource.url
+            if hasattr(resource, '__enter__'):
+                return resource
+            else:
+                return closing(resource)
+        raise err

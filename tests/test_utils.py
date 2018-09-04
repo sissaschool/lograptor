@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Test script for resource access.
+Test script for helper functions.
 """
 #
 # Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
@@ -38,10 +38,6 @@ class TestUtils(object):
     @pytest.mark.unparsed
     def test_open_resource(self, capsys):
         open_resource("samples/postfix.log")
-        with pytest.raises(ValueError):
+        with pytest.raises((OSError,IOError)):
             open_resource("samples/nofile.log")
-
-        # pytest.set_trace()
-        f = open_resource("samples/iso-8859-sample2.log")
-        print(f)
 

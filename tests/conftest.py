@@ -29,6 +29,11 @@ def pytest_report_header(config):
     return "lograptor test"
 
 
+@pytest.fixture(scope='module')
+def config_files():
+    return ('lograptor.conf', 'test_lograptor.conf')
+
+
 @pytest.fixture(scope="session", autouse=True)
 def set_test_files():
     # Change directory
