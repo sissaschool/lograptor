@@ -58,6 +58,9 @@ except NameError:
     prompt = input
 
 
+STANDARD_ENCODINGS = ['utf_8', 'latin1', 'latin2']
+
+
 class LogRaptor(object):
     """
     This is the core class of the lograptor package.
@@ -74,7 +77,7 @@ class LogRaptor(object):
     def __init__(self, args):
         try:
             self.config = LogRaptorConfig(cfgfiles=args.cfgfiles or self.DEFAULT_CONFIG_FILES)
-        except IOError as err:
+        except (IOError, OSError) as err:
             logger.critical('no configuration available in files %r: %r', args.cfgfiles, err)
             raise FileMissingError('abort %r for previous errors' % __package__)
         else:
@@ -88,6 +91,7 @@ class LogRaptor(object):
         else:
             self.name_cache = None
 
+        self._encodings = self.encodings
         self._matcher = self.matcher
         self._patterns = self.patterns
         self._time_period = self.time_period
@@ -332,6 +336,10 @@ class LogRaptor(object):
         confdir = self.config.get('main', 'logdir')
         return normalize_path(confdir, base_path=os.path.dirname(self.config.cfgfile))
 
+    @property
+    def encodings(self):
+        return self.config.get('main', 'encodings').split(',')
+
     @protected_property
     def apps(self):
         """
@@ -437,15 +445,13 @@ class LogRaptor(object):
         Log processing main routine. Iterate over the log files calling
         the processing internal routine for each file.
         """
-        logger.info('processing log files ...')
         if dispatcher is None:
             dispatcher = self.create_dispatcher()
-
         matcher_engine = self.create_matcher(dispatcher, parsers=parsers)
         dispatcher.open()
 
         files = []
-        lines = matches = unparsed = unknown = 0
+        lines = matches = unknown = 0
         extra_tags = Counter()
         first_event = last_event = None
         if self.args.report:
@@ -462,7 +468,16 @@ class LogRaptor(object):
                 continue
 
             try:
-                result = matcher_engine(source, apps)
+                for encoding in self._encodings:
+                    try:
+                        result = matcher_engine(source, apps, encoding)
+                    except UnicodeDecodeError:
+                        continue
+                    break
+                else:
+                    logger.error("no valid decoder found for %r." % source)
+                    continue
+
                 files.append(str(source))
 
                 lines += result.lines

@@ -23,4 +23,6 @@ tests/var/
 .cache/
 .vagrant/
 __pycache__/
+.pytest_cache/
+.tox/
 *.egg-info/

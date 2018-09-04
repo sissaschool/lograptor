@@ -74,6 +74,12 @@ Other sections can be added in order to configure additional output channels or 
 
         smtp_server = /usr/sbin/sendmail -t
 
+.. envvar:: encodings
+
+    A comma-separated list of
+    `standard encodings's codecs <https://docs.python.org/3.6/library/codecs.html#standard-encodings>`_
+    to use for accessing the log resources. For default its value is 'uft-8, latin1, latin2'.
+
 .. envvar:: mapexp
 
     The dimension of translation tables for
@@ -181,9 +187,9 @@ Those filters are usually skipped in the configuration files because are embedde
 lograptor's defaults.
 
 
-**********************
-[..._channel] SECTIONS
-**********************
+***********************
+OUTPUT CHANNEL SECTIONS
+***********************
 
 The default output channel is *stdout* that is the standard output terminal channel
 (*TermChannel*). Other types of channels can be defined, currently you can choose
@@ -318,9 +324,9 @@ These are the custom options used by *FileChannel* declaration sections:
     <http://www.example.com/lograptor/dirname/filename.html>`_
 
 
-*********************
-[..._report] SECTIONS
-*********************
+***************
+REPORT SECTIONS
+***************
 
 A report section has a name of format *<report-name>_report*. The defined reports are
 usable within the option `--report option <lograptor.html#cmdoption--report>`_.

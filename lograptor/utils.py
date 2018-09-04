@@ -251,15 +251,23 @@ def closing(resource):
 
 
 def open_resource(source):
+    """
+    Opens a resource in binary reading mode. Wraps the resource with a
+    context manager when it doesn't have one.
+
+    :param source: a filepath or an URL.
+    """
     try:
-        return open(source)
-    except IOError:
-        # Maybe an URL, so use urllib
-        resource = urlopen(source)
-        resource.name = resource.url
-        if hasattr(resource, '__enter__'):
-            return resource
+        return open(source, mode='rb')
+    except (IOError, OSError) as err:
+        try:
+            resource = urlopen(source)
+        except ValueError:
+            pass
         else:
-            return closing(resource)
-    except TypeError:
-        return source
+            resource.name = resource.url
+            if hasattr(resource, '__enter__'):
+                return resource
+            else:
+                return closing(resource)
+        raise err

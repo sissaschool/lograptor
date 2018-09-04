@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Test script for lograptor.
+Test script for lograptor matcher.
 """
 #
 # Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
@@ -21,7 +21,6 @@ Test script for lograptor.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-import os
 import re
 import sys
 import pytest
@@ -33,37 +32,12 @@ from lograptor.exceptions import (
 )
 
 
-def pytest_report_header(config):
-    return "lograptor test"
-
-
 CONFIG_FILES = ('lograptor.conf', 'test_lograptor.conf')
-
-
-@pytest.fixture(scope="session", autouse=True)
-def set_test_files():
-    # Change directory
-    os.chdir(os.path.dirname(__file__))
-
-    # Creates test directories for program log and temporary files
-    os.system('mkdir -p ./var/log')
-    os.system('mkdir -p ./var/tmp')
-    os.system('mkdir -p ./var/www')
-
-    # Set sample files timestamps
-    os.system('touch -m -t 201506211034 samples/apache2.log')
-    os.system('touch -m -t 201506210909 samples/apache2_ssl_access.log')
-    os.system('touch -m -t 201506210906 samples/apache2_ssl_error.log')
-    os.system('touch -m -t 201504010548 samples/catalyst.log')
-    os.system('touch -m -t 201504011000 samples/dovecot.log')
-    os.system('touch -m -t 201501310950 samples/postfix.log')
-    os.system('touch -m -t 200310112214 samples/rfc5424.log')
-    os.system('touch -m -t 201501310154 samples/sshd.log')
 
 
 class TestLograptor(object):
     """
-    Test which lograptor applications have unparsed line issues.
+    Test which lograptor application have unparsed line issues.
     """
     cli_parser = lograptor.api.create_argument_parser()
 

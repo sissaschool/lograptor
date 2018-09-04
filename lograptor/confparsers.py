@@ -99,6 +99,9 @@ class EnvConfigParser(RawConfigParser):
         if settings is not None:
             self.read_dict(settings, 'settings')
 
+    def __repr__(self):
+        return u'%s(cfgfile=%r)' % (self.__class__.__name__, self.cfgfile)
+
     def defaults(self):
         return self.__defaults
 
@@ -125,30 +128,65 @@ class EnvConfigParser(RawConfigParser):
                 "no configuration file in the list {} exists or is accessible!".format(filenames)
             )
 
-    def get(self, section, option, raw=False, vars=None):
-        if section not in self._sections:
-            if section not in self.__defaults:
-                raise LogRaptorNoSectionError(section)
-            try:
-                value = self.__defaults[section][option]
-            except KeyError:
-                raise LogRaptorNoOptionError(option, section)
-        else:
+    def get(self, section, option, default_section=None, raw=False, vars=None):
+        if default_section is None:
+            default_section = section
+
+        used_defaults = False
+        if section in self._sections:
             try:
                 value = self._sections[section][option]
             except KeyError:
                 try:
-                    value = self.__defaults[section][option]
+                    value = self.__defaults[default_section][option]
+                    used_defaults = True
                 except KeyError:
                     raise LogRaptorNoOptionError(option, section)
 
+        elif default_section not in self.__defaults:
+            raise LogRaptorNoSectionError(section)
+        else:
+            try:
+                value = self.__defaults[default_section][option]
+                used_defaults = True
+            except KeyError:
+                raise LogRaptorNoOptionError(option, section)
+
         if raw or value is None:
             return value
+        elif used_defaults:
+            options = self.options(section)
+            return self._interpolation.before_get(self, default_section, option, value, options)
         else:
-            return self._interpolation.before_get(self, section, option, value, self.options(section))
+            options = self.options(section)
+            return self._interpolation.before_get(self, section, option, value, options)
 
     def _get(self, section, conv, option, **kwargs):
         return conv(self.get(section, option))
+
+    def getint(self, section, option, default_section=None):
+        try:
+            return RawConfigParser.getint(self, section, option)
+        except configparser.NoOptionError:
+            if default_section is None:
+                raise
+            return RawConfigParser.getint(self, default_section, option)
+
+    def getfloat(self, section, option, default_section=None):
+        try:
+            return RawConfigParser.getfloat(self, section, option)
+        except configparser.NoOptionError:
+            if default_section is None:
+                raise
+            return RawConfigParser.getfloat(self, default_section, option)
+
+    def getboolean(self, section, option, default_section=None):
+        try:
+            return RawConfigParser.getboolean(self, section, option)
+        except configparser.NoOptionError:
+            if default_section is None:
+                raise
+            return RawConfigParser.getboolean(self, default_section, option)
 
     def read_dict(self, dictionary, source='<dict>'):
         for section, options in dictionary.items():
@@ -169,17 +207,17 @@ class EnvConfigParser(RawConfigParser):
                     value = str(value)
                 self.set(section, key, value)
 
-    def options(self, section, prefix='', suffix=''):
+    def options(self, section, prefix='', suffix='', default_section=None):
         try:
             opts = self._sections[section].copy()
         except KeyError:
             try:
-                opts = self.__defaults[section].copy()
+                opts = self.__defaults[default_section or section].copy()
             except KeyError:
                 raise LogRaptorNoSectionError(section)
         else:
             try:
-                opts.update(self.__defaults[section])
+                opts.update(self.__defaults[default_section or section])
             except KeyError:
                 pass
 
@@ -227,7 +265,8 @@ class LogRaptorConfig(EnvConfigParser, object):
             'logfile': '/var/log/lograptor.log',
             'email_address': 'root@{0}'.format(socket.gethostname()),
             'smtp_server': '/usr/sbin/sendmail -t',
-            'mapexp': 4
+            'encodings': 'utf_8, latin1, latin2',
+            'mapexp': 4,
         },
         'patterns': {
             'ASCII': r'[\x01-\x7f]*',
@@ -283,7 +322,7 @@ class LogRaptorConfig(EnvConfigParser, object):
             'gpg_signers': '',
         },
         'file_channel': {
-            'type': 'mail',
+            'type': 'file',
             'formats': 'text, html, csv',
             'notify': '',
             'pubdir': '/var/www/lograptor',
