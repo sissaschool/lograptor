@@ -271,3 +271,7 @@ def open_resource(source):
             else:
                 return closing(resource)
         raise err
+    except TypeError:
+        if hasattr(source, 'read') and hasattr(source, 'readlines'):
+            return source  # Source is already a file-like object
+        raise

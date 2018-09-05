@@ -23,7 +23,7 @@ This module contain general info about lograptor package.
 __author__ = "Davide Brunato"
 __copyright__ = "Copyright 2011-2017, SISSA"
 __license__ = "LGPLv2.1+"
-__version__ = "1.2.3"
+__version__ = "1.2.4"
 __maintainer__ = "Davide Brunato"
 __email__ = "brunato@sissa.it"
 __status__ = "Production"

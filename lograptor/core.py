@@ -83,6 +83,9 @@ class LogRaptor(object):
         else:
             self.args = args
             self.set_logger()
+            logger.error("is_pipe: ", is_pipe(STDIN_FILENO))
+            logger.error("is_redirected: ", is_redirected(STDIN_FILENO))
+            logger.error("is_atty: ", os.isatty(STDIN_FILENO))
             logger.debug("args={}".format(args))
 
         # Create a lookup cache when required by arguments
@@ -390,6 +393,9 @@ class LogRaptor(object):
             logmap.add(self.args.files, apps)
         elif is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO):
             # No files and input by a pipe
+            logger.error("is_pipe: ", is_pipe(STDIN_FILENO))
+            logger.error("is_redirected: ", is_redirected(STDIN_FILENO))
+            logger.error("is_atty: ", os.isatty(STDIN_FILENO))
             logmap = [(sys.stdin, apps)]
         else:
             # Build the LogMap instance adding the list of files from app config files
@@ -450,6 +456,7 @@ class LogRaptor(object):
         matcher_engine = self.create_matcher(dispatcher, parsers=parsers)
         dispatcher.open()
 
+        logger.info("starting log processor ...")
         files = []
         lines = matches = unknown = 0
         extra_tags = Counter()
@@ -461,7 +468,7 @@ class LogRaptor(object):
         # initial and the final date, skipping the other files.
         for (source, apps) in self._logmap:
             if apps is not None:
-                logger.debug('process %r for apps %r', source, apps)
+                logger.info('process %r for apps %r', source, apps)
             else:
                 if self.args.files:
                     logger.error("%s: No such file or directory", source)
@@ -537,6 +544,7 @@ class LogRaptor(object):
             dispatcher.send_message(self.get_run_summary(run_stats))
         dispatcher.close()
 
+        logger.info("matcher processed %d files." % len(files))
         return matches > 0
 
     def create_dispatcher(self):

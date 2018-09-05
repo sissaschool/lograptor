@@ -21,10 +21,8 @@ Test script for helper functions.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-import os
 import pytest
 
-import lograptor
 from lograptor.utils import open_resource
 
 
@@ -38,6 +36,7 @@ class TestUtils(object):
     @pytest.mark.unparsed
     def test_open_resource(self):
         open_resource("samples/postfix.log")
-        with pytest.raises((OSError,IOError)):
-            open_resource("samples/nofile.log")
+        open_resource(open("samples/dovecot.log"))
 
+        with pytest.raises((OSError, IOError)):
+            open_resource("samples/nofile.log")
