@@ -20,6 +20,8 @@ This module contain core classes and methods for lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import
+
 import os
 import time
 import datetime
@@ -83,10 +85,10 @@ class LogRaptor(object):
         else:
             self.args = args
             self.set_logger()
-            logger.error("is_pipe: ", is_pipe(STDIN_FILENO))
-            logger.error("is_redirected: ", is_redirected(STDIN_FILENO))
-            logger.error("is_atty: ", os.isatty(STDIN_FILENO))
-            logger.debug("args={}".format(args))
+            logger.debug("is_pipe: %r", is_pipe(STDIN_FILENO))
+            logger.debug("is_redirected: %r", is_redirected(STDIN_FILENO))
+            logger.debug("is_atty: %r", os.isatty(STDIN_FILENO))
+            logger.debug("args=%r", args)
 
         # Create a lookup cache when required by arguments
         if any([args.anonymize, args.uid_lookup, args.ip_lookup]):

@@ -20,6 +20,8 @@ This module contains various utility functions for lograptor.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import
+
 import sys
 import os
 import stat

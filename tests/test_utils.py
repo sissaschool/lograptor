@@ -22,8 +22,9 @@ Test script for helper functions.
 # @Author Davide Brunato <brunato@sissa.it>
 #
 import pytest
+import sys
 
-from lograptor.utils import open_resource
+from lograptor.utils import open_resource, is_redirected, is_pipe
 
 
 class TestUtils(object):
@@ -40,3 +41,12 @@ class TestUtils(object):
 
         with pytest.raises((OSError, IOError)):
             open_resource("samples/nofile.log")
+
+    @pytest.mark.is_redirected
+    def test_is_redirected(self):
+        try:
+            STDIN_FILENO = sys.stdin.fileno()
+        except ValueError:
+            STDIN_FILENO = 0
+        assert is_redirected(STDIN_FILENO) is False
+

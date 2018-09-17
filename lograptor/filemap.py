@@ -20,6 +20,8 @@ This module contains classes to handle iteration over log files.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import
+
 import logging
 import fnmatch
 import ntpath
@@ -28,6 +30,8 @@ import os
 import platform
 from datetime import datetime
 from collections import MutableMapping, OrderedDict
+
+from .compat import base_string_type
 from .timedate import strftimegen
 
 logger = logging.getLogger(__name__)
@@ -50,12 +54,12 @@ class GlobDict(MutableMapping):
         self.exclude_dir = exclude_dir or []
 
     def __getitem__(self, path):
-        if not isinstance(path, str):
+        if not isinstance(path, base_string_type):
             raise TypeError("path must be a string")
         return self._data[path]
 
     def __setitem__(self, path, value):
-        if not isinstance(path, str):
+        if not isinstance(path, base_string_type):
             raise TypeError("path must be a string")
         if path not in self._data:
             # Update _globs paths

@@ -21,6 +21,8 @@ Command line interface of the lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import
+
 import sys
 import argparse
 import time

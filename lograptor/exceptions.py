@@ -20,6 +20,8 @@ This module contain exception classes for lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import
+
 import logging
 try:
     import configparser

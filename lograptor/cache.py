@@ -20,6 +20,8 @@ This module contains class to handle lograptor's lookup cache.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import
+
 import re
 import socket
 import string

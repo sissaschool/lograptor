@@ -20,6 +20,8 @@ This module defines communication channels for the program.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import
+
 import os
 import re
 import time

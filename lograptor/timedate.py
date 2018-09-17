@@ -21,6 +21,8 @@ and date values for lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import
+
 import datetime
 import re
 

@@ -20,6 +20,8 @@ This module contains class to handle events dispatching for lograptor.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import
+
 from collections import OrderedDict, deque
 from itertools import chain, repeat
 import abc

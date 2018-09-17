@@ -20,6 +20,8 @@ This module contains classes and methods to handle lograptor configurations.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import
+
 import string
 import socket
 import re
@@ -116,9 +118,9 @@ class EnvConfigParser(RawConfigParser):
             try:
                 with open(filename) as fp:
                     try:
-                        self.readfp(fp)
-                    except AttributeError:
                         getattr(self, 'read_file')(fp)
+                    except AttributeError:
+                        self.readfp(fp)
             except IOError:
                 pass
             else:

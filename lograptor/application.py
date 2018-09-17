@@ -20,6 +20,8 @@ Module to manage lograptor applications
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import
+
 import logging
 import re
 import string
