@@ -20,7 +20,7 @@ This module contain core classes and methods for lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
+from __future__ import unicode_literals, absolute_import, print_function
 
 import os
 import time
@@ -96,6 +96,7 @@ class LogRaptor(object):
         else:
             self.name_cache = None
 
+        # Get configuration using properties
         self._encodings = self.encodings
         self._matcher = self.matcher
         self._patterns = self.patterns
@@ -457,6 +458,7 @@ class LogRaptor(object):
             dispatcher = self.create_dispatcher()
         matcher_engine = self.create_matcher(dispatcher, parsers=parsers)
         dispatcher.open()
+        display_progress_bar = sys.stdout.isatty() and all(c.name != 'stdout' for c in dispatcher.channels)
 
         logger.info("starting log processor ...")
         files = []
@@ -481,6 +483,9 @@ class LogRaptor(object):
                     try:
                         result = matcher_engine(source, apps, encoding)
                     except UnicodeDecodeError:
+                        if display_progress_bar:
+                            print()
+                        logger.error("decoding error using the %r codec, change encoding and reprocess.", encoding)
                         continue
                     break
                 else:
@@ -528,11 +533,16 @@ class LogRaptor(object):
             'extra_tags': extra_tags,
         }
 
+        if sys.stdout.isatty():
+            sys.stdout.write('\n')
         if unknown > 0:
-            logger.warning('found {} lines with an unknown log format'.format(unknown))
+            logger.error('found {} lines with an unknown log format.'.format(unknown))
         if extra_tags:
             num_lines = sum(extra_tags.values())
-            logger.warning(u'found {} unknown extra app tags: {}'.format(num_lines, dict(extra_tags)))
+            logger.warning(u'found {} unknown extra app tags.'.format(num_lines))
+            logger.warning(u'unknown app tags: {}'.format(dict(extra_tags)))
+            if sys.stdout.isatty():
+                sys.stdout.write('\n')
 
         # If the final report is requested then purge all unmatched threads and set time stamps.
         # Otherwise send final run summary if messages are not disabled.

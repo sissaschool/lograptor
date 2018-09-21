@@ -21,35 +21,34 @@ user interface (TUI).
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 import os
 import sys
 
 
-def getTerminalSize():
+def get_terminal_size():
     """
-    getTerminalSize()
-     - get width and height of console
-     - works on linux,os x,windows,cygwin(windows)
+    Get the terminal size in width and height. Works on Linux, Mac OS X, Windows, Cygwin (Windows).
+
+    :return: Returns a 2-tuple with width and height.
     """
     import platform
    
     current_os = platform.system()
     tuple_xy = None
     if current_os == 'Windows':
-        tuple_xy = _getTerminalSize_windows()
+        tuple_xy = get_windows_terminal_size()
         if tuple_xy is None:
-            tuple_xy = _getTerminalSize_tput()
-            # needed for window's python in cygwin's xterm!
-    if current_os == 'Linux' or current_os == 'Darwin' or current_os.startswith('CYGWIN'):
-        tuple_xy = _getTerminalSize_linux()
+            tuple_xy = get_unix_tput_terminal_size()  # needed for window's python in cygwin's xterm!
+    elif current_os == 'Linux' or current_os == 'Darwin' or current_os.startswith('CYGWIN'):
+        tuple_xy = get_unix_ioctl_terminal_size()
+
     if tuple_xy is None:
         tuple_xy = (80, 25)  # default value
     return tuple_xy
 
 
-def _getTerminalSize_windows():
+def get_windows_terminal_size():
+    """Get the terminal size of a Windows OS terminal."""
     from ctypes import windll, create_string_buffer
 
     # stdin handle is -10
@@ -74,9 +73,11 @@ def _getTerminalSize_windows():
         return None
 
 
-def _getTerminalSize_tput():
-    # get terminal width
-    # src: http://stackoverflow.com/questions/263890/how-do-i-find-the-width-height-of-a-terminal-window
+def get_unix_tput_terminal_size():
+    """
+    Get the terminal size of a UNIX terminal using the tput UNIX command.
+    Ref: http://stackoverflow.com/questions/263890/how-do-i-find-the-width-height-of-a-terminal-window
+    """
     import subprocess
     try:
         proc = subprocess.Popen(["tput", "cols"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
@@ -90,9 +91,9 @@ def _getTerminalSize_tput():
         return None
 
 
-def _getTerminalSize_linux():
-
-    def ioctl_GWINSZ(fd):
+def get_unix_ioctl_terminal_size():
+    """Get the terminal size of a UNIX terminal using the ioctl UNIX command."""
+    def ioctl_gwinsz(fd):
         try:
             import fcntl
             import termios
@@ -101,11 +102,11 @@ def _getTerminalSize_linux():
         except (IOError, OSError):
             return None
 
-    cr = ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2)
+    cr = ioctl_gwinsz(0) or ioctl_gwinsz(1) or ioctl_gwinsz(2)
     if not cr:
         try:
             f = open(os.ctermid())
-            cr = ioctl_GWINSZ(f.fileno())
+            cr = ioctl_gwinsz(f.fileno())
             f.close()
         except (IOError, OSError):
             pass
@@ -121,51 +122,45 @@ class ProgressBar(object):
     """
     Draw a progress toolbar to stdout. The toolbar is initialized calling
     the function with the first argument set to None.
+
+    :param output: the file object where the progress bar is written.
+    :param max_value: the maximum value of the progress bar.
+    :param label: the label appended at the right of the progress bar.
+    :param width_percentage: the screen width percentage to set for the progress bar, 25% for default.
+    :ivar width: the effective width of the progress bar, in characters.
+    :ivar percentage: the progress percentage.
     """
-
-    def __init__(self, output, maxval=0, suffix=""):
-        """
-        Create and initialize the progress bar
-        """
+    def __init__(self, output, max_value=0, label='', width_percentage=0.25):
         self.output = output
-        self.suffix = suffix
-
-        self.step_perc = max(1, min(int(100000/maxval), 5))
-        self.barwidth = int(0.3 * getTerminalSize()[0])
-        self.nextperc = 0
-
-        self.maxval = int(maxval)
-        if self.maxval <= 0:
+        if max_value <= 0:
             raise ValueError("Maximum value of a progress bar must be positive number.")
+        self.max_value = int(max_value)
+        self.label = label
 
-        self.output.write('[{0}] {1} {2}'.format(" " * self.barwidth,
-                                                 format(0, '1d'), self.suffix))
-        self._width = self.barwidth + 4 + len(self.suffix)
+        self.width = int(width_percentage * get_terminal_size()[0])
+        self.percentage = 0
+        self._next_percentage = self._step_percentage = max(1, min(int(100000 / max_value), 5))
+        self._draw_length = self.width + 4 + len(self.label)
+
+        self.output.write('[{}] {} {}'.format(' ' * self.width, format(0, '1d'), self.label))
         self.output.flush()
-        self.initialized = True
 
-    def redraw(self, value, counter=0):
-        """
-        Redraw the progress bar with a value and a counter.
-        """
-        if self.initialized is False:
+    def redraw(self, value):
+        if self.percentage == 100:
             return
-        if value < 0:
-            raise ValueError("Size of a progress bar must be a non negative value")
 
-        perc = int(100 * value / self.maxval)
-        if (perc >= self.nextperc) or perc >= 100:
-            fill = min(self.barwidth, int(self.barwidth * perc / 100))
-            counter = str(counter) if counter > 0 else str(value)
+        percentage = int(100 * value / self.max_value)
+        if percentage >= self._next_percentage or percentage >= 100:
+            fill = min(self.width, int(self.width * percentage / 100))
+            counter = str(value)
 
-            sys.stdout.write("\b" * self._width)  # return to start of line, after '['
-            sys.stdout.write('{0}{1}] {2} {3}'
-                             .format("#" * fill, " " * (self.barwidth-fill),
-                                     counter, self.suffix))
+            sys.stdout.write('\b' * self._draw_length)
+            sys.stdout.write('{}{}] {} {}'.format('#' * fill, ' ' * (self.width - fill), counter, self.label))
             sys.stdout.flush()
-            if perc < 100:
-                self._width = self.barwidth + len(self.suffix) + len(counter) + 3
-                self.nextperc = perc + self.step_perc
-            else:
+
+            self.percentage = min(percentage, 100)
+            self._next_percentage = self.percentage + self._step_percentage
+            self._draw_length = self.width + len(counter) + 3 + len(self.label)
+
+            if self.percentage == 100:
                 sys.stdout.write("\n")
-                self.initialized = False

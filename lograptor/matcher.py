@@ -20,6 +20,8 @@ This module define the matcher engine of lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import print_function
+import sys
 import os
 import time
 import datetime
@@ -28,6 +30,7 @@ from collections import namedtuple, Counter
 
 
 from .logparsers import CycleParsers
+from .tui import ProgressBar
 from .utils import open_resource
 
 logger = logging.getLogger(__name__)
@@ -186,6 +189,7 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
     pattern_search = create_search_function(invert, only_matching)
     dispatch_selected = dispatcher.dispatch_selected
     dispatch_context = dispatcher.dispatch_context
+    display_progress_bar = sys.stdout.isatty() and all(c.name != 'stdout' for c in dispatcher.channels)
 
     def process_logfile(source, apps, encoding='utf-8'):
         log_parser = next(parsers)
@@ -209,11 +213,20 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
             file_month = file_mtime.month
             prev_year = file_year - 1
 
+            if display_progress_bar:
+                read_size = 0
+                progress_bar = ProgressBar(sys.stdout, fstat.st_size, logfile_name)
+
             for line in logfile:
                 line = line.decode(encoding)
                 line_counter += 1
                 if line[-1] != '\n':
                     line += '\n'
+
+                if display_progress_bar:
+                    read_size += len(line)
+                    if not line_counter % 100:
+                        progress_bar.redraw(read_size)
 
                 ###
                 # Parses the line and extracts the log data
@@ -362,6 +375,9 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
                         line_number=line_counter,
                         rawlog=rawlog
                     )
+
+            if display_progress_bar:
+                progress_bar.redraw(fstat.st_size)
 
         try:
             for key in list(dispatcher.keys()):

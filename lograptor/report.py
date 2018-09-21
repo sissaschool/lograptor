@@ -582,7 +582,7 @@ class Report(object):
         Make report item texts in a specified format.
         """
         for fmt in formats:
-            width = 100 if fmt is not None else tui.getTerminalSize()[0]
+            width = 100 if fmt is not None else tui.get_terminal_size()[0]
             for sr in self.subreports:
                 sr.make_format(fmt, width)
 
