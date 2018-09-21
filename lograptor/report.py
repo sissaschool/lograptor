@@ -3,7 +3,7 @@
 This module define classes for building the report produced by a program run.
 """
 #
-# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #

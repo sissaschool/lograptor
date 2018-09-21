@@ -4,7 +4,7 @@ This module contains additional class and functions to handle time
 and date values for lograptor package.
 """
 #
-# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #

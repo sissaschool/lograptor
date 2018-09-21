@@ -3,7 +3,7 @@
 This module contains classes to handle iteration over log files.
 """
 #
-# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #

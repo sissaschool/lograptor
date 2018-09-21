@@ -3,7 +3,7 @@
 This module define the matcher engine of lograptor package.
 """
 #
-# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -202,6 +202,8 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
         selected_counter = 0
         extra_tags = Counter()
         dispatcher.reset()
+        read_size = 0
+        progress_bar = None
 
         with open_resource(source) as logfile:
             # Set counters and status

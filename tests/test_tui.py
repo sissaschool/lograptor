@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Test script for helper functions.
+Test script for text-based user interface.
 """
 #
-# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
