@@ -4,7 +4,7 @@
 Command line interface of the lograptor package.
 """
 #
-# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -21,6 +21,8 @@ Command line interface of the lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import
+
 import sys
 import argparse
 import time

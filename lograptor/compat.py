@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Command line tools for lograptor package.
+Python 2 compatibility module.
 """
 #
 # Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
@@ -20,6 +20,11 @@ Command line tools for lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from .core import LogRaptor
-from .exceptions import *
-from .api import lograptor
+try:
+    # Python 2
+    base_string_type = basestring
+
+except NameError:
+
+    # Python 3
+    base_string_type = str

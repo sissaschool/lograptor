@@ -3,7 +3,7 @@
 This module contains various utility functions for lograptor.
 """
 #
-# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,6 +20,8 @@ This module contains various utility functions for lograptor.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import
+
 import sys
 import os
 import stat
@@ -271,3 +273,7 @@ def open_resource(source):
             else:
                 return closing(resource)
         raise err
+    except TypeError:
+        if hasattr(source, 'read') and hasattr(source, 'readlines'):
+            return source  # Source is already a file-like object
+        raise

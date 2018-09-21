@@ -3,7 +3,7 @@
 This module defines communication channels for the program.
 """
 #
-# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,6 +20,8 @@ This module defines communication channels for the program.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import
+
 import os
 import re
 import time

@@ -3,7 +3,7 @@
 This module contain core classes and methods for lograptor package.
 """
 #
-# Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,6 +20,8 @@ This module contain core classes and methods for lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+from __future__ import unicode_literals, absolute_import, print_function
+
 import os
 import time
 import datetime
@@ -83,7 +85,10 @@ class LogRaptor(object):
         else:
             self.args = args
             self.set_logger()
-            logger.debug("args={}".format(args))
+            logger.debug("is_pipe: %r", is_pipe(STDIN_FILENO))
+            logger.debug("is_redirected: %r", is_redirected(STDIN_FILENO))
+            logger.debug("is_atty: %r", os.isatty(STDIN_FILENO))
+            logger.debug("args=%r", args)
 
         # Create a lookup cache when required by arguments
         if any([args.anonymize, args.uid_lookup, args.ip_lookup]):
@@ -91,6 +96,7 @@ class LogRaptor(object):
         else:
             self.name_cache = None
 
+        # Get configuration using properties
         self._encodings = self.encodings
         self._matcher = self.matcher
         self._patterns = self.patterns
@@ -390,6 +396,9 @@ class LogRaptor(object):
             logmap.add(self.args.files, apps)
         elif is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO):
             # No files and input by a pipe
+            logger.error("is_pipe: ", is_pipe(STDIN_FILENO))
+            logger.error("is_redirected: ", is_redirected(STDIN_FILENO))
+            logger.error("is_atty: ", os.isatty(STDIN_FILENO))
             logmap = [(sys.stdin, apps)]
         else:
             # Build the LogMap instance adding the list of files from app config files
@@ -449,7 +458,9 @@ class LogRaptor(object):
             dispatcher = self.create_dispatcher()
         matcher_engine = self.create_matcher(dispatcher, parsers=parsers)
         dispatcher.open()
+        display_progress_bar = sys.stdout.isatty() and all(c.name != 'stdout' for c in dispatcher.channels)
 
+        logger.info("starting log processor ...")
         files = []
         lines = matches = unknown = 0
         extra_tags = Counter()
@@ -461,7 +472,7 @@ class LogRaptor(object):
         # initial and the final date, skipping the other files.
         for (source, apps) in self._logmap:
             if apps is not None:
-                logger.debug('process %r for apps %r', source, apps)
+                logger.info('process %r for apps %r', source, apps)
             else:
                 if self.args.files:
                     logger.error("%s: No such file or directory", source)
@@ -472,6 +483,9 @@ class LogRaptor(object):
                     try:
                         result = matcher_engine(source, apps, encoding)
                     except UnicodeDecodeError:
+                        if display_progress_bar:
+                            print()
+                        logger.error("decoding error using the %r codec, change encoding and reprocess.", encoding)
                         continue
                     break
                 else:
@@ -519,11 +533,16 @@ class LogRaptor(object):
             'extra_tags': extra_tags,
         }
 
+        if sys.stdout.isatty():
+            sys.stdout.write('\n')
         if unknown > 0:
-            logger.warning('found {} lines with an unknown log format'.format(unknown))
+            logger.error('found {} lines with an unknown log format.'.format(unknown))
         if extra_tags:
             num_lines = sum(extra_tags.values())
-            logger.warning(u'found {} unknown extra app tags: {}'.format(num_lines, dict(extra_tags)))
+            logger.warning(u'found {} unknown extra app tags.'.format(num_lines))
+            logger.warning(u'unknown app tags: {}'.format(dict(extra_tags)))
+            if sys.stdout.isatty():
+                sys.stdout.write('\n')
 
         # If the final report is requested then purge all unmatched threads and set time stamps.
         # Otherwise send final run summary if messages are not disabled.
@@ -537,6 +556,7 @@ class LogRaptor(object):
             dispatcher.send_message(self.get_run_summary(run_stats))
         dispatcher.close()
 
+        logger.info("matcher processed %d files." % len(files))
         return matches > 0
 
     def create_dispatcher(self):
