@@ -1,9 +1,5 @@
-# -*- coding: utf-8 -*-
-"""
-This module contains various utility functions for lograptor.
-"""
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,19 +16,13 @@ This module contains various utility functions for lograptor.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 import sys
 import os
 import stat
 import string
 from functools import wraps
 from contextlib import contextmanager
-
-try:
-    from urllib.request import urlopen
-except ImportError:
-    from urllib import urlopen
+from urllib.request import urlopen
 
 from .tui import ProgressBar
 
@@ -185,7 +175,8 @@ def exact_sub(s, mapping):
 
 def safe_expand(template, mapping):
     """
-    Safe string template expansion. Raises an error if the provided substitution mapping has circularities.
+    Safe string template expansion. Raises an error if the provided
+    substitution mapping has circularities.
     """
     for _ in range(len(mapping) + 1):
         _template = template

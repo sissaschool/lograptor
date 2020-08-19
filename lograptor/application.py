@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """
 Module to manage lograptor applications
 """
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,23 +19,11 @@ Module to manage lograptor applications
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 import logging
 import re
 import string
 from sre_constants import error as RegexpCompileError
-
-try:
-    import configparser
-except ImportError:
-    # Fall back for Python 2.x
-    import ConfigParser as configparser
-
-try:
-    import pwd
-except ImportError:
-    pwd = None
+import configparser
 
 from .exceptions import LogRaptorConfigError, RuleMissingError, LogRaptorOptionError
 from .confparsers import AppConfig
@@ -98,7 +85,7 @@ class AppRule(object):
         self._last_idx = None
 
     def __repr__(self):
-        return u"<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
+        return "<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
 
     def add_result(self, values):
         """
@@ -143,7 +130,7 @@ class AppRule(object):
                 tot += results[key] * int(key[val])
             return tot
             
-        match = re.search("(\w+)(!=|==)\"([^\"]*)\"", cond)
+        match = re.search(r'(\w+)(!=|==)\"([^\"]*)\"', cond)
         condpos = self.key_gids.index(match.group(1))
         invert = (match.group(2) == '!=')
         recond = re.compile(match.group(3))
@@ -188,6 +175,7 @@ class AppRule(object):
         results = self.results
         top = [None] * num
         pos = self.key_gids.index(gid)
+        val = None
 
         # Compute top(max) if a value fld is provided
         if valfld is not None:
@@ -249,12 +237,12 @@ class AppRule(object):
 
         # If a condition is passed then compile a pattern matching object
         if has_cond:
-            match = re.search("(\w+)(!=|==)\"([^\"]*)\"", cond)
+            match = re.search(r'(\w+)(!=|==)\"([^\"]*)\"', cond)
             condpos = self.key_gids.index(match.group(1))
             invert = (match.group(2) == '!=')
             recond = re.compile(match.group(3))
         else:
-            recond = condpos = None
+            recond = condpos = invert = None
 
         # Define the row template with places for values and fixed strings
         row_template = []
@@ -333,8 +321,8 @@ class AppLogParser(object):
         self.config = AppConfig(cfgfiles=cfgfile, appname=name, logdir=logdir)
 
         self.description = self.config.get('main', 'description')
-        self.tags = list(set(re.split('\s*,\s*', self.config.get('main', 'tags'))))
-        self._files = list(set(re.split('\s*,\s*', self.config.get('main', 'files'))))
+        self.tags = list(set(re.split(r'\s*,\s*', self.config.get('main', 'tags'))))
+        self._files = list(set(re.split(r'\s*,\s*', self.config.get('main', 'files'))))
         self.enabled = self.config.getboolean('main', 'enabled')
         self.priority = self.config.getint('main', 'priority')
         self.files = field_multisub(self._files, 'host', args.hosts or ['*'])
@@ -362,7 +350,7 @@ class AppLogParser(object):
         logger.info('initialized app %r with %d pattern rules', name, len(self.rules))
 
     def __repr__(self):
-        return u"<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
+        return "<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
 
     @property
     def filters(self):

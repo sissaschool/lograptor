@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """
-This module defines communication channels for the program.
+This module defines communication channels for lograptor package.
 """
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,8 +19,6 @@ This module defines communication channels for the program.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 import os
 import re
 import time
@@ -36,13 +33,7 @@ from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formatdate, make_msgid
-
-try:
-    from io import BytesIO, StringIO
-except ImportError:
-    # Python 2 fallback
-    from io import StringIO
-    BytesIO = StringIO
+from io import BytesIO
 
 from .exceptions import LogRaptorConfigError
 from .info import __version__
@@ -96,14 +87,14 @@ class AbstractChannel(object):
         self.name = name
         self.args = args
         self.config = config
-        self.formats = re.split('\s*, \s*', config.get('%s_channel' % name, 'formats'))
+        self.formats = re.split(r'\s*, \s*', config.get('%s_channel' % name, 'formats'))
         logger.debug('Formats = %r', self.formats)
 
     def __str__(self):
-        return u"<%s '%s'>" % (self.__class__.__name__, self.name)
+        return "<%s '%s'>" % (self.__class__.__name__, self.name)
 
     def __repr__(self):
-        return u"<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
+        return "<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
 
     def set_tempdir(self):
         if self.TEMP_DIR:
@@ -114,7 +105,7 @@ class AbstractChannel(object):
         try:
             self.TEMP_DIR = tempfile.mkdtemp('.lograptor')
         except OSError:
-            raise LogRaptorConfigError('could not create a temp directory in %r!' % tempfile.tempdir)
+            raise LogRaptorConfigError('cannot create a temp directory in %r!' % tempfile.tempdir)
 
     @abc.abstractmethod
     def open(self):
@@ -159,7 +150,10 @@ class TermChannel(AbstractChannel):
         dash_sep = GREP_COLORS.se + "-" if color else "-"
         if args.group_separator:
             group_sep = '%s\n' % args.group_separator
-            self.group_sep = ''.join([GREP_COLORS.se, group_sep, GREP_COLORS.clear]) if color else group_sep
+            if color:
+                self.group_sep = ''.join([GREP_COLORS.se, group_sep, GREP_COLORS.clear])
+            else:
+                self.group_sep = group_sep
         else:
             self.group_sep = ''
         selected_color = GREP_COLORS.cx if invert else GREP_COLORS.sl
@@ -172,13 +166,22 @@ class TermChannel(AbstractChannel):
             self.fmt_matching_selected = ''.join([GREP_COLORS.ms, '%s', GREP_COLORS.sl])
             self.fmt_matching_context = ''.join([GREP_COLORS.mc, '%s', GREP_COLORS.cx])
 
-        fmt_dict = {
-            'filename': ''.join([GREP_COLORS.fn, '%(filename)s', GREP_COLORS.clear]) if color else '%(filename)s',
-            'line_number': ''.join([GREP_COLORS.ln if color else '', '%(line_number)s']),
-            'counter': ''.join([selected_color, '%(counter)s\n', GREP_COLORS.clear]) if color else '%(counter)s\n',
-            'selected': ''.join([selected_color, '%(rawlog)s', GREP_COLORS.clear]) if color else '%(rawlog)s',
-            'context': ''.join([context_color, '%(rawlog)s', GREP_COLORS.clear]) if color else '%(rawlog)s'
-        }
+        if color:
+            fmt_dict = {
+                'filename': ''.join([GREP_COLORS.fn, '%(filename)s', GREP_COLORS.clear]),
+                'line_number': ''.join([GREP_COLORS.ln, '%(line_number)s']),
+                'counter': ''.join([selected_color, '%(counter)s\n', GREP_COLORS.clear]),
+                'selected': ''.join([selected_color, '%(rawlog)s', GREP_COLORS.clear]),
+                'context': ''.join([context_color, '%(rawlog)s', GREP_COLORS.clear]),
+            }
+        else:
+            fmt_dict = {
+                'filename': '%(filename)s',
+                'line_number': '%(line_number)s',
+                'counter': '%(counter)s\n',
+                'selected': '%(rawlog)s',
+                'context': '%(rawlog)s'
+            }
 
         fmt_parts = []
         if self.args.with_filename:
@@ -247,9 +250,7 @@ class TermChannel(AbstractChannel):
                     self._channel.write('\n')
 
 
-class NoTermChannel(AbstractChannel):
-
-    __metaclass__ = abc.ABCMeta
+class NoTermChannel(AbstractChannel, metaclass=abc.ABCMeta):
 
     def __init__(self, name, args, config):
         super(NoTermChannel, self).__init__(name, args, config)
@@ -304,7 +305,7 @@ class MailChannel(NoTermChannel):
         section = '%s_channel' % name
         self.email_address = config.get('main', 'email_address')
         self.smtp_server = config.get('main', 'smtp_server')
-        self.mailto = list(set(re.split('\s*, \s*', config.get('%s_channel' % name, 'mailto'))))
+        self.mailto = list(set(re.split(r'\s*, \s*', config.get('%s_channel' % name, 'mailto'))))
 
         # if self.args.report is not None and self.report.need_rawlogs():
         self.rawlogs = config.getboolean(section, 'include_rawlogs', 'mail_channel')
@@ -323,7 +324,9 @@ class MailChannel(NoTermChannel):
         if self.gpg_encrypt:
             self.gpg_keyringdir = config.get(section, 'gpg_keyringdir')
             gpg_recipients = config.get(section, 'gpg_recipients')
-            self.gpg_recipients = [keyid.strip() for keyid in gpg_recipients.split(',') if keyid.strip()]
+            self.gpg_recipients = [
+                keyid.strip() for keyid in gpg_recipients.split(',') if keyid.strip()
+            ]
             gpg_signers = config.get(section, 'gpg_signers')
             self.gpg_signers = [keyid.strip() for keyid in gpg_signers.split(',') if keyid.strip()]
             logger.debug('gpg_keyringdir = %r', self.gpg_recipients)
@@ -331,7 +334,9 @@ class MailChannel(NoTermChannel):
             logger.debug('gpg_signers = %r', self.gpg_signers)
 
     def __repr__(self):
-        return u"<%s '%s: (mailto=%r)' at %#x>" % (self.__class__.__name__, self.name, self.mailto, id(self))
+        return "<%s '%s: (mailto=%r)' at %#x>" % (
+            self.__class__.__name__, self.name, self.mailto, id(self)
+        )
 
     def send_message(self, message):
         logger.info(message)
@@ -370,7 +375,7 @@ class MailChannel(NoTermChannel):
 
         if self.rawlogs:
             out = BytesIO()
-            do_chunked_gzip(self.rawfh, out, filename=u'raw.log.gz')
+            do_chunked_gzip(self.rawfh, out, filename='raw.log.gz')
             out.seek(0, os.SEEK_END)
             size = out.tell()
 
@@ -390,8 +395,9 @@ class MailChannel(NoTermChannel):
                 root_part.attach(attach_part)
 
         if self.gpg_encrypt:
-            import gpgme
             try:
+                import gpgme
+
                 if self.gpg_keyringdir and os.path.exists(self.gpg_keyringdir):
                     logger.debug('Setting keyring dir to %r', self.gpg_keyringdir)
                     os.environ['GNUPGHOME'] = self.gpg_keyringdir
@@ -425,16 +431,20 @@ class MailChannel(NoTermChannel):
                 logger.debug('Creating the MIME envelope for PGP')
 
                 gpg_envelope_part = MIMEMultipart('encrypted')
-                gpg_envelope_part.set_param('protocol', 'application/pgp-encrypted', header='Content-Type')
-                gpg_envelope_part.preamble = 'This is an OpenPGP/MIME encrypted message (RFC 2440 and 3156)'
+                gpg_envelope_part.set_param('protocol', 'application/pgp-encrypted',
+                                            header='Content-Type')
+                gpg_envelope_part.preamble = \
+                    'This is an OpenPGP/MIME encrypted message (RFC 2440 and 3156)'
 
                 gpg_mime_version_part = MIMEBase('application', 'pgp-encrypted')
-                gpg_mime_version_part.add_header('Content-Disposition', 'PGP/MIME version identification')
+                gpg_mime_version_part.add_header('Content-Disposition',
+                                                 'PGP/MIME version identification')
                 gpg_mime_version_part.set_payload('Version: 1')
 
                 gpg_payload_part = MIMEBase('application', 'octet-stream', name='encrypted.asc')
                 gpg_payload_part.add_header('Content-Disposition', 'OpenPGP encrypted message')
-                gpg_payload_part.add_header('Content-Disposition', 'inline', filename='encrypted.asc')
+                gpg_payload_part.add_header('Content-Disposition', 'inline',
+                                            filename='encrypted.asc')
                 gpg_payload_part.set_payload(ciphertext.getvalue())
 
                 gpg_envelope_part.attach(gpg_mime_version_part)
@@ -457,7 +467,7 @@ class MailChannel(NoTermChannel):
                 socket.gethostname(), time.strftime('%c', time.localtime())
         )
         root_part['Message-Id'] = make_msgid()
-        root_part['X-Mailer'] = u'{0}-{1}'.format(package_name, __version__)
+        root_part['X-Mailer'] = '{0}-{1}'.format(package_name, __version__)
         
         mail_message(self.smtp_server, root_part.as_string(), self.email_address, self.mailto)
         print('Mailed the report to: {0}'.format(','.join(self.mailto)))
@@ -505,7 +515,7 @@ class FileChannel(NoTermChannel):
         logger.debug('filename = %r', self.filename)
 
     def __repr__(self):
-        return u"<%s '%s: pubdir=%r, expire_in=%r' at %#x>" % (
+        return "<%s '%s: pubdir=%r, expire_in=%r' at %#x>" % (
             self.__class__.__name__, self.name, self.pubdir, self.expire, id(self)
         )
 
@@ -604,7 +614,7 @@ class FileChannel(NoTermChannel):
             eml['Date'] = formatdate()
             eml['From'] = email_address
             eml['To'] = ', '.join(self.notify)
-            eml['X-Mailer'] = u'{0}-{1}'.format(package_name, __version__)
+            eml['X-Mailer'] = '{0}-{1}'.format(package_name, __version__)
 
             mail_message(smtp_server, eml.as_string(), email_address, self.notify)
             print('Notification mailed to: {0}'.format(','.join(self.notify)))

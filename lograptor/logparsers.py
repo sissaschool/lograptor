@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """
-This module classes and methods for parsing log headers.
+This module defines classes and methods for parsing log headers.
 """
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #

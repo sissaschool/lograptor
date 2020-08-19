@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """
-This module contains classes and methods to handle lograptor configurations.
+This module defines classes and methods to handle lograptor configurations.
 """
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,19 +19,10 @@ This module contains classes and methods to handle lograptor configurations.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 import string
 import socket
 import re
-
-try:
-    import configparser
-except ImportError:
-    # Fall back for Python 2.x
-    import ConfigParser as configparser
-finally:
-    RawConfigParser = configparser.RawConfigParser
+from configparser import NoOptionError, DuplicateSectionError, RawConfigParser
 
 from .exceptions import LogRaptorNoSectionError, LogRaptorNoOptionError, FileMissingError
 
@@ -120,7 +110,7 @@ class EnvConfigParser(RawConfigParser):
                     try:
                         getattr(self, 'read_file')(fp)
                     except AttributeError:
-                        self.readfp(fp)
+                        self.read_file(fp)
             except IOError:
                 pass
             else:
@@ -169,7 +159,7 @@ class EnvConfigParser(RawConfigParser):
     def getint(self, section, option, default_section=None):
         try:
             return RawConfigParser.getint(self, section, option)
-        except configparser.NoOptionError:
+        except NoOptionError:
             if default_section is None:
                 raise
             return RawConfigParser.getint(self, default_section, option)
@@ -177,7 +167,7 @@ class EnvConfigParser(RawConfigParser):
     def getfloat(self, section, option, default_section=None):
         try:
             return RawConfigParser.getfloat(self, section, option)
-        except configparser.NoOptionError:
+        except NoOptionError:
             if default_section is None:
                 raise
             return RawConfigParser.getfloat(self, default_section, option)
@@ -185,7 +175,7 @@ class EnvConfigParser(RawConfigParser):
     def getboolean(self, section, option, default_section=None):
         try:
             return RawConfigParser.getboolean(self, section, option)
-        except configparser.NoOptionError:
+        except NoOptionError:
             if default_section is None:
                 raise
             return RawConfigParser.getboolean(self, default_section, option)
@@ -195,7 +185,7 @@ class EnvConfigParser(RawConfigParser):
             section = str(section)
             try:
                 self.add_section(section)
-            except (configparser.DuplicateSectionError, ValueError):
+            except (DuplicateSectionError, ValueError):
                 pass
 
             for key, value in options.items():
@@ -203,8 +193,10 @@ class EnvConfigParser(RawConfigParser):
                     default = self.get_default(section, key)
                     if isinstance(value, type(default)):
                         raise TypeError(' '.join([
-                            "While reading from ", repr(source), ": wrong type for option ", repr(key),
-                            " in section ", repr(section), ", ", repr(type(default)), "expected."
+                            "While reading from ", repr(source),
+                            ": wrong type for option ", repr(key),
+                            " in section ", repr(section), ", ",
+                            repr(type(default)), "expected."
                         ]))
                     value = str(value)
                 self.set(section, key, value)

@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """
 This module define the matcher engine of lograptor package.
 """
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,7 +19,6 @@ This module define the matcher engine of lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import print_function
 import sys
 import os
 import time
@@ -189,7 +187,8 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
     pattern_search = create_search_function(invert, only_matching)
     dispatch_selected = dispatcher.dispatch_selected
     dispatch_context = dispatcher.dispatch_context
-    display_progress_bar = sys.stdout.isatty() and all(c.name != 'stdout' for c in dispatcher.channels)
+    display_progress_bar = \
+        sys.stdout.isatty() and all(c.name != 'stdout' for c in dispatcher.channels)
 
     def process_logfile(source, apps, encoding='utf-8'):
         log_parser = next(parsers)
@@ -239,7 +238,7 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
                     if log_match is not None:
                         log_parser = next_parser
                     elif line_counter == 1:
-                        logger.warning("the file '{}' has an unknown format, skip ...".format(logfile_name))
+                        logger.warning("the file %r has an unknown format, skip ...", logfile_name)
                         break
                     else:
                         unknown_counter += 1
@@ -247,14 +246,16 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
                 log_data = log_parser.get_data(log_match)
 
                 ###
-                # Process last event repetition (eg. 'last message repeated N times' RFC 3164's logs)
+                # Process last event repetition
+                # (eg. 'last message repeated N times' RFC 3164's logs)
                 if getattr(log_data, 'repeat', None) is not None:
                     if selected_data is not None:
                         repeat = int(log_data.repeat)
                         if not thread:
                             selected_counter += repeat
                         if use_app_rules:
-                            app = log_parser.app or get_app(selected_data, apps, apptags, extra_tags)
+                            app = log_parser.app or \
+                                get_app(selected_data, apps, apptags, extra_tags)
                             app.increase_last(repeat)
                             app.matches += 1
                             dispatch_context(
@@ -288,8 +289,10 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
                 elif event_dt > end_dt:
                     # Excludes lines newer than the end datetime
                     if fstat.st_mtime < event_dt:
-                        logger.error("found anomaly with mtime of file %r at line %d", logfile_name, line_counter)
-                    logger.warning("newer event at line %d: skip the rest of the file %r", line_counter, logfile_name)
+                        logger.error("found anomaly with mtime of file %r at line %d",
+                                     logfile_name, line_counter)
+                    logger.warning("newer event at line %d: skip the rest of the file %r",
+                                   line_counter, logfile_name)
                     break
                 elif time_range is not None and not time_range.between(log_data.ltime):
                     # Excludes lines not in time range
@@ -317,7 +320,9 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
                     if not pattern_matched and app_matched and app_thread is None:
                         continue
                     if output_data:
-                        rawlog = name_cache.match_to_string(log_match, log_parser.parser.groupindex, output_data)
+                        rawlog = name_cache.match_to_string(
+                            log_match, log_parser.parser.groupindex, output_data
+                        )
 
                     if app_matched:
                         app.matches += 1
@@ -388,7 +393,8 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=tuple(),
             pass
 
         # If count option is enabled then register only the number of matched lines.
-        if files_with_match and selected_counter or files_with_match is False and not selected_counter:
+        if files_with_match and selected_counter or \
+                files_with_match is False and not selected_counter:
             dispatch_selected(filename=logfile.name)
         elif count:
             dispatch_selected(filename=logfile.name, counter=selected_counter)

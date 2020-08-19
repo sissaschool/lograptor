@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 """
 This module contains additional class and functions to handle time
 and date values for lograptor package.
 """
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -21,8 +20,6 @@ and date values for lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 import datetime
 import re
 
@@ -185,7 +182,8 @@ def strftimegen(start_dt, end_dt):
     to the second datetime argument.
     """
     if start_dt > end_dt:
-        raise ValueError("the start datetime is after the end datetime: (%r,%r)" % (start_dt, end_dt))
+        message = "the start datetime is after the end datetime: ({!r}, {!r})"
+        raise ValueError(message.format(start_dt, end_dt))
 
     def iterftime(string):
         date_subs = [i for i in DATE_FORMATS if i[1].search(string) is not None]

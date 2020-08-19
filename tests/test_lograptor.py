@@ -1,10 +1,5 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-Test script for lograptor matcher.
-"""
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -23,7 +18,6 @@ Test script for lograptor matcher.
 #
 import re
 import sys
-import pytest
 
 import lograptor
 from lograptor.exceptions import (
@@ -73,7 +67,6 @@ class TestLograptor(object):
             else:
                 return 0 if retval else 1
 
-    @pytest.mark.unparsed
     def test_unparsed(self, capsys):
         tests = (
             "-U -s -c --apps postfix -e '' samples/postfix.log",
@@ -83,7 +76,6 @@ class TestLograptor(object):
         for cmd_line in tests:
             assert self.exec_lograptor(cmd_line) == 1
 
-    @pytest.mark.threads
     def test_threads(self, capsys):
         """
         Tests for threaded searching.
@@ -105,7 +97,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.pattern
     def test_pattern(self, capsys):
         tests = [
             ("-a postfix -c -e triceratops samples/postfix.log",
@@ -122,7 +113,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.patfile
     def test_patfile(self, capsys):
         tests = [
             ("-a postfix -c -s -f ./samples/patterns.txt '' samples/postfix.log",
@@ -137,7 +127,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.period
     def test_period(self, capsys):
         """
         Test the time period parameters (options --date and --last).
@@ -154,7 +143,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.timerange
     def test_time_range(self, capsys):
         """
         Test the time range option (--time).
@@ -172,7 +160,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.unruled
     def test_unruled(self, capsys):
         """
         Tests for no-apps searching.
@@ -190,7 +177,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.fileset
     def test_fileset(self, capsys):
         """
         Test with applications fileset.
@@ -210,7 +196,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.report
     def test_report(self, capsys):
         """
         Test on-line report.
@@ -231,7 +216,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.output
     def test_output(self, capsys):
         """
         Test output to no stdin channels.
@@ -249,7 +233,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.filters
     def test_filters(self, capsys):
         """
         Test lograptor's filters.
@@ -271,7 +254,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.quiet
     def test_quiet(self, capsys):
         """
         Test quiet option.
@@ -284,7 +266,6 @@ class TestLograptor(object):
         for cmd_line, retval in tests:
             assert retval == self.exec_lograptor(cmd_line)
 
-    @pytest.mark.invert
     def test_invert(self, capsys):
         """
         Test inverted matching.
@@ -304,7 +285,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.case
     def test_case(self, capsys):
         """
         Test case insensitive matching.
@@ -322,7 +302,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.maxcount
     def test_maxcount(self, capsys):
         """
         Test max_count matches.
@@ -342,7 +321,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.hosts
     def test_hosts(self, capsys):
         """
         Test hosts parameter.
@@ -364,7 +342,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.filenames
     def test_filenames(self, capsys):
         """
         Test output filenames parameters.
@@ -386,7 +363,6 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    @pytest.mark.anonymize
     def test_anonymize(self, capsys):
         """
         Test anonymized output feature.

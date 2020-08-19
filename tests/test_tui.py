@@ -1,10 +1,5 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-Test script for text-based user interface.
-"""
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -21,7 +16,6 @@ Test script for text-based user interface.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-import pytest
 import sys
 
 from lograptor.tui import ProgressBar
@@ -31,7 +25,6 @@ class TestTextualUserInterface(object):
     def setup_method(self, method):
         print("\n%s:%s" % (type(self).__name__, method.__name__))
 
-    @pytest.mark.progress_bar
     def test_progress_bar(self, capsys):
         progress_bar = ProgressBar(sys.stdout, 9999, 'messages.log')
         out, _ = capsys.readouterr()

@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """
-This module contains classes to handle iteration over log files.
+This module defines classes to handle iteration over log files.
 """
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,8 +19,6 @@ This module contains classes to handle iteration over log files.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 import logging
 import fnmatch
 import ntpath
@@ -29,9 +26,9 @@ import glob
 import os
 import platform
 from datetime import datetime
-from collections import MutableMapping, OrderedDict
+from collections import OrderedDict
+from collections.abc import MutableMapping
 
-from .compat import base_string_type
 from .timedate import strftimegen
 
 logger = logging.getLogger(__name__)
@@ -54,12 +51,12 @@ class GlobDict(MutableMapping):
         self.exclude_dir = exclude_dir or []
 
     def __getitem__(self, path):
-        if not isinstance(path, base_string_type):
+        if not isinstance(path, str):
             raise TypeError("path must be a string")
         return self._data[path]
 
     def __setitem__(self, path, value):
-        if not isinstance(path, base_string_type):
+        if not isinstance(path, str):
             raise TypeError("path must be a string")
         if path not in self._data:
             # Update _globs paths
@@ -102,7 +99,8 @@ class GlobDict(MutableMapping):
     def iglob(self, path):
         for filename in glob.iglob(path):
             if self.is_included(filename):
-                values = {app for k, v in self._data.items() if fnmatch.fnmatch(filename, k) for app in v}
+                values = {app for k, v in self._data.items()
+                          if fnmatch.fnmatch(filename, k) for app in v}
                 yield filename, list(values)
 
     def glob(self, path):
@@ -167,8 +165,9 @@ class FileMap(object):
         start_dt, end_dt = time_period or (None, None)
         if start_dt is not None and end_dt is not None and start_dt > end_dt:
             ValueError("start datetime must not be after the end datetime")
-        self._filemap = GlobDict(recursive=recursive, follow_symlinks=follow_symlinks, include=include,
-                                 exclude=exclude, exclude_dir=exclude_dir, dict_class=OrderedDict)
+        self._filemap = GlobDict(recursive=recursive, follow_symlinks=follow_symlinks,
+                                 include=include, exclude=exclude, exclude_dir=exclude_dir,
+                                 dict_class=OrderedDict)
         self.start_dt = start_dt
         self.end_dt = end_dt
 
@@ -180,7 +179,8 @@ class FileMap(object):
             for path, items in self._filemap.iter_paths():
                 yield path, items
         else:
-            for path, items in self._filemap.iter_paths(mapfunc=strftimegen(self.start_dt, self.end_dt)):
+            for path, items in self._filemap.iter_paths(
+                    mapfunc=strftimegen(self.start_dt, self.end_dt)):
                 if items is None:
                     yield path, items
                 elif self.check_stat(path):
@@ -191,11 +191,12 @@ class FileMap(object):
 
     def check_stat(self, path):
         """
-        Checks logfile stat information for excluding files not in datetime period.
-        On Linux it's possible to checks only modification time, because file creation info
-        are not available, so it's possible to exclude only older files.
-        In Unix BSD systems and windows information about file creation date and times are available,
-        so is possible to exclude too newer files.
+        Checks logfile stat information for excluding files not in datetime
+        period. On Linux it's possible to checks only modification time,
+        because file creation info are not available, so it's possible to
+        exclude only older files. In Unix BSD systems and windows information
+        about file creation date and times are available, so is possible to
+        exclude too newer files.
         """
         statinfo = os.stat(path)
         st_mtime = datetime.fromtimestamp(statinfo.st_mtime)

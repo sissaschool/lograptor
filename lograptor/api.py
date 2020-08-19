@@ -1,10 +1,9 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 Command line interface of the lograptor package.
 """
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -21,8 +20,6 @@ Command line interface of the lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 import sys
 import argparse
 import time
@@ -38,6 +35,7 @@ from .exceptions import (
 from .timedate import get_datetime_interval, parse_date_period, parse_last_period, TimeRange
 
 
+# noinspection PyShadowingBuiltins
 class StoreOptionAction(argparse.Action):
     """
     An action that stores the max length option as value, useful when
@@ -335,7 +333,8 @@ def has_void_args(argv):
     Check if the command line has no arguments or only the --conf optional argument.
     """
     n_args = len(argv)
-    return n_args == 1 or n_args == 2 and argv[1].startswith('--conf=') or n_args == 3 and argv[1] == '--conf'
+    return n_args == 1 or n_args == 2 and argv[1].startswith('--conf=') or \
+        n_args == 3 and argv[1] == '--conf'
 
 
 def lograptor(files, patterns=None, matcher='ruled', cfgfiles=None, apps=None, hosts=None,

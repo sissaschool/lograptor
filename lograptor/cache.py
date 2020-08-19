@@ -1,9 +1,5 @@
-# -*- coding: utf-8 -*-
-"""
-This module contains class to handle lograptor's lookup cache.
-"""
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,16 +16,10 @@ This module contains class to handle lograptor's lookup cache.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 import re
 import socket
 import string
-
-try:
-    import pwd
-except ImportError:
-    pwd = None
+import pwd
 
 
 class LookupCache(object):
@@ -134,7 +124,7 @@ class LookupCache(object):
                 parts.append(values[gid])
                 k = match.end(gid)
         parts.append(s[k:])
-        return u"".join(parts)
+        return "".join(parts)
 
     def gethost(self, ip_addr):
         """
@@ -147,7 +137,7 @@ class LookupCache(object):
         except TypeError:
             pass
 
-        if ip_addr[0] in string.letters:
+        if ip_addr[0] in string.ascii_letters:
             return ip_addr
 
         try:

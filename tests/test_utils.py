@@ -1,10 +1,5 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-Test script for helper functions.
-"""
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -24,14 +19,13 @@ Test script for helper functions.
 import pytest
 import sys
 
-from lograptor.utils import open_resource, is_redirected, is_pipe
+from lograptor.utils import open_resource, is_redirected
 
 
 class TestUtils(object):
     def setup_method(self, method):
         print("\n%s:%s" % (type(self).__name__, method.__name__))
 
-    @pytest.mark.unparsed
     def test_open_resource(self):
         open_resource("samples/postfix.log")
         open_resource(open("samples/dovecot.log"))
@@ -39,11 +33,9 @@ class TestUtils(object):
         with pytest.raises((OSError, IOError)):
             open_resource("samples/nofile.log")
 
-    @pytest.mark.is_redirected
     def test_is_redirected(self):
         try:
             STDIN_FILENO = sys.stdin.fileno()
         except ValueError:
             STDIN_FILENO = 0
         assert is_redirected(STDIN_FILENO) is False
-

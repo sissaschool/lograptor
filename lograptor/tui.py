@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 """
 This module contains functions and classes to manage output on text-based
 user interface (TUI).
 """
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -38,7 +37,7 @@ def get_terminal_size():
     if current_os == 'Windows':
         tuple_xy = get_windows_terminal_size()
         if tuple_xy is None:
-            tuple_xy = get_unix_tput_terminal_size()  # needed for window's python in cygwin's xterm!
+            tuple_xy = get_unix_tput_terminal_size()  # needed for python in cygwin xterm
     elif current_os == 'Linux' or current_os == 'Darwin' or current_os.startswith('CYGWIN'):
         tuple_xy = get_unix_ioctl_terminal_size()
 
@@ -75,8 +74,8 @@ def get_windows_terminal_size():
 
 def get_unix_tput_terminal_size():
     """
-    Get the terminal size of a UNIX terminal using the tput UNIX command.
-    Ref: http://stackoverflow.com/questions/263890/how-do-i-find-the-width-height-of-a-terminal-window
+    Get the terminal size of a UNIX terminal using the tput UNIX command. See:
+    http://stackoverflow.com/questions/263890/how-do-i-find-the-width-height-of-a-terminal-window
     """
     import subprocess
     try:
@@ -126,7 +125,8 @@ class ProgressBar(object):
     :param output: the file object where the progress bar is written.
     :param max_value: the maximum value of the progress bar.
     :param label: the label appended at the right of the progress bar.
-    :param width_percentage: the screen width percentage to set for the progress bar, 25% for default.
+    :param width_percentage: the screen width percentage to set for the \
+    progress bar, 25% for default.
     :ivar width: the effective width of the progress bar, in characters.
     :ivar percentage: the progress percentage.
     """
@@ -155,7 +155,9 @@ class ProgressBar(object):
             counter = str(value)
 
             sys.stdout.write('\b' * self._draw_length)
-            sys.stdout.write('{}{}] {} {}'.format('#' * fill, ' ' * (self.width - fill), counter, self.label))
+            sys.stdout.write('{}{}] {} {}'.format(
+                '#' * fill, ' ' * (self.width - fill), counter, self.label)
+            )
             sys.stdout.flush()
 
             self.percentage = min(percentage, 100)
