@@ -137,24 +137,24 @@ class ReportData(MutableMapping):
 
             # Check report data function declaration
             if self.function == 'total':
-                if cond != '*' and condfield not in self.rules[opt].regexp.groupindex:
+                if cond != '*' and condfield not in self.rules[opt].pattern.groupindex:
                     msg = 'condition %r not in rule %r gids' % (condfield, opt)
                     raise LogRaptorOptionError('function', msg)
-                if valfld is not None and valfld not in self.rules[opt].regexp.groupindex:
+                if valfld is not None and valfld not in self.rules[opt].pattern.groupindex:
                     raise LogRaptorOptionError(opt, 'field %r not in rule %r gids' % (valfld, opt))
                 if len(fields) > 1:
                     raise LogRaptorOptionError(opt, 'multiple row descriptions!')
                 if fields[0][0] != '"':
                     raise LogRaptorOptionError(opt, 'a description must be double-quoted!')
             elif self.function == 'top':
-                if valfld is not None and valfld not in self.rules[opt].regexp.groupindex:
+                if valfld is not None and valfld not in self.rules[opt].pattern.groupindex:
                     raise LogRaptorOptionError(opt, 'field %r not in rule %r gids' % (valfld, opt))
                 if len(fields) != 1 or fields[0][0] == '"':
                     raise LogRaptorOptionError(opt, 'missing field specification!')
             elif self.function == 'table':
                 if valfld is not None:
                     raise LogRaptorOptionError(opt, 'syntax error in report data')
-                if cond != '*' and condfield not in self.rules[opt].regexp.groupindex:
+                if cond != '*' and condfield not in self.rules[opt].pattern.groupindex:
                     msg = 'field %r not in rule %r gids' % (condfield, opt)
                     raise LogRaptorOptionError('function', msg)
 
@@ -165,7 +165,7 @@ class ReportData(MutableMapping):
                     continue
                 if field == "host":
                     continue
-                if field not in self.rules[opt].regexp.groupindex:
+                if field not in self.rules[opt].pattern.groupindex:
                     raise LogRaptorOptionError(opt, 'field %r not in rule gids' % field)
 
     def __repr__(self):
@@ -434,11 +434,11 @@ class Subreport(object):
                     for opt in report_data:
                         match = report_data.parse_report_data(opt)
                         cond = match.group('condition')
-                        valfld = match.group('valfld')
+                        value_field = match.group('valfld')
                         unit = match.group('unit')
                         itemtitle = match.group('fields').strip('"')
 
-                        total = report_data.rules[opt].total_events(cond, valfld)
+                        total = report_data.rules[opt].total_events(cond, value_field)
                         if total == 0:
                             continue
 
@@ -454,12 +454,12 @@ class Subreport(object):
                     for opt in report_data:
                         match = report_data.parse_report_data(opt)
 
-                        valfld = match.group('valfld')
+                        value_field = match.group('valfld')
                         field = match.group('fields')
                         usemax = match.group('add2res') is None
 
-                        toplist = report_data.rules[opt].top_events(k, valfld, usemax, field)
-                        report_data.results.extend(toplist)
+                        top_list = report_data.rules[opt].top_events(k, value_field, usemax, field)
+                        report_data.results.extend(top_list)
                         
                 elif report_data.function == 'table':
                     cols = len(re.split(r'\s*,\s*', report_data.headers))
@@ -467,8 +467,9 @@ class Subreport(object):
                         match = report_data.parse_report_data(opt)
                         cond = match.group('condition')
                         fields = re.split(r'\s*,\s*', match.group('fields'))
-                        tablelist = report_data.rules[opt].list_events(cond, cols, fields)
-                        report_data.results.extend(tablelist)
+
+                        table_list = report_data.rules[opt].list_events(cond, cols, fields)
+                        report_data.results.extend(table_list)
 
                 if report_data.results:
                     self.report_data.append(report_data)

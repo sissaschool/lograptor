@@ -35,7 +35,7 @@ class LookupCache(object):
         self.mapmax = 10 ** self.mapexp
         self.ip_lookup = args.ip_lookup
         self.uid_lookup = args.uid_lookup
-        self.anonymyze = args.anonymize
+        self.anonymize = args.anonymize
         self.fields = config.options('fields')
         self.base_gid_pattern = re.compile('^([a-zA-Z_]+)')
         ipv4_pattern = config.get('patterns', 'IPV4_ADDRESS')
@@ -63,7 +63,7 @@ class LookupCache(object):
         the group is identical to the name of a filter.
         """
         base_gid = self.base_gid_pattern.search(gid).group(1)
-        if self.anonymyze:
+        if self.anonymize:
             try:
                 if value in self._maps[base_gid]:
                     return self._maps[base_gid][value]

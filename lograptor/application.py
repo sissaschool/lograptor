@@ -22,8 +22,8 @@ Module to manage lograptor applications
 import logging
 import re
 import string
-from sre_constants import error as RegexpCompileError
 import configparser
+from collections import Counter
 
 from .exceptions import LogRaptorConfigError, RuleMissingError, LogRaptorOptionError
 from .confparsers import AppConfig
@@ -41,7 +41,7 @@ class AppRule(object):
 
     Attributes:
         - name: the rule option name in the app configuration file
-        - regexp : re.compile object for rule pattern
+        - pattern : the compiled regex pattern of the rule
         - results : dictionary of rule results
         - filter_keys: the filtering keys (all regex groups connected
             to those keys must be not Non to matching a rule)
@@ -51,106 +51,97 @@ class AppRule(object):
         - key_gids : map from gid to result key tuple index
     """
 
-    def __init__(self, name, pattern, args, filter_keys=None):
+    def __init__(self, name, pattern, app, filter_keys=None):
         """
         Initialize AppRule.
 
         :param name: the configuration option name
         :param pattern: the option value that represents the search pattern
+        :param app: the application in which the rule is defined
         :param filter_keys: the filtering keys dictionary if the rule is a filter
         """
         try:
             if not pattern:
                 raise LogRaptorConfigError('empty rule %r' % name)
-            self.regexp = re.compile(pattern)
-        except RegexpCompileError:
-            raise LogRaptorConfigError("illegal regex pattern for app\'rule: %r" % name)
+            self.pattern = re.compile(pattern)
+        except re.error as err:
+            msg = "invalid pattern for app\'s rule {!r}: {}"
+            raise LogRaptorConfigError(msg.format(name, str(err)))
+
+        key_gids = ['host']
+        for gid in self.pattern.groupindex:
+            if gid != 'host':
+                key_gids.append(gid)
+
+        if not key_gids:
+            raise LogRaptorConfigError("key gids set of the rule {!r} is empty!".format(name))
+        self.key_gids = tuple(key_gids)
 
         self.name = name
-        self.args = args
+        self.app = app
         self.filter_keys = filter_keys or []
         self.full_match = filter_keys is not None
         self.used_by_report = False
-        self.results = dict()
-
-        key_gids = ['host']
-        for gid in self.regexp.groupindex:
-            if gid != 'host':
-                key_gids.append(gid)
-        self.key_gids = tuple(key_gids)
-
-        if not self.key_gids:
-            raise LogRaptorConfigError("rule gids set empty!")
-
+        self.results = Counter()
         self._last_idx = None
 
     def __repr__(self):
-        return "<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
+        return "%s(name=%r, app=%r)" % (self.__class__.__name__, self.name, self.app.name)
 
     def add_result(self, values):
         """
         Add a tuple or increment the value of an existing one
         in the rule results dictionary.
         """
-        idx = [values['host']]
-        for gid in self.key_gids[1:]:
-            idx.append(values[gid])
-        idx = tuple(idx)
-
-        try:
-            self.results[idx] += 1
-        except KeyError:
-            self.results[idx] = 1
-        self._last_idx = idx
+        self._last_idx = tuple(values[gid] for gid in self.key_gids)
+        self.results[self._last_idx] += 1
 
     def increase_last(self, k):
         """
         Increase the last result by k.
         """
-        idx = self._last_idx
-        if idx is not None:
-            self.results[idx] += k
+        if self._last_idx is not None:
+            self.results[self._last_idx] += k
 
-    def total_events(self, cond, valfld=None):
+    def total_events(self, condition, value_field=None):
         """
-        Return total number of events in the rule'result set. A condition
-        could be provided to select the events to count. If value field (valfld)
-        is passed the function compute the sum taking the product of each value with
-        correspondent event counter.
+        Returns total number of events in the rule's result set. The *condition* selects
+        the events to count. If also a *value field* is provided the function computes
+        the sum taking the product of each value times the correspondent event counter.
         """
+        if condition == "*" and value_field is None:
+            return sum(self.results.values())
+
         results = self.results
+        val = self.key_gids.index(value_field) if value_field is not None else None
 
-        if cond == "*" and valfld is None:
-            return sum(results.values())
-        val = self.key_gids.index(valfld) if valfld is not None else None
-
-        if cond == "*":
+        if condition == "*":
             tot = 0
             for key in results:
                 tot += results[key] * int(key[val])
             return tot
             
-        match = re.search(r'(\w+)(!=|==)\"([^\"]*)\"', cond)
-        condpos = self.key_gids.index(match.group(1))
+        match = re.search(r'(\w+)(!=|==)\"([^\"]*)\"', condition)
+        condition_index = self.key_gids.index(match.group(1))
         invert = (match.group(2) == '!=')
-        recond = re.compile(match.group(3))
+        condition_pattern = re.compile(match.group(3))
 
         tot = 0
         for key in results:
-            match = recond.search(key[condpos])
+            match = condition_pattern.search(key[condition_index])
             if (not invert and match is not None) or (invert and match is None):
-                if valfld is None:
+                if value_field is None:
                     tot += results[key]
                 else:
                     tot += results[key] * int(key[val])
         return tot
 
-    def top_events(self, num, valfld, usemax, gid):
+    def top_events(self, num, value_field, usemax, gid):
         """
-        Return a list with the top NUM list of events. Each list element
-        contain a value, indicating the number of events, and a list of
+        Returns a list with the top *num* list of events. Each element
+        contains a value, indicating the number of events, and a list of
         matching gid values (usernames, email addresses, clients).
-        Instead of calculating the top sum of occurrences a value field
+        Instead of calculating the top sum of occurrences a *value_field*
         should be provided to compute the max of a numeric value field or
         the sum of product of value field with events.
         """
@@ -178,8 +169,8 @@ class AppRule(object):
         val = None
 
         # Compute top(max) if a value fld is provided
-        if valfld is not None:
-            val = self.key_gids.index(valfld)
+        if value_field is not None:
+            val = self.key_gids.index(value_field)
             if usemax:
                 i = 0 
                 for key in sorted(results.keys(), key=lambda x: (int(x[val]), x[pos]),
@@ -194,9 +185,9 @@ class AppRule(object):
             if value is None or value != key[pos]:
                 classify()
                 value = key[pos]
-                tot = results[key] if valfld is None else results[key] * int(key[val])
+                tot = results[key] if value_field is None else results[key] * int(key[val])
                 continue
-            tot += results[key] if valfld is None else results[key] * int(key[val])
+            tot += results[key] if value_field is None else results[key] * int(key[val])
         else:
             classify()
 
@@ -350,7 +341,7 @@ class AppLogParser(object):
         logger.info('initialized app %r with %d pattern rules', name, len(self.rules))
 
     def __repr__(self):
-        return "<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
+        return "%s(name=%r)" % (self.__class__.__name__, self.name)
 
     @property
     def filters(self):
@@ -386,25 +377,26 @@ class AppLogParser(object):
             if not self.args.filters:
                 # No filters case: substitute the filter fields with the corresponding patterns.
                 pattern = string.Template(pattern).safe_substitute(self.fields)
-                rules.append(AppRule(option, pattern, self.args))
+                rules.append(AppRule(option, pattern, self))
                 continue
 
             for filter_group in self.args.filters:
                 _pattern, filter_keys = exact_sub(pattern, filter_group)
                 _pattern = string.Template(_pattern).safe_substitute(self.fields)
                 if len(filter_keys) >= len(filter_group):
-                    rules.append(AppRule(option, _pattern, self.args, filter_keys))
+                    rules.append(AppRule(option, _pattern, self, filter_keys))
                 elif self._thread:
-                    rules.append(AppRule(option, _pattern, self.args))
+                    rules.append(AppRule(option, _pattern, self))
         return rules
 
     def increase_last(self, k):
         """
         Increase the counter of the last matched rule by k.
         """
-        rule = self._last_rule
-        if rule is not None:
-            rule.increase_last(k)
+        try:
+            self._last_rule.increase_last(k)
+        except AttributeError:
+            pass
 
     def match_rules(self, log_data):
         """
@@ -421,9 +413,9 @@ class AppLogParser(object):
                 of output is requested (--anonymize/--ip/--uid options).
         """
         for rule in self.rules:
-            match = rule.regexp.search(log_data.message)
+            match = rule.pattern.search(log_data.message)
             if match is not None:
-                gids = rule.regexp.groupindex
+                gids = rule.pattern.groupindex
                 self._last_rule = rule
                 if self.name_cache is not None:
                     values = self.name_cache.match_to_dict(match, rule.key_gids)
@@ -438,7 +430,7 @@ class AppLogParser(object):
                         values[gid] = match.group(gid)
                     output_data = None
 
-                if self._thread and 'thread' in rule.regexp.groupindex:
+                if self._thread and 'thread' in rule.pattern.groupindex:
                     thread = match.group('thread')
                     if rule.filter_keys is not None and \
                             any([values[key] is None for key in rule.filter_keys]):
