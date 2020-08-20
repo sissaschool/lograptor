@@ -41,7 +41,7 @@ def do_chunked_gzip(infh, outfh, filename):
         infh = open(infh.name, 'r')
     else:
         infh.seek(0)
-        
+
     readsize = 0
     sys.stdout.write('Gzipping {0}: '.format(filename))
 
@@ -87,30 +87,30 @@ def get_value_unit(value, unit, prefix):
     """
     Return a human-readable value with unit specification. Try to
     transform the unit prefix to the one passed as parameter. When
-    transform to higher prefix apply nearest integer round. 
+    transform to higher prefix apply nearest integer round.
     """
     prefixes = ('', 'K', 'M', 'G', 'T')
 
     if len(unit):
         if unit[:1] in prefixes:
-            valprefix = unit[0] 
+            valprefix = unit[0]
             unit = unit[1:]
         else:
             valprefix = ''
     else:
         valprefix = ''
-    
+
     while valprefix != prefix:
         uidx = prefixes.index(valprefix)
 
         if uidx > prefixes.index(prefix):
             value *= 1024
-            valprefix = prefixes[uidx-1]
+            valprefix = prefixes[uidx - 1]
         else:
             if value < 10240:
                 return value, '{0}{1}'.format(valprefix, unit)
-            value = int(round(value/1024.0))
-            valprefix = prefixes[uidx+1]
+            value = int(round(value / 1024.0))
+            valprefix = prefixes[uidx + 1]
     return value, '{0}{1}'.format(valprefix, unit)
 
 

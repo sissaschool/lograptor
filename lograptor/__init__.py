@@ -17,5 +17,8 @@
 # @Author Davide Brunato <brunato@sissa.it>
 #
 from .core import LogRaptor
-from .exceptions import *
+from .exceptions import LogRaptorException
 from .api import lograptor
+
+
+__all__ = ['LogRaptor', 'lograptor', 'LogRaptorException']

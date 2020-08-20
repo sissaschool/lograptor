@@ -120,7 +120,7 @@ class AppRule(object):
             for key in results:
                 tot += results[key] * int(key[val])
             return tot
-            
+
         match = re.search(r'(\w+)(!=|==)\"([^\"]*)\"', condition)
         condition_index = self.key_gids.index(match.group(1))
         invert = (match.group(2) == '!=')
@@ -172,13 +172,13 @@ class AppRule(object):
         if value_field is not None:
             val = self.key_gids.index(value_field)
             if usemax:
-                i = 0 
+                i = 0
                 for key in sorted(results.keys(), key=lambda x: (int(x[val]), x[pos]),
                                   reverse=True)[:num]:
                     top[i] = [int(key[val]), [key[pos]]]
                     i += 1
                 return [res for res in top if res is not None]
-                
+
         value = None
         tot = 0
         for key in sorted(results.keys(), key=lambda x: (x[pos])):

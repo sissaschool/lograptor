@@ -312,7 +312,7 @@ class MailChannel(NoTermChannel):
         if self.rawlogs:
             self.set_tempdir()
             self.rawlogs_limit = config.getint('%s_channel' % name, 'rawlogs_limit') * 1024
-        else: 
+        else:
             self.rawlogs_limit = 0
 
         self.gpg_encrypt = config.getboolean(section, 'gpg_encrypt', 'mail_channel')
@@ -464,11 +464,11 @@ class MailChannel(NoTermChannel):
         root_part['From'] = self.email_address
         root_part['To'] = ', '.join(self.mailto)
         root_part['Subject'] = '{0} system events: {1}'.format(
-                socket.gethostname(), time.strftime('%c', time.localtime())
+            socket.gethostname(), time.strftime('%c', time.localtime())
         )
         root_part['Message-Id'] = make_msgid()
         root_part['X-Mailer'] = '{0}-{1}'.format(package_name, __version__)
-        
+
         mail_message(self.smtp_server, root_part.as_string(), self.email_address, self.mailto)
         print('Mailed the report to: {0}'.format(','.join(self.mailto)))
 
@@ -494,7 +494,7 @@ class FileChannel(NoTermChannel):
         except ValueError:
             raise LogRaptorConfigError(maskmsg.format('dirmask', self.dirmask))
 
-        try: 
+        try:
             self.filename = time.strftime(self.filemask, time.localtime())
         except TypeError:
             LogRaptorConfigError(maskmsg.format('filemask', self.filemask))
@@ -510,7 +510,7 @@ class FileChannel(NoTermChannel):
             logger.debug('pubroot = %r', self.pubroot)
             if not self.pubroot:
                 raise LogRaptorConfigError('File channel requires a pubroot when notify is set')
-        
+
         logger.debug('path = %r', self.pubdir)
         logger.debug('filename = %r', self.filename)
 
@@ -537,7 +537,7 @@ class FileChannel(NoTermChannel):
         for entry in os.listdir(path):
             logger.debug('Found: %r', entry)
             if os.path.isdir(os.path.join(path, entry)):
-                try: 
+                try:
                     stamp = time.mktime(time.strptime(entry, dirmask))
                 except ValueError as e:
                     logger.info('Dir %r did not match dirmask %r: %r', entry, dirmask, e)
@@ -584,10 +584,10 @@ class FileChannel(NoTermChannel):
         )
         workdir = os.path.join(self.pubdir, self.dirname)
         if not os.path.isdir(workdir):
-            try: 
+            try:
                 os.makedirs(workdir)
             except OSError as e:
-                logger.error('Error creating directory "{0}": {0}'.format(workdir, e))
+                logger.error('Error creating directory {!r}: {}'.format(workdir, e))
                 return
 
         fmtname = '{0}-{1}-{2}.{3}' if len(report_parts) > 1 else '{0}-{2}.{3}'

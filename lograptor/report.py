@@ -55,7 +55,7 @@ class ReportData(MutableMapping):
         r'\s*(?P<fields>((\w|\"[^\"]*\")(\s*,\s*)?)+)'
         r'(\s*:\s*(?P<add2res>\+)?(?P<valfld>\w+)(\[(?P<unit>(|K|M|G|T)'
         r'(b|bits|B|Bytes))])?)?\s*\)')
-    
+
     def __init__(self, name, options, rules):
         self._data = OrderedDict()
         self.name = name
@@ -85,12 +85,12 @@ class ReportData(MutableMapping):
                 self.function = match.group('function')
                 self.topnum = match.group('topnum')
                 self.headers = match.group('headers')
-                
+
                 if self.headers:
                     n_headers = len(re.split(r'\s*,\s*', self.headers))
                 else:
                     n_headers = 0
-                
+
                 # Parameters value checking
                 if self.function == "total" and n_headers > 0:
                     raise LogRaptorOptionError('function', "function 'total' doesn't have headers!")
@@ -130,7 +130,7 @@ class ReportData(MutableMapping):
             valfld = match.group('valfld')
             cond = match.group('condition')
             condfield = match.group('field')
-            
+
             fields = re.split(r'\s*,\s*', match.group('fields'))
             if len(fields) < n_headers:
                 raise LogRaptorOptionError('function', 'more headers than fields in the rule!')
@@ -193,10 +193,10 @@ class ReportData(MutableMapping):
         """
         if self.function != 'table' or repitem.function != 'table':
             return False
-        
+
         if self.title != repitem.title:
             return False
-        
+
         head1 = re.split(r'\s*,\s*', self.headers)
         head2 = re.split(r'\s*,\s*', repitem.headers)
         if len(head1) != len(head2):
@@ -206,8 +206,8 @@ class ReportData(MutableMapping):
                 return False
         return True
 
-        # TODO if requested: matching also report item gids
-        
+        # TODO if requested: matching also reports item gids
+
     def make_text(self, width):
         """
         Make the text representation of a report data element.
@@ -234,12 +234,12 @@ class ReportData(MutableMapping):
             for res in self.results:
                 padding = ' ' * (width1 - len(res[0]) + 1)
                 text = '{0}{1}{2}| {3}\n'.format(text, res[0], padding, res[1])
-                
+
         elif self.function == 'top':
             if self.results[0] is not None:
                 width1 = max(len(res[0]) for res in self.results if res is not None)
                 width2 = min(
-                    [width-width1 - 4,
+                    [width - width1 - 4,
                      max(len(', '.join(res[1])) for res in self.results if res is not None)]
                 )
 
@@ -254,29 +254,29 @@ class ReportData(MutableMapping):
                         text = '{0}{1}{2}| {3}\n'.format(text, res[0], padding, lastcol)
             else:
                 text = '{0} {1}\n'.format(text, 'None')
-                    
+
         elif self.function == 'table':
             headers = re.split(r'\s*,\s*', self.headers)
 
             colwidth = []
-            for i in range(len(headers)-1):
+            for i in range(len(headers) - 1):
                 colwidth.append(max([len(headers[i]), max(len(res[i]) for res in self.results)]))
 
-            for i in range(len(headers)-1):
+            for i in range(len(headers) - 1):
                 text = '{0}{1}{2}| '.format(
-                    text, headers[i].strip('"'), ' ' * (colwidth[i]-len(headers[i])+2)
+                    text, headers[i].strip('"'), ' ' * (colwidth[i] - len(headers[i]) + 2)
                 )
 
             text = '{0}{1}\n'.format(text, headers[-1].strip('"'))
-            text = '{0}{1}\n'.format(text, '-' * (width-1))
+            text = '{0}{1}\n'.format(text, '-' * (width - 1))
 
             filling = ""
-            for i in range(len(headers)-1):
+            for i in range(len(headers) - 1):
                 filling = '{0}{1}| '.format(filling, ' ' * colwidth[i])
-            
+
             for res in sorted(self.results, key=lambda x: x[0]):
-                for i in range(len(headers)-1):
-                    text = '{0}{1}{2}| '.format(text, res[i], ' ' * (colwidth[i]-len(res[i])))
+                for i in range(len(headers) - 1):
+                    text = '{0}{1}{2}| '.format(text, res[i], ' ' * (colwidth[i] - len(res[i])))
                 lastcol = get_fmt_results(res[-1], limit=5)
                 text = '{0}{1}\n'.format(text, mformat(lastcol))
         self.text = text
@@ -312,13 +312,13 @@ class ReportData(MutableMapping):
             else:
                 html = '{0}<tr><td valign="top" align="left">{1}</td>'\
                        .format(html, "None")
-                
+
         elif self.function == 'table':
             html = '<h3><font color="{1}">{0}</font></h3>'\
                    '<table width="100%" rules="cols" cellpadding="2">\n'\
                    '<tr bgcolor="#aaaaaa">'\
                    .format(htmlsafe(self.title.strip()), self.color)
-            
+
             headers = re.split(r'\s*,\s*', self.headers)
             for i in range(len(headers)):
                 html = '{0}<th align="center" colspan="1">'\
@@ -326,9 +326,9 @@ class ReportData(MutableMapping):
                        .format(html, headers[i].strip('"'))
 
             html = '{0}</tr>\n'.format(html)
-            
+
             oddflag = False
-            lastval = ""            
+            lastval = ''
             for res in sorted(self.results, key=lambda x: x[0]):
                 if lastval != res[0]:
                     oddflag = not oddflag
@@ -347,18 +347,18 @@ class ReportData(MutableMapping):
 
                     html = '{0}<td valign="top" width="15%">&nbsp;</td>'.format(html)
                 lastval = res[0]
-                
-                for i in range(1, len(headers)-1):
+
+                for i in range(1, len(headers) - 1):
                     html = '{0}<td valign="top" width="15%">{1}</td>'.format(html, res[i])
                 lastcol = get_fmt_results(res[-1], limit=10, fmt='<font color="darkred">{0}</font>')
 
                 if lastcol[-1].find(u" more skipped]") > -1:
                     html = '{0}<td valign="top" width="{1}%">{2} {3}</td></tr>\n'\
-                           .format(html, 100-15*(len(headers)-1),
+                           .format(html, 100 - 15 * (len(headers) - 1),
                                    ', '.join(lastcol[:-1]), lastcol[-1])
                 else:
                     html = '{0}<td valign="top" width="{1}%">{2}</td></tr>\n'\
-                           .format(html, 100-15*(len(headers)-1), ', '.join(lastcol))
+                           .format(html, 100 - 15 * (len(headers) - 1), ', '.join(lastcol))
 
         self.html = '{0}</table>\n<p>\n'.format(html)
 
@@ -373,7 +373,7 @@ class ReportData(MutableMapping):
         writer = csv.writer(out, delimiter='|', lineterminator='\n', quoting=csv.QUOTE_MINIMAL)
 
         if self.function == 'total':
-            writer.writerows(self.results)                
+            writer.writerows(self.results)
 
         elif self.function == 'top':
             rows = [['Value', self.headers.strip('"')]]
@@ -382,7 +382,7 @@ class ReportData(MutableMapping):
                     if res is not None:
                         rows.append(tuple([res[0], ','.join(res[1])]))
                 writer.writerows(rows)
-                
+
         elif self.function == 'table':
             rows = [[header.strip('"') for header in re.split(r'\s*,\s*', self.headers)]]
 
@@ -411,7 +411,6 @@ class Subreport(object):
         self.name = name
         self.title = title
         self.report_data = []
-        self.reptext = ""
 
     def __len__(self):
         return len(self.report_data)
@@ -460,7 +459,7 @@ class Subreport(object):
 
                         top_list = report_data.rules[opt].top_events(k, value_field, usemax, field)
                         report_data.results.extend(top_list)
-                        
+
                 elif report_data.function == 'table':
                     cols = len(re.split(r'\s*,\s*', report_data.headers))
                     for opt in report_data:
@@ -474,7 +473,7 @@ class Subreport(object):
                 if report_data.results:
                     self.report_data.append(report_data)
 
-        # Sort and rewrite results as strings with units 
+        # Sort and rewrite results as strings with units
         for report_data in self.report_data:
             if report_data.function == 'top':
                 # Sort values
@@ -497,11 +496,11 @@ class Subreport(object):
 
     def make_format(self, fmt, width):
         """
-        Make subreport text in a specified format         
+        Make subreport text in a specified format
         """
         if not self.report_data:
             return
-        
+
         for data_item in self.report_data:
             if data_item.results:
                 if fmt is None or fmt == 'text':
@@ -522,18 +521,18 @@ class Subreport(object):
             if i in items_to_del:
                 continue
             if self.report_data[i].function[0:5] == 'table':
-                for j in range(i+1, len(self.report_data)):
+                for j in range(i + 1, len(self.report_data)):
                     if self.report_data[j].function[0:5] == 'table':
                         if self.report_data[i] == self.report_data[j]:
                             logger.debug('Merge of 2 identical report tables: {0}'
-                                         .format(self.report_data[i].title)) 
+                                         .format(self.report_data[i].title))
                             items_to_del.add(j)
                             self.report_data[i].results.extend(self.report_data[j].results)
         if items_to_del:
             for i in reversed(sorted(items_to_del, key=lambda x: x)):
                 self.report_data.pop(i)
 
-                
+
 class Report(object):
     """
     This helper class holds the contents of a report before it is
@@ -653,10 +652,10 @@ class Report(object):
         for sr in self.subreports:
             report_data = [item.html for item in sr.report_data if item.html]
             if report_data:
-                parts.append('\n<h2>{1}</h2>\n'.format(sr.title, sr.reptext))
+                parts.append('\n<h2>{0}</h2>\n'.format(sr.title))
                 parts.extend(report_data)
                 parts.append('\n<hr/>')
-        
+
         valumap['subreports'] = '\n'.join(parts)  # or "\n<<NO SUBREPORT RELATED EVENTS>>\n"
         html_page = Template(template).safe_substitute(valumap)
         return TextPart(fmt='html', text=html_page, ext='html')
@@ -669,13 +668,13 @@ class Report(object):
         fh = open(self.text_template)
         template = fh.read()
         fh.close()
-        
+
         parts = []
         for sr in self.subreports:
             report_data = [item.text for item in sr.report_data if item.text]
             if report_data:
                 parts.append(
-                    '\n{1}\n***** {0} *****\n{1}'.format(sr.title, '*' * (len(sr.title)+12))
+                    '\n{1}\n***** {0} *****\n{1}'.format(sr.title, '*' * (len(sr.title) + 12))
                 )
                 parts.extend(report_data)
 

@@ -209,7 +209,7 @@ class FileMap(object):
         if not check:
             logger.info("file %r not in datetime period!", path)
         return check
-             
+
     def add(self, files, items):
         """
         Add a list of files with a reference to a list of objects.

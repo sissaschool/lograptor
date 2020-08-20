@@ -31,7 +31,7 @@ def get_terminal_size():
     :return: Returns a 2-tuple with width and height.
     """
     import platform
-   
+
     current_os = platform.system()
     tuple_xy = None
     if current_os == 'Windows':

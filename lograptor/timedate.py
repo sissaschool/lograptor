@@ -43,7 +43,7 @@ def parse_last_period(last):
     """
     Parse the --last value and return the time difference in seconds.
     """
-    
+
     wordmap = {
         'hour': '1h',
         'day': '1d',
@@ -67,14 +67,14 @@ def parse_last_period(last):
     if cat not in multmap:
         raise TypeError
 
-    try: 
+    try:
         num = int(last[:-1])
         if num <= 0:
             raise TypeError
-    except ValueError: 
-        raise TypeError
-    
-    diff = num * multmap[cat]    
+    except ValueError:
+        raise TypeError from None
+
+    diff = num * multmap[cat]
     return diff
 
 
@@ -95,10 +95,10 @@ def parse_date_period(date):
     The format is [YYYY]MMDD[,[YYYY]MMDD].
     """
     import datetime
-    
+
     now = datetime.datetime.today()
     date_len = len(date)
-    
+
     if date_len == 4:
         date1 = str(now.year) + date
         date2 = str(now.year) + date + "235959"
@@ -127,11 +127,11 @@ def parse_date_period(date):
             raise ValueError("Error in the first date value in --date parameter, "
                              "use --date=[YYYY]MMDD,[YYYY]MMDD")
     try:
-        date2 = datetime.datetime.strptime(date2, "%Y%m%d%H%M%S")        
+        date2 = datetime.datetime.strptime(date2, "%Y%m%d%H%M%S")
     except ValueError:
         raise ValueError("Error in the second date value in --date parameter, "
                          "use --date=[YYYY]MMDD,[YYYY]MMDD")
-        
+
     if date1 > date2:
         raise ValueError("Wrong parameter --date: the first date is after the second!")
 
@@ -168,11 +168,9 @@ class TimeRange(object):
         """
         hour = int(time_[0:2])
         minute = int(time_[3:5])
-        return not (
-            hour < self.h1 or hour > self.h2 or
-            (hour == self.h1 and minute < self.m1) or
-            (hour == self.h2 and minute > self.m2)
-        )
+        return self.h1 <= hour <= self.h2 and \
+            (hour != self.h1 or minute >= self.m1) and \
+            (hour != self.h2 or minute <= self.m2)
 
 
 def strftimegen(start_dt, end_dt):
