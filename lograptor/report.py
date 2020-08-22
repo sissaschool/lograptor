@@ -489,7 +489,7 @@ class Subreport(object):
 
                 for res in report_data.results:
                     if unit is not None:
-                        v, u = get_value_unit(res[0], unit, 'T')
+                        v, u = get_value_unit(res[0], unit)
                         res[0] = '{0} {1}'.format(v, u)
                     else:
                         res[0] = str(res[0])

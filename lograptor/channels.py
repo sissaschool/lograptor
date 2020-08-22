@@ -374,10 +374,10 @@ class MailChannel(NoTermChannel):
             root_part.attach(attach_part)
 
         if self.rawlogs:
-            out = BytesIO()
-            do_chunked_gzip(self.rawfh, out, filename='raw.log.gz')
-            out.seek(0, os.SEEK_END)
-            size = out.tell()
+            outfh = BytesIO()
+            do_chunked_gzip(self.rawfh, outfh, filename='raw.log.gz')
+            outfh.seek(0, os.SEEK_END)
+            size = outfh.tell()
 
             if size > self.rawlogs_limit:
                 logger.warning('%d is over the defined max of %r', size, self.rawlogs_limit)
@@ -385,7 +385,7 @@ class MailChannel(NoTermChannel):
             else:
                 logger.debug('Creating the application/x-gzip part')
                 attach_part = MIMEBase('application', 'x-gzip')
-                attach_part.set_payload(out.getvalue())
+                attach_part.set_payload(outfh.getvalue())
 
                 from email.encoders import encode_base64
 
