@@ -98,7 +98,7 @@ def comma_separated_string(string):
 def last_period_spec(string):
     try:
         diff = parse_last_period(string)
-    except TypeError:
+    except ValueError:
         raise argparse.ArgumentTypeError('wrong format: %r' % string)
     else:
         return get_datetime_interval(int(time.time()), diff, 3600)

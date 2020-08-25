@@ -43,7 +43,6 @@ def parse_last_period(last):
     """
     Parse the --last value and return the time difference in seconds.
     """
-
     wordmap = {
         'hour': '1h',
         'day': '1d',
@@ -52,7 +51,7 @@ def parse_last_period(last):
     }
 
     # seconds
-    multmap = {
+    diff_map = {
         'h': 3600,
         'd': 86400,
         'w': 604800,
@@ -62,20 +61,22 @@ def parse_last_period(last):
     if last in wordmap:
         last = wordmap[last]
 
-    cat = last[-1:].lower()
+    try:
+        cat = last[-1:].lower()
+    except (AttributeError, TypeError):
+        raise TypeError("'last' argument must be a string")
 
-    if cat not in multmap:
-        raise TypeError
+    if cat not in diff_map:
+        raise ValueError("invalid format for 'last' argument")
 
     try:
         num = int(last[:-1])
-        if num <= 0:
-            raise TypeError
     except ValueError:
-        raise TypeError from None
-
-    diff = num * multmap[cat]
-    return diff
+        raise ValueError("invalid format for 'last' argument") from None
+    else:
+        if num <= 0:
+            raise ValueError("invalid format for 'last' argument")
+        return num * diff_map[cat]
 
 
 def get_datetime_interval(timestamp, diff, offset=0):

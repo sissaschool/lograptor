@@ -250,8 +250,8 @@ class ReportData(MutableMapping):
                     if res is not None:
                         padding = ' ' * (width1 - len(res[0]) + 1)
                         filling = '{0}| '.format(' ' * (width1 + 1))
-                        lastcol = mformat(res[1])
-                        text = '{0}{1}{2}| {3}\n'.format(text, res[0], padding, lastcol)
+                        last_column = mformat(res[1])
+                        text = '{0}{1}{2}| {3}\n'.format(text, res[0], padding, last_column)
             else:
                 text = '{0} {1}\n'.format(text, 'None')
 
@@ -277,8 +277,8 @@ class ReportData(MutableMapping):
             for res in sorted(self.results, key=lambda x: x[0]):
                 for i in range(len(headers) - 1):
                     text = '{0}{1}{2}| '.format(text, res[i], ' ' * (colwidth[i] - len(res[i])))
-                lastcol = get_fmt_results(res[-1], limit=5)
-                text = '{0}{1}\n'.format(text, mformat(lastcol))
+                last_column = get_fmt_results(res[-1], limit=5)
+                text = '{0}{1}\n'.format(text, mformat(last_column))
         self.text = text
 
     def make_html(self):
@@ -327,12 +327,12 @@ class ReportData(MutableMapping):
 
             html = '{0}</tr>\n'.format(html)
 
-            oddflag = False
-            lastval = ''
+            odd_flag = False
+            last_value = ''
             for res in sorted(self.results, key=lambda x: x[0]):
-                if lastval != res[0]:
-                    oddflag = not oddflag
-                    if oddflag:
+                if last_value != res[0]:
+                    odd_flag = not odd_flag
+                    if odd_flag:
                         html = '{0}<tr bgcolor="#dddddd">'.format(html)
                     else:
                         html = '{0}<tr>'.format(html)
@@ -340,25 +340,26 @@ class ReportData(MutableMapping):
                     html = '{0}<td valign="top" width="15%">{1}</td>'\
                            .format(html, res[0])
                 else:
-                    if oddflag:
+                    if odd_flag:
                         html = '{0}<tr bgcolor="#dddddd">'.format(html)
                     else:
                         html = '{0}<tr>'.format(html)
 
                     html = '{0}<td valign="top" width="15%">&nbsp;</td>'.format(html)
-                lastval = res[0]
+                last_value = res[0]
 
                 for i in range(1, len(headers) - 1):
                     html = '{0}<td valign="top" width="15%">{1}</td>'.format(html, res[i])
-                lastcol = get_fmt_results(res[-1], limit=10, fmt='<font color="darkred">{0}</font>')
+                last_column = get_fmt_results(
+                    res[-1], limit=10, fmt='<font color="darkred">{0}</font>')
 
-                if lastcol[-1].find(u" more skipped]") > -1:
+                if last_column[-1].find(u" more skipped]") > -1:
                     html = '{0}<td valign="top" width="{1}%">{2} {3}</td></tr>\n'\
                            .format(html, 100 - 15 * (len(headers) - 1),
-                                   ', '.join(lastcol[:-1]), lastcol[-1])
+                                   ', '.join(last_column[:-1]), last_column[-1])
                 else:
                     html = '{0}<td valign="top" width="{1}%">{2}</td></tr>\n'\
-                           .format(html, 100 - 15 * (len(headers) - 1), ', '.join(lastcol))
+                           .format(html, 100 - 15 * (len(headers) - 1), ', '.join(last_column))
 
         self.html = '{0}</table>\n<p>\n'.format(html)
 
@@ -388,11 +389,11 @@ class ReportData(MutableMapping):
 
             for res in sorted(self.results, key=lambda x: x[0]):
                 row = list(res[:-1])
-                lastcol = get_fmt_results(res[-1], limit=10)
-                if lastcol[-1][0] == '[' and lastcol[-1][-1] == ']':
-                    row.append('{0} {1}'.format(', '.join(lastcol[:-1]), lastcol[-1]))
+                last_column = get_fmt_results(res[-1], limit=10)
+                if last_column[-1][0] == '[' and last_column[-1][-1] == ']':
+                    row.append('{0} {1}'.format(', '.join(last_column[:-1]), last_column[-1]))
                 else:
-                    row.append(', '.join(lastcol))
+                    row.append(', '.join(last_column))
                 rows.append(row)
             writer.writerows(rows)
 

@@ -22,7 +22,6 @@ import io
 import stat
 import string
 from functools import wraps
-from contextlib import contextmanager
 from urllib.request import urlopen
 
 from .tui import ProgressBar
@@ -166,13 +165,8 @@ def get_value_unit(value, unit='', prefix='T'):
 
 
 def htmlsafe(unsafe):
-    """
-    Escapes all x(ht)ml control characters.
-    """
-    unsafe = unsafe.replace('&', '&amp;')
-    unsafe = unsafe.replace('<', '&lt;')
-    unsafe = unsafe.replace('>', '&gt;')
-    return unsafe
+    """Escapes html control characters."""
+    return unsafe.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
 def get_fmt_results(results, limit=5, sep='::', fmt=None):
@@ -186,32 +180,32 @@ def get_fmt_results(results, limit=5, sep='::', fmt=None):
     for key in sorted(results, key=lambda x: results[x], reverse=True):
         if len(result_list) >= limit and results[key] <= 1:
             break
+
         if fmt is not None:
-            fmtkey = []
+            fmt_key = []
             for i in range(len(key)):
                 if i % 2 == 1:
-                    fmtkey.append(fmt.format(key[i]))
+                    fmt_key.append(fmt.format(key[i]))
                 else:
-                    fmtkey.append(key[i])
-            result_list.append(u'{0}({1})'.format(sep.join(fmtkey), results[key]))
+                    fmt_key.append(key[i])
+            result_list.append(u'{0}({1})'.format(sep.join(fmt_key), results[key]))
         else:
             result_list.append(u'{0}({1})'.format(sep.join(key), results[key]))
     else:
         return result_list
+
     if fmt is not None:
-        result_list.append(fmt.format(u'[%d more skipped]' % (len(results) - len(result_list))))
+        result_list.append(fmt.format('[%d more skipped]' % (len(results) - len(result_list))))
     else:
-        result_list.append(u'[%d more skipped]' % (len(results) - len(result_list)))
+        result_list.append('[%d more skipped]' % (len(results) - len(result_list)))
+
     return result_list
 
 
 def field_multisub(strings, field, values):
-    result = set()
-    for s in strings:
-        result.update(
-            [string.Template(s).safe_substitute({field: v}) for v in values]
-        )
-    return list(result)
+    return list({
+        string.Template(s).safe_substitute({field: v}) for v in values for s in strings
+    })
 
 
 def exact_sub(s, mapping):
@@ -224,23 +218,23 @@ def exact_sub(s, mapping):
     return s, fields
 
 
-def safe_expand(template, mapping):
+def safe_expand(template, substitution_map):
     """
     Safe string template expansion. Raises an error if the provided
-    substitution mapping has circularities.
+    substitution map has circularities.
     """
-    for _ in range(len(mapping) + 1):
+    for _ in range(len(substitution_map) + 1):
         _template = template
-        template = string.Template(template).safe_substitute(mapping)
+        template = string.Template(template).safe_substitute(substitution_map)
         if template == _template:
             return template
     else:
-        raise ValueError("circular mapping provided!")
+        raise ValueError("substitution map has a circularity!")
 
 
 def results_to_string(results):
-    return u', '.join([
-        u'%s(%s)' % (key, results[key])
+    return ', '.join([
+        '%s(%s)' % (key, results[key])
         for key in sorted(results, key=lambda x: results[x], reverse=True)
     ])
 
@@ -259,7 +253,7 @@ def protected_property(func):
     or the value returned by the wrapped method, if the protected attribute is not defined.
     """
     if func.__name__.startswith('_'):
-        raise ValueError("%r: Cannot decorate a protected method!" % func)
+        raise ValueError("%r: cannot decorate a protected method!" % func)
 
     @property
     @wraps(func)
@@ -286,36 +280,25 @@ def normalize_path(path, base_path=None):
         return os.path.abspath(os.path.join(base_path, path))
 
 
-@contextmanager
-def closing(resource):
-    try:
-        yield resource
-    finally:
-        resource.close()
-
-
 def open_resource(source):
     """
-    Opens a resource in binary reading mode. Wraps the resource with a
-    context manager when it doesn't have one.
+    Opens a resource in binary reading mode.
 
     :param source: a filepath or an URL.
     """
     try:
         return open(source, mode='rb')
-    except (IOError, OSError) as err:
+    except (IOError, OSError):
         try:
-            resource = urlopen(source)
+            resource = urlopen(source)  # source is an URL
         except ValueError:
             pass
         else:
             resource.name = resource.url
-            if hasattr(resource, '__enter__'):
-                return resource
-            else:
-                return closing(resource)
-        raise err
+            return resource
+
+        raise
     except TypeError:
         if hasattr(source, 'read') and hasattr(source, 'readlines'):
-            return source  # Source is already a file-like object
+            return source  # source is already a file-like object
         raise

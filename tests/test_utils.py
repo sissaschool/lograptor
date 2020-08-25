@@ -23,7 +23,9 @@ import os
 import gzip
 import tempfile
 
-from lograptor.utils import do_chunked_gzip, get_value_unit, open_resource, is_redirected
+from lograptor.utils import do_chunked_gzip, get_value_unit, get_fmt_results, \
+    htmlsafe, safe_expand, results_to_string, protected_property, normalize_path, \
+    open_resource, is_redirected
 
 
 class TestUtils(object):
@@ -97,12 +99,87 @@ class TestUtils(object):
             get_value_unit(1024 ** 3, 'MiB', 'X')
         assert exc_info.value.args[0] == "unknown metric prefix 'X'"
 
+    def test_htmlsafe(self):
+        assert htmlsafe('ab<&;cd>') == 'ab&lt;&amp;;cd&gt;'
+
+    def test_get_fmt_results(self):
+        fmt = '<font color="darkred">{0}</font>'
+        results = {
+            ('raptor', '192.168.0.1'): 2,
+            ('rex', '192.168.0.4'): 1,
+            ('dino', '192.168.0.2'): 3,
+        }
+        assert get_fmt_results(results) == [
+            'dino::192.168.0.2(3)', 'raptor::192.168.0.1(2)', 'rex::192.168.0.4(1)'
+        ]
+        assert get_fmt_results(results, sep=', ') == [
+            'dino, 192.168.0.2(3)', 'raptor, 192.168.0.1(2)', 'rex, 192.168.0.4(1)'
+        ]
+        assert get_fmt_results(results, limit=2) == [
+            'dino::192.168.0.2(3)', 'raptor::192.168.0.1(2)', '[1 more skipped]'
+        ]
+        assert get_fmt_results(results, limit=2, fmt=fmt) == [
+            'dino::<font color="darkred">192.168.0.2</font>(3)',
+            'raptor::<font color="darkred">192.168.0.1</font>(2)',
+            '<font color="darkred">[1 more skipped]</font>',
+        ]
+
+    def test_safe_expand(self):
+        tmpl = '(|${ALPHA})'
+
+        substitution_map = {'ALPHA': 'foo'}
+        assert safe_expand(tmpl, substitution_map) == '(|foo)'
+
+        substitution_map = {'ALPHA': '${BETA}', 'BETA': 'bar'}
+        assert safe_expand(tmpl, substitution_map) == '(|bar)'
+
+        substitution_map = {'ALPHA': '${BETA}', 'BETA': '${ALPHA}'}
+        with pytest.raises(ValueError) as exc_info:
+            safe_expand(tmpl, substitution_map)
+        assert exc_info.value.args[0] == "substitution map has a circularity!"
+
+    def test_results_to_string(self):
+        results = {
+            ('raptor', '192.168.0.1'): 2,
+            ('rex', '192.168.0.4'): 1,
+            ('dino', '192.168.0.2'): 3,
+        }
+        assert results_to_string(results) == \
+            "('dino', '192.168.0.2')(3), ('raptor', '192.168.0.1')(2), ('rex', '192.168.0.4')(1)"
+
+    def test_protected_property(self):
+        def _foo(): pass
+
+        with pytest.raises(ValueError) as exc_info:
+            protected_property(_foo)
+        assert "cannot decorate a protected method!" in exc_info.value.args[0]
+
+    def test_normalize_path(self):
+        base_path = '/opt'
+        assert normalize_path('/home') == '/home'
+        assert normalize_path('/home', base_path) == '/home'
+        assert normalize_path('other/foo') == 'other/foo'
+        assert normalize_path('other/foo', base_path) == '/opt/other/foo'
+        assert normalize_path('./other/foo') == './other/foo'
+        assert normalize_path('./other/foo', base_path) == '/opt/other/foo'
+        assert normalize_path('~/foo') == '%s/foo' % os.path.expanduser('~')
+        assert normalize_path('~/foo', base_path) == '%s/foo' % os.path.expanduser('~')
+
     def test_open_resource(self):
-        open_resource("samples/postfix.log")
-        open_resource(open("samples/dovecot.log"))
+        res = open_resource("samples/postfix.log")
+        assert res.name == "samples/postfix.log"
+
+        res = open_resource(open("samples/dovecot.log"))
+        assert res.name == "samples/dovecot.log"
+
+        res = open_resource("file:samples/postfix.log")
+        assert res.name == "file://samples/postfix.log"
 
         with pytest.raises((OSError, IOError)):
             open_resource("samples/nofile.log")
+
+        with pytest.raises(TypeError):
+            open_resource(["samples/postfix.log"])
 
     def test_is_redirected(self):
         try:
