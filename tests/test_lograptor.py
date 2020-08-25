@@ -58,7 +58,8 @@ class TestLograptor(object):
                 self.cli_parser.print_usage()
                 sys.exit(2)
         else:
-            print(u"# {} --conf {} {}".format(lograptor.__name__, _lograptor.config.cfgfile, cmd_line))
+            print(u"# {} --conf {} {}".format(lograptor.__name__,
+                                              _lograptor.config.cfgfile, cmd_line))
             try:
                 retval = _lograptor()
             except KeyboardInterrupt:
@@ -67,7 +68,7 @@ class TestLograptor(object):
             else:
                 return 0 if retval else 1
 
-    def test_unparsed(self, capsys):
+    def test_unparsed(self):
         tests = (
             "-U -s -c --apps postfix -e '' samples/postfix.log",
             "-U -s -c --apps dovecot -e '' samples/dovecot.log",
@@ -133,7 +134,8 @@ class TestLograptor(object):
         """
         tests = [
             # ("-a postfix --date=20141001,20141002 -c -s samples/*", r'No file found in the '),
-            ("-a postfix -c --date=20150101,20150201 '' samples/postfix.log", r'postfix\(matches\=21', 0),
+            ("-a postfix -c --date=20150101,20150201 '' "
+             "samples/postfix.log", r'postfix\(matches\=21', 0),
             # ("-a postfix --last=1d -c -s", r'\.log: NN\n'),
         ]
         for cmd_line, result, retval in tests:
@@ -254,7 +256,7 @@ class TestLograptor(object):
                 print(u"\n{0}".format(out))
                 assert False
 
-    def test_quiet(self, capsys):
+    def test_quiet(self):
         """
         Test quiet option.
         """

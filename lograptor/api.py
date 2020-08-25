@@ -413,8 +413,8 @@ def lograptor(files, patterns=None, matcher='ruled', cfgfiles=None, apps=None, h
 
 
 def main():
-    if sys.version_info < (2, 7, 0):
-        sys.stderr.write("You need python 2.7 or later to run this program\n")
+    if sys.version_info < (3, 6, 0):
+        sys.stderr.write("You need Python 3.6+ to run this program\n")
         sys.exit(1)
 
     cli_parser = create_argument_parser()
