@@ -246,7 +246,7 @@ class LogRaptor(object):
             return tuple()
 
         try:
-            flags = re.IGNORECASE if self.args.case else 0 | re.UNICODE
+            flags = re.IGNORECASE if self.args.ignore_case else 0 | re.UNICODE
             return tuple([
                 re.compile(r'(\b%s\b)' % pat if self.args.word else '(%s)' % pat, flags=flags)
                 for pat in patterns if pat
