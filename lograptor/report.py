@@ -159,7 +159,7 @@ class ReportData(MutableMapping):
                     raise LogRaptorOptionError('function', msg)
 
             # Checking report data fields
-            logger.debug('checking fields: %s', fields)
+            logger.debug('checking fields: %r', fields)
             for field in fields:
                 if field[0] == '"' and field[-1] == '"':
                     continue
@@ -525,8 +525,8 @@ class Subreport(object):
                 for j in range(i + 1, len(self.report_data)):
                     if self.report_data[j].function[0:5] == 'table':
                         if self.report_data[i] == self.report_data[j]:
-                            logger.debug('Merge of 2 identical report tables: {0}'
-                                         .format(self.report_data[i].title))
+                            logger.debug('Merge of 2 identical report tables: %r',
+                                         self.report_data[i].title)
                             items_to_del.add(j)
                             self.report_data[i].results.extend(self.report_data[j].results)
         if items_to_del:
@@ -572,7 +572,7 @@ class Report(object):
         Create the report from application results
         """
         for subreport in self.subreports:
-            logger.debug('Make subreport "{0}"'.format(subreport.name))
+            logger.debug('Make subreport %r', subreport.name)
             subreport.make(apps)
 
         for subreport in self.subreports:
@@ -590,7 +590,7 @@ class Report(object):
             for sr in self.subreports:
                 sr.make_format(fmt, width)
 
-        logger.debug('Build a map for arguments and run\'s statistics ...')
+        logger.debug("Build a map for arguments and run's statistics ...")
         value_mapping = {
             'title': self.title,
             'patterns': ', '.join([repr(pattern) for pattern in self.args.patterns]) or None,
@@ -644,7 +644,7 @@ class Report(object):
         """
         Builds the report as html page, using the template page from file.
         """
-        logger.info('Making an html report using template %r.', self.html_template)
+        logger.info('Making an html report using template %r', self.html_template)
         fh = open(self.html_template)
         template = fh.read()
         fh.close()
@@ -665,7 +665,7 @@ class Report(object):
         """
         Builds the report as text page, using the template page from file.
         """
-        logger.info('Making a text report page using template %r.', self.text_template)
+        logger.info('Making a text report page using template %r', self.text_template)
         fh = open(self.text_template)
         template = fh.read()
         fh.close()

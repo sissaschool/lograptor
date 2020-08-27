@@ -393,9 +393,9 @@ class LogRaptor(object):
             logmap.add(self.args.files, apps)
         elif is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO):
             # No files and input by a pipe
-            logger.error("is_pipe: ", is_pipe(STDIN_FILENO))
-            logger.error("is_redirected: ", is_redirected(STDIN_FILENO))
-            logger.error("is_atty: ", os.isatty(STDIN_FILENO))
+            logger.error("is_pipe: %r", is_pipe(STDIN_FILENO))
+            logger.error("is_redirected: %r", is_redirected(STDIN_FILENO))
+            logger.error("is_atty: %r", os.isatty(STDIN_FILENO))
             logmap = [(sys.stdin, apps)]
         else:
             # Build the LogMap instance adding the list of files from app config files
@@ -492,7 +492,7 @@ class LogRaptor(object):
                         continue
                     break
                 else:
-                    logger.error("no valid decoder found for %r." % source)
+                    logger.error("no valid decoder found for %r.", source)
                     continue
 
                 files.append(str(source))
@@ -539,11 +539,11 @@ class LogRaptor(object):
         if sys.stdout.isatty():
             sys.stdout.write('\n')
         if unknown > 0:
-            logger.error('found {} lines with an unknown log format.'.format(unknown))
+            logger.error('found %d lines with an unknown log format', unknown)
         if extra_tags:
             num_lines = sum(extra_tags.values())
-            logger.warning('found {} unknown extra app tags.'.format(num_lines))
-            logger.warning('unknown app tags: {}'.format(dict(extra_tags)))
+            logger.warning('found %d unknown extra app tags', num_lines)
+            logger.warning('unknown app tags: %r', dict(extra_tags))
             if sys.stdout.isatty():
                 sys.stdout.write('\n')
 
@@ -559,7 +559,7 @@ class LogRaptor(object):
             dispatcher.send_message(self.get_run_summary(run_stats))
         dispatcher.close()
 
-        logger.info("matcher processed %d files." % len(files))
+        logger.info("matcher processed %d files.", len(files))
         return matches > 0
 
     def create_dispatcher(self):
