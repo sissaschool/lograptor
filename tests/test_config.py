@@ -1,10 +1,5 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-Tests for Lograptor configuration.
-"""
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -31,6 +26,7 @@ def lograptor_config(config_files):
 
 
 class TestConfigParser(object):
+    """Tests on lograptor configuration."""
 
     def setup_method(self, method):
         print("\n%s:%s" % (type(self).__name__, method.__name__))
@@ -46,9 +42,9 @@ class TestConfigParser(object):
                 config_value = lograptor_config.getfloat(section, opt, default_section)
             else:
                 config_value = lograptor_config.get(section, opt, default_section)
-            assert config_value == value, 'config option %r of section %r does not match.' % (opt, section)
+            assert config_value == value, \
+                'config option %r of section %r does not match.' % (opt, section)
 
-    @pytest.mark.mail_options
     def test_mail_channel_options(self, lograptor_config):
         channel = 'mail1_channel'
         default_channel = 'mail_channel'
@@ -65,7 +61,6 @@ class TestConfigParser(object):
         }
         self.check_option(lograptor_config, channel, default_channel, options)
 
-    @pytest.mark.file_options
     def test_file_channel_options(self, lograptor_config):
         channel = 'file1_channel'
         default_channel = 'file_channel'

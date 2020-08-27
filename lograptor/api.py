@@ -1,10 +1,9 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 Command line interface of the lograptor package.
 """
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -21,8 +20,6 @@ Command line interface of the lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 import sys
 import argparse
 import time
@@ -38,6 +35,7 @@ from .exceptions import (
 from .timedate import get_datetime_interval, parse_date_period, parse_last_period, TimeRange
 
 
+# noinspection PyShadowingBuiltins
 class StoreOptionAction(argparse.Action):
     """
     An action that stores the max length option as value, useful when
@@ -64,17 +62,21 @@ class StoreOptionAction(argparse.Action):
         setattr(namespace, self.dest, self.const)
 
 
-def positive_integer(string):
-    value = int(string)
-    if value <= 0:
-        msg = "%r is not a positive integer" % string
-        raise argparse.ArgumentTypeError(msg)
-    return value
+def positive_integer(arg):
+    try:
+        value = int(arg)
+        if value <= 0:
+            raise ValueError()
+    except ValueError:
+        msg = "%r is not a positive integer" % arg
+        raise argparse.ArgumentTypeError(msg) from None
+    else:
+        return value
 
 
-def filter_spec(string):
+def filter_spec(arg):
     _filter = dict()
-    for flt in string.split(','):
+    for flt in arg.split(','):
         try:
             field, pattern = flt.split('=', 1)
             field, pattern = field.lower(), pattern.strip('\'"')
@@ -93,24 +95,24 @@ def filter_spec(string):
     return _filter
 
 
-def comma_separated_string(string):
-    return [x.strip() for x in string.split(',')]
+def comma_separated_string(arg):
+    return [x.strip() for x in arg.split(',')]
 
 
-def last_period_spec(string):
+def last_period_spec(arg):
     try:
-        diff = parse_last_period(string)
-    except TypeError:
-        raise argparse.ArgumentTypeError('wrong format: %r' % string)
+        diff = parse_last_period(arg)
+    except ValueError:
+        raise argparse.ArgumentTypeError('wrong format: %r' % arg)
     else:
         return get_datetime_interval(int(time.time()), diff, 3600)
 
 
-def date_interval_spec(string):
+def date_interval_spec(arg):
     try:
-        return parse_date_period(string)
+        return parse_date_period(arg)
     except (TypeError, ValueError):
-        raise argparse.ArgumentTypeError('%r: wrong format, use [YYYY]MMDD[,[YYYY]MMDD]' % string)
+        raise argparse.ArgumentTypeError('%r: wrong format, use [YYYY]MMDD[,[YYYY]MMDD]' % arg)
 
 
 def create_argument_parser():
@@ -188,7 +190,7 @@ def create_argument_parser():
         action="append", help="obtain patterns from FILE"
     )
     group.add_argument(
-        "-i", "--ignore-case", action="store_true", dest="case", default=False,
+        "-i", "--ignore-case", action="store_true", default=False,
         help="ignore case distinctions"
     )
     group.add_argument(
@@ -335,17 +337,18 @@ def has_void_args(argv):
     Check if the command line has no arguments or only the --conf optional argument.
     """
     n_args = len(argv)
-    return n_args == 1 or n_args == 2 and argv[1].startswith('--conf=') or n_args == 3 and argv[1] == '--conf'
+    return n_args == 1 or n_args == 2 and argv[1].startswith('--conf=') or \
+        n_args == 3 and argv[1] == '--conf'
 
 
-def lograptor(files, patterns=None, matcher='ruled', cfgfiles=None, apps=None, hosts=None,
-              filters=None, time_period=None, time_range=None, case=False, invert=False,
-              word=False, files_with_match=None, count=False, quiet=False, max_count=0,
-              only_matching=False, line_number=False, with_filename=None,
-              ip_lookup=False, uid_lookup=False, anonymize=False, thread=False,
-              before_context=0, after_context=0, context=0):
+def lograptor(files, patterns=None, matcher='ruled', cfgfiles=None, apps=None,
+              hosts=None, filters=None, time_period=None, time_range=None,
+              ignore_case=False, invert=False, word=False, files_with_match=None,
+              count=False, quiet=False, max_count=0, only_matching=False,
+              line_number=False, with_filename=None, ip_lookup=False, uid_lookup=False,
+              anonymize=False, thread=False, before_context=0, after_context=0, context=0):
     """
-    Run lograptor with arguments. Experimental feature to use the log processor into
+    Run lograptor with arguments. Experimental feature for use the log processor into
     generic Python scripts. This part is still under development, do not use.
 
     :param files: Input files. Each argument can be a file path or a glob pathname.
@@ -357,7 +360,7 @@ def lograptor(files, patterns=None, matcher='ruled', cfgfiles=None, apps=None, h
     :param filters: process the log lines that match all the conditions for rule's field values.
     :param time_range: process the log lines related to a time range.
     :param time_period: restrict the search scope to a date or a date interval.
-    :param case: ignore case distinctions, defaults to `False`.
+    :param ignore_case: ignore case distinctions, defaults to `False`.
     :param invert: invert the sense of patterns regexp matching.
     :param word: force PATTERN to match only whole words.
     :param files_with_match: get only names of FILEs containing matches, defaults is `False`.
@@ -383,7 +386,7 @@ def lograptor(files, patterns=None, matcher='ruled', cfgfiles=None, apps=None, h
     args.cfgfiles = cfgfiles
     args.time_period = time_period
     args.time_range = time_range
-    args.case = case
+    args.ignore_case = ignore_case
     args.invert = invert
     args.word = word
     args.files_with_match = files_with_match
@@ -414,8 +417,8 @@ def lograptor(files, patterns=None, matcher='ruled', cfgfiles=None, apps=None, h
 
 
 def main():
-    if sys.version_info < (2, 7, 0):
-        sys.stderr.write("You need python 2.7 or later to run this program\n")
+    if sys.version_info < (3, 5, 0):
+        sys.stderr.write("You need Python 3.5+ to run this program\n")
         sys.exit(1)
 
     cli_parser = create_argument_parser()

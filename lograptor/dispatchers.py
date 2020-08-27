@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """
-This module contains class to handle events dispatching for lograptor.
+This module defines classes to handle events dispatching for lograptor.
 """
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,16 +19,9 @@ This module contains class to handle events dispatching for lograptor.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 from collections import OrderedDict, deque
 from itertools import chain, repeat
 import abc
-
-try:
-    import pwd
-except ImportError:
-    pwd = None
 
 
 # noinspection PyUnusedLocal

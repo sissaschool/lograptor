@@ -1,10 +1,5 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-Test script for text-based user interface.
-"""
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -31,7 +26,6 @@ class TestTextualUserInterface(object):
     def setup_method(self, method):
         print("\n%s:%s" % (type(self).__name__, method.__name__))
 
-    @pytest.mark.progress_bar
     def test_progress_bar(self, capsys):
         progress_bar = ProgressBar(sys.stdout, 9999, 'messages.log')
         out, _ = capsys.readouterr()
@@ -41,9 +35,19 @@ class TestTextualUserInterface(object):
         out, _ = capsys.readouterr()
         assert out.rsplit('\b', 1)[1][0] == '#', "No progress marker # written."
 
+        assert progress_bar.redraw(500) is None
+        assert capsys.readouterr()[0] == ''
+
         progress_bar.redraw(10000)
         out, _ = capsys.readouterr()
         out = out.rsplit('\b', 1)[1]
         assert '#]' in out, "No progress end marker '#]' written."
         assert out.endswith("10000 messages.log\n"), "Unfinished progress bar."
         assert progress_bar.percentage == 100, "Wrong percentage."
+
+        assert progress_bar.redraw(10000) is None
+        assert capsys.readouterr()[0] == ''
+
+        with pytest.raises(ValueError) as exc_info:
+            ProgressBar(sys.stdout, 0, 'messages.log')
+        assert exc_info.value.args[0] == 'Maximum value of a progress bar must be positive number.'

@@ -1,9 +1,5 @@
-# -*- coding: utf-8 -*-
-"""
-This module contains class to handle lograptor's lookup cache.
-"""
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,16 +16,10 @@ This module contains class to handle lograptor's lookup cache.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 import re
 import socket
 import string
-
-try:
-    import pwd
-except ImportError:
-    pwd = None
+import pwd
 
 
 class LookupCache(object):
@@ -45,12 +35,12 @@ class LookupCache(object):
         self.mapmax = 10 ** self.mapexp
         self.ip_lookup = args.ip_lookup
         self.uid_lookup = args.uid_lookup
-        self.anonymyze = args.anonymize
+        self.anonymize = args.anonymize
         self.fields = config.options('fields')
         self.base_gid_pattern = re.compile('^([a-zA-Z_]+)')
         ipv4_pattern = config.get('patterns', 'IPV4_ADDRESS')
         ipv6_pattern = config.get('patterns', 'IPV6_ADDRESS')
-        self.ip_pattern = re.compile(u'({0}|{1})'.format(ipv4_pattern, ipv6_pattern))
+        self.ip_pattern = re.compile('({0}|{1})'.format(ipv4_pattern, ipv6_pattern))
         self.clear()
 
     def clear(self):
@@ -73,13 +63,13 @@ class LookupCache(object):
         the group is identical to the name of a filter.
         """
         base_gid = self.base_gid_pattern.search(gid).group(1)
-        if self.anonymyze:
+        if self.anonymize:
             try:
                 if value in self._maps[base_gid]:
                     return self._maps[base_gid][value]
                 else:
                     k = (len(self._maps[base_gid]) + 1) % self.mapmax
-                    new_item = u'{0}_{1:0{2}d}'.format(base_gid.upper(), k, self.mapexp)
+                    new_item = '{0}_{1:0{2}d}'.format(base_gid.upper(), k, self.mapexp)
                     self._maps[base_gid][value] = new_item
                     return new_item
             except KeyError:
@@ -91,7 +81,7 @@ class LookupCache(object):
             host = self.gethost(ip_match.group(1))
             if host == ip_match.group(1) or value.startswith(host):
                 return value
-            return u''.join([
+            return ''.join([
                 value[:ip_match.start(1)],
                 self.gethost(ip_match.group(1)),
                 value[ip_match.end(1):]])
@@ -134,7 +124,7 @@ class LookupCache(object):
                 parts.append(values[gid])
                 k = match.end(gid)
         parts.append(s[k:])
-        return u"".join(parts)
+        return ''.join(parts)
 
     def gethost(self, ip_addr):
         """
@@ -147,7 +137,7 @@ class LookupCache(object):
         except TypeError:
             pass
 
-        if ip_addr[0] in string.letters:
+        if ip_addr[0] in string.ascii_letters:
             return ip_addr
 
         try:

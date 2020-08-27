@@ -1,9 +1,5 @@
-# -*- coding: utf-8 -*-
-"""
-This module contains various utility functions for lograptor.
-"""
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,19 +16,13 @@ This module contains various utility functions for lograptor.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 import sys
 import os
+import io
 import stat
 import string
 from functools import wraps
-from contextlib import contextmanager
-
-try:
-    from urllib.request import urlopen
-except ImportError:
-    from urllib import urlopen
+from urllib.request import urlopen
 
 from .tui import ProgressBar
 
@@ -42,33 +32,34 @@ GZIP_CHUNK_SIZE = 8192
 def do_chunked_gzip(infh, outfh, filename):
     """
     A memory-friendly way of compressing the data.
+
+    :param infh: input file-like object.
+    :param outfh: output file-like object for gzipped data.
+    :param filename: basename for gzipped output file.
     """
     import gzip
 
     gzfh = gzip.GzipFile('rawlogs', mode='wb', fileobj=outfh)
 
-    if infh.closed:
-        infh = open(infh.name, 'r')
+    if isinstance(infh, (io.StringIO, io.BytesIO)):
+        input_size = len(infh.getvalue())
     else:
-        infh.seek(0)
-        
+        input_size = os.stat(infh.name).st_size
+        if infh.closed:
+            infh = open(infh.name, 'r')
+
     readsize = 0
     sys.stdout.write('Gzipping {0}: '.format(filename))
 
-    if os.stat(infh.name).st_size:
+    if input_size:
         infh.seek(0)
-        progressbar = ProgressBar(sys.stdout, os.stat(infh.name).st_size, "bytes gzipped")
+        progressbar = ProgressBar(sys.stdout, input_size, "bytes gzipped")
         while True:
             chunk = infh.read(GZIP_CHUNK_SIZE)
             if not chunk:
                 break
 
-            if sys.version_info[0] >= 3:
-                # noinspection PyArgumentList
-                gzfh.write(bytes(chunk, "utf-8"))
-            else:
-                gzfh.write(chunk)
-
+            gzfh.write(bytes(chunk, "utf-8"))
             readsize += len(chunk)
             progressbar.redraw(readsize)
 
@@ -77,7 +68,13 @@ def do_chunked_gzip(infh, outfh, filename):
 
 def mail_message(smtp_server, message, from_address, rcpt_addresses):
     """
-    Send mail using smtp.
+    Send an e-mail message using the smtp protocol.
+
+    :param smtp_server: a full path to an external command \
+    (eg. "/usr/sbin/sendmail -t") or an address of a SMTP server.
+    :param message: the message to send, complete of headers.
+    :param from_address: the sender e-mail address.
+    :param rcpt_addresses: a list with recipient e-mail addresses.
     """
     if smtp_server[0] == '/':
         # Sending the message with local sendmail
@@ -85,53 +82,91 @@ def mail_message(smtp_server, message, from_address, rcpt_addresses):
         p.write(message)
         p.close()
     else:
-        # Sending the message using a smtp server
-        import smtplib
+        # Sending the message using a smtp server (works if no login is required)
+        import smtplib                                          # pragma: no cover
+        server = smtplib.SMTP(smtp_server)                      # pragma: no cover
+        server.sendmail(from_address, rcpt_addresses, message)  # pragma: no cover
+        server.quit()                                           # pragma: no cover
 
-        server = smtplib.SMTP(smtp_server)
-        server.sendmail(from_address, rcpt_addresses, message)
-        server.quit()
+
+MEASURE_UNITS = {'', 'B', 'Bytes', 'Byte', 'B/s', 'bps', 'bit/s', 'b/s'}
+
+METRIC_PREFIXES = {
+    '': (0, 'K'), 'k': (1, 'M'),
+    'K': (1, 'M'), 'Ki': (1, 'Mi'),
+    'M': (2, 'G'), 'Mi': (2, 'Gi'),
+    'G': (3, 'T'), 'Gi': (3, 'Ti'),
+    'T': (4, 'P'), 'Ti': (4, 'Pi'),
+    'P': (5, 'E'), 'Pi': (5, 'Ei'),
+    'E': (6, 'Z'), 'Ei': (6, 'Zi'),
+    'Z': (7, 'Y'), 'Zi': (7, 'Yi'),
+    'Y': (8, None), 'Yi': (7, None),
+}
 
 
-def get_value_unit(value, unit, prefix):
+def get_value_unit(value, unit='', prefix='T'):
     """
     Return a human-readable value with unit specification. Try to
     transform the unit prefix to the one passed as parameter. When
-    transform to higher prefix apply nearest integer round. 
+    transform to higher prefix apply nearest integer round.
+
+    :param value: a numerical value.
+    :param unit: a string containing the measure unit and maybe a metric prefix. \
+    To use a base of 1024 provide an IEC metric prefix (eg. TiB instead of TB).
+    :param prefix: the target metric prefix, for default is 'T' (Tera).
     """
-    prefixes = ('', 'K', 'M', 'G', 'T')
+    if not unit:
+        return value, ''
 
-    if len(unit):
-        if unit[:1] in prefixes:
-            valprefix = unit[0] 
-            unit = unit[1:]
-        else:
-            valprefix = ''
+    try:
+        unit_exponent = METRIC_PREFIXES[unit[:1]][0]
+    except KeyError:
+        unit_prefix, unit_exponent = '', 0
     else:
-        valprefix = ''
-    
-    while valprefix != prefix:
-        uidx = prefixes.index(valprefix)
-
-        if uidx > prefixes.index(prefix):
-            value *= 1024
-            valprefix = prefixes[uidx-1]
+        if unit[1:2] == 'i' and unit[:1] != 'k':
+            unit_prefix, unit = unit[:2], unit[2:]
         else:
-            if value < 10240:
-                return value, '{0}{1}'.format(valprefix, unit)
-            value = int(round(value/1024.0))
-            valprefix = prefixes[uidx+1]
-    return value, '{0}{1}'.format(valprefix, unit)
+            unit_prefix, unit = unit[:1], unit[1:]
+
+    if unit not in MEASURE_UNITS:
+        raise ValueError("unknown measure unit {!r}".format(unit))
+
+    try:
+        diff_exponent = unit_exponent - METRIC_PREFIXES[prefix][0]
+    except KeyError:
+        raise ValueError("unknown metric prefix {!r}".format(prefix))
+    else:
+        if prefix and unit_prefix:
+            if unit_prefix.endswith('i'):
+                if not prefix.endswith('i'):
+                    prefix += 'i'
+            elif prefix.endswith('i'):
+                prefix = prefix[0]
+
+    base = 1024 if prefix.endswith('i') or unit_prefix.endswith('i') else 1000
+
+    if not diff_exponent:
+        return value, '{0}{1}'.format(unit_prefix, unit)
+    elif diff_exponent > 0:
+        return value * base ** diff_exponent, '{0}{1}'.format(prefix, unit)
+
+    for k in range(abs(diff_exponent)):
+        if value < base * 10:
+            break
+        value = int(round(value / float(base)))
+        if unit_prefix:
+            unit_prefix = METRIC_PREFIXES[unit_prefix][1]
+        elif prefix.endswith('i'):
+            unit_prefix = 'Ki'
+        else:
+            unit_prefix = 'k'
+
+    return value, '{0}{1}'.format(unit_prefix, unit)
 
 
 def htmlsafe(unsafe):
-    """
-    Escapes all x(ht)ml control characters.
-    """
-    unsafe = unsafe.replace('&', '&amp;')
-    unsafe = unsafe.replace('<', '&lt;')
-    unsafe = unsafe.replace('>', '&gt;')
-    return unsafe
+    """Escapes html control characters."""
+    return unsafe.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
 def get_fmt_results(results, limit=5, sep='::', fmt=None):
@@ -145,32 +180,32 @@ def get_fmt_results(results, limit=5, sep='::', fmt=None):
     for key in sorted(results, key=lambda x: results[x], reverse=True):
         if len(result_list) >= limit and results[key] <= 1:
             break
+
         if fmt is not None:
-            fmtkey = []
+            fmt_key = []
             for i in range(len(key)):
                 if i % 2 == 1:
-                    fmtkey.append(fmt.format(key[i]))
+                    fmt_key.append(fmt.format(key[i]))
                 else:
-                    fmtkey.append(key[i])
-            result_list.append(u'{0}({1})'.format(sep.join(fmtkey), results[key]))
+                    fmt_key.append(key[i])
+            result_list.append(u'{0}({1})'.format(sep.join(fmt_key), results[key]))
         else:
             result_list.append(u'{0}({1})'.format(sep.join(key), results[key]))
     else:
         return result_list
+
     if fmt is not None:
-        result_list.append(fmt.format(u'[%d more skipped]' % (len(results) - len(result_list))))
+        result_list.append(fmt.format('[%d more skipped]' % (len(results) - len(result_list))))
     else:
-        result_list.append(u'[%d more skipped]' % (len(results) - len(result_list)))
+        result_list.append('[%d more skipped]' % (len(results) - len(result_list)))
+
     return result_list
 
 
 def field_multisub(strings, field, values):
-    result = set()
-    for s in strings:
-        result.update(
-            [string.Template(s).safe_substitute({field: v}) for v in values]
-        )
-    return list(result)
+    return list({
+        string.Template(s).safe_substitute({field: v}) for v in values for s in strings
+    })
 
 
 def exact_sub(s, mapping):
@@ -183,22 +218,23 @@ def exact_sub(s, mapping):
     return s, fields
 
 
-def safe_expand(template, mapping):
+def safe_expand(template, substitution_map):
     """
-    Safe string template expansion. Raises an error if the provided substitution mapping has circularities.
+    Safe string template expansion. Raises an error if the provided
+    substitution map has circularities.
     """
-    for _ in range(len(mapping) + 1):
+    for _ in range(len(substitution_map) + 1):
         _template = template
-        template = string.Template(template).safe_substitute(mapping)
+        template = string.Template(template).safe_substitute(substitution_map)
         if template == _template:
             return template
     else:
-        raise ValueError("circular mapping provided!")
+        raise ValueError("substitution map has a circularity!")
 
 
 def results_to_string(results):
-    return u', '.join([
-        u'%s(%s)' % (key, results[key])
+    return ', '.join([
+        '%s(%s)' % (key, results[key])
         for key in sorted(results, key=lambda x: results[x], reverse=True)
     ])
 
@@ -217,7 +253,7 @@ def protected_property(func):
     or the value returned by the wrapped method, if the protected attribute is not defined.
     """
     if func.__name__.startswith('_'):
-        raise ValueError("%r: Cannot decorate a protected method!" % func)
+        raise ValueError("%r: cannot decorate a protected method!" % func)
 
     @property
     @wraps(func)
@@ -244,36 +280,25 @@ def normalize_path(path, base_path=None):
         return os.path.abspath(os.path.join(base_path, path))
 
 
-@contextmanager
-def closing(resource):
-    try:
-        yield resource
-    finally:
-        resource.close()
-
-
 def open_resource(source):
     """
-    Opens a resource in binary reading mode. Wraps the resource with a
-    context manager when it doesn't have one.
+    Opens a resource in binary reading mode.
 
     :param source: a filepath or an URL.
     """
     try:
         return open(source, mode='rb')
-    except (IOError, OSError) as err:
+    except (IOError, OSError):
         try:
-            resource = urlopen(source)
+            resource = urlopen(source)  # source is an URL
         except ValueError:
             pass
         else:
             resource.name = resource.url
-            if hasattr(resource, '__enter__'):
-                return resource
-            else:
-                return closing(resource)
-        raise err
+            return resource
+
+        raise
     except TypeError:
         if hasattr(source, 'read') and hasattr(source, 'readlines'):
-            return source  # Source is already a file-like object
+            return source  # source is already a file-like object
         raise

@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """
-This module classes and methods for parsing log headers.
+This module defines classes and methods for parsing log headers.
 """
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -36,8 +35,8 @@ class LogParser(object):
         """
         self.parser = re.compile(pattern)
         self.app = app
-        self.LogData = namedtuple('LogData', self.parser.groupindex.keys())
         self.fields = tuple(self.parser.groupindex.keys())
+        self.LogData = namedtuple('LogData', self.fields)
 
         for field in ('month', 'day', 'ltime', 'message'):
             if field not in self.parser.groupindex:
@@ -66,12 +65,12 @@ class ParserRFC3164(LogParser):
         LogParser.__init__(self, pattern or self.PATTERN)
         rfc3164_fields = tuple([
             'pri', 'month', 'day', 'ltime', 'repeat', 'host', 'apptag', 'message'
-            ])
+        ])
         extra = set(self.fields) - set(rfc3164_fields)
         if extra:
-            msg = u'no RFC 3164 fields in pattern: {0}'.format(extra)
+            msg = 'no RFC 3164 fields in pattern: {0}'.format(extra)
             raise LogRaptorConfigError(msg)
-            
+
 
 class ParserRFC5424(LogParser):
     """
@@ -93,10 +92,10 @@ class ParserRFC5424(LogParser):
         rfc5424_fields = tuple([
             'pri', 'ver', 'year', 'month', 'day', 'ltime', 'secfrac', 'offset',
             'host', 'apptag', 'procid', 'msgid', 'message'
-            ])
+        ])
         extra = set(self.fields) - set(rfc5424_fields)
         if extra:
-            msg = u'no RFC 5424 fields in pattern: {0}'.format(extra)
+            msg = 'no RFC 5424 fields in pattern: {0}'.format(extra)
             raise LogRaptorConfigError(msg)
 
 

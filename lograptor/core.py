@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """
-This module contain core classes and methods for lograptor package.
+This module defines core classes and methods for lograptor package.
 """
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,8 +19,6 @@ This module contain core classes and methods for lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import, print_function
-
 import os
 import time
 import datetime
@@ -33,9 +30,8 @@ import sys
 import fnmatch
 from collections import Counter
 
-from .exceptions import (
-    LogRaptorConfigError, FileMissingError, LogFormatError, LogRaptorOptionError, LogRaptorArgumentError
-)
+from .exceptions import LogRaptorConfigError, FileMissingError, \
+    LogFormatError, LogRaptorOptionError, LogRaptorArgumentError
 from .confparsers import LogRaptorConfig
 from .application import AppLogParser
 from .matcher import create_matcher
@@ -54,12 +50,6 @@ try:
 except ValueError:
     STDIN_FILENO = 0
 
-try:
-    prompt = raw_input
-except NameError:
-    prompt = input
-
-
 STANDARD_ENCODINGS = ['utf_8', 'latin1', 'latin2']
 
 
@@ -67,7 +57,7 @@ class LogRaptor(object):
     """
     This is the core class of the lograptor package.
 
-    :param args: Namespace of arguments with run options.
+    :param args: Namespace with run options, as provided by CLI argument parser.
     """
     DEFAULT_CONFIG_FILES = (
         'lograptor.conf',
@@ -85,9 +75,9 @@ class LogRaptor(object):
         else:
             self.args = args
             self.set_logger()
+            logger.debug("is_atty: %r", os.isatty(STDIN_FILENO))
             logger.debug("is_pipe: %r", is_pipe(STDIN_FILENO))
             logger.debug("is_redirected: %r", is_redirected(STDIN_FILENO))
-            logger.debug("is_atty: %r", os.isatty(STDIN_FILENO))
             logger.debug("args=%r", args)
 
         # Create a lookup cache when required by arguments
@@ -117,7 +107,7 @@ class LogRaptor(object):
 
         if args.loglevel == 4:
             logger.debug("End of lograptor setup!!")
-            prompt("press <ENTER> to continue ...")
+            input("press <ENTER> to continue ...")
 
     def _read_apps(self):
         """
@@ -179,6 +169,15 @@ class LogRaptor(object):
     def exclude_dir(self):
         return self.args.exclude_dir
 
+    def has_stdin_input_data(self):
+        """
+        Returns `True` if input data is from standard input, `False` otherwise.
+        Log data is taken from standard input if no input files are provided and the
+        standard input is an interactive shell (a TTY) from a pipe or a redirection.
+        """
+        return not self.args.files and os.isatty(STDIN_FILENO) and \
+            (is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO))
+
     def set_logger(self):
         """
         Setup lograptor logger with an handler and a formatter. The logging
@@ -213,7 +212,9 @@ class LogRaptor(object):
         # Set the formatter of each handler (normally there is only one handler)
         for handler in logger.handlers:
             if effective_level <= logging.DEBUG:
-                formatter = logging.Formatter("[%(levelname)s:%(module)s:%(funcName)s: %(lineno)s] %(message)s")
+                formatter = logging.Formatter(
+                    "[%(levelname)s:%(module)s:%(funcName)s: %(lineno)s] %(message)s"
+                )
             else:
                 formatter = logging.Formatter("%(levelname)s: %(message)s")
             handler.setLevel(effective_level)
@@ -254,7 +255,7 @@ class LogRaptor(object):
             return tuple()
 
         try:
-            flags = re.IGNORECASE if self.args.case else 0 | re.UNICODE
+            flags = re.IGNORECASE if self.args.ignore_case else 0 | re.UNICODE
             return tuple([
                 re.compile(r'(\b%s\b)' % pat if self.args.word else '(%s)' % pat, flags=flags)
                 for pat in patterns if pat
@@ -276,7 +277,8 @@ class LogRaptor(object):
     @protected_property
     def fields(self):
         logger.debug("get fields from arguments ...")
-        unknown = [k for item in self.filters for k in item if k not in self.config.options('fields')]
+        unknown = [k for item in self.filters for k in item
+                   if k not in self.config.options('fields')]
         if unknown:
             raise LogRaptorArgumentError('fields', 'undefined fields: %r.' % list(unknown))
 
@@ -303,14 +305,24 @@ class LogRaptor(object):
 
     @protected_property
     def hosts(self):
-        hosts = [re.compile(fnmatch.translate(host)) for host in set(self.args.hosts or ['*'])]
-        logger.debug('hosts to be processed: %r', hosts)
+        hosts = []
+        for pattern in set(self.args.hosts or ['*']):
+            hosts.append(re.compile(fnmatch.translate(pattern)))
+
+            # If pattern has a dotted local hostname part add another pattern for local part
+            if '.' in pattern:
+                local_hostname = pattern.split('.')[0]
+                if local_hostname and '*' not in local_hostname:
+                    hosts.append(re.compile(fnmatch.translate(local_hostname)))
+
+        logger.debug('host patterns to be processed: %r', hosts)
         return hosts
 
     @property
     def time_range(self):
         """
-        Selected time range for log matching. If `None` then match always (equivalent to 0:00-23:59).
+        Selected time range for log matching. A `None` value for time
+        range means no time restriction (equivalent to 0:00-23:59).
         """
         return self.args.time_range
 
@@ -321,7 +333,7 @@ class LogRaptor(object):
         (<start datetime>, <end_datetime>) items. An item is `None` if there isn't a limit.
         """
         if self.args.time_period is None:
-            if self.args.files or is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO):
+            if self.args.files or self.has_stdin_input_data():
                 time_period = (None, None)
             else:
                 diff = 86400  # 24h = 86400 seconds
@@ -361,7 +373,8 @@ class LogRaptor(object):
         if apps or enabled is None:
             return {k: v for k, v in self._config_apps.items() if k in apps}
         else:
-            return {k: v for k, v in self._config_apps.items() if k in apps and v.enabled == enabled}
+            return {k: v for k, v in self._config_apps.items()
+                    if k in apps and v.enabled == enabled}
 
     @protected_property
     def apptags(self):
@@ -391,19 +404,21 @@ class LogRaptor(object):
     def logmap(self):
         apps = sorted(self._apps.values(), key=lambda x: x.priority)
         if self.args.files:
-            logmap = FileMap(self._time_period, recursive=self.recursive, follow_symlinks=self.follow_symlinks,
-                             include=self.include, exclude=self.exclude, exclude_dir=self.exclude_dir)
+            logmap = FileMap(self._time_period, recursive=self.recursive,
+                             follow_symlinks=self.follow_symlinks,
+                             include=self.include, exclude=self.exclude,
+                             exclude_dir=self.exclude_dir)
             logmap.add(self.args.files, apps)
-        elif is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO):
-            # No files and input by a pipe
-            logger.error("is_pipe: ", is_pipe(STDIN_FILENO))
-            logger.error("is_redirected: ", is_redirected(STDIN_FILENO))
-            logger.error("is_atty: ", os.isatty(STDIN_FILENO))
+        elif self.has_stdin_input_data():
+            # No files provided but input is from a tty pipe/redirection
             logmap = [(sys.stdin, apps)]
         else:
             # Build the LogMap instance adding the list of files from app config files
-            logmap = FileMap(self._time_period, recursive=self.recursive, follow_symlinks=self.follow_symlinks,
-                             include=self.include, exclude=self.exclude, exclude_dir=self.exclude_dir)
+            logmap = FileMap(self._time_period, recursive=self.recursive,
+                             follow_symlinks=self.follow_symlinks,
+                             include=self.include, exclude=self.exclude,
+                             exclude_dir=self.exclude_dir)
+
             for app in apps:
                 logmap.add(app.files, [app])
 
@@ -428,7 +443,9 @@ class LogRaptor(object):
             logger.debug("initialize output channels ...")
 
         channels = self.args.channels
-        config_channels = [sec.rpartition('_')[0] for sec in self.config.sections(suffix='_channel')]
+        config_channels = [
+            sec.rpartition('_')[0] for sec in self.config.sections(suffix='_channel')
+        ]
         unknown = set(channels) - set(config_channels)
         if unknown:
             raise ValueError("undefined channel %r" % list(unknown))
@@ -447,7 +464,7 @@ class LogRaptor(object):
         return output_channels
 
     def __repr__(self):
-        return u"<%s %r at %#x>" % (self.__class__.__name__, self.config.cfgfile, id(self))
+        return "<%s %r at %#x>" % (self.__class__.__name__, self.config.cfgfile, id(self))
 
     def __call__(self, dispatcher=None, parsers=None):
         """
@@ -458,7 +475,8 @@ class LogRaptor(object):
             dispatcher = self.create_dispatcher()
         matcher_engine = self.create_matcher(dispatcher, parsers=parsers)
         dispatcher.open()
-        display_progress_bar = sys.stdout.isatty() and all(c.name != 'stdout' for c in dispatcher.channels)
+        display_progress_bar = \
+            sys.stdout.isatty() and all(c.name != 'stdout' for c in dispatcher.channels)
 
         logger.info("starting log processor ...")
         files = []
@@ -485,11 +503,12 @@ class LogRaptor(object):
                     except UnicodeDecodeError:
                         if display_progress_bar:
                             print()
-                        logger.error("decoding error using the %r codec, change encoding and reprocess.", encoding)
+                        logger.error("decoding error using the %r codec, "
+                                     "change encoding and reprocess.", encoding)
                         continue
                     break
                 else:
-                    logger.error("no valid decoder found for %r." % source)
+                    logger.error("no valid decoder found for %r.", source)
                     continue
 
                 files.append(str(source))
@@ -536,11 +555,11 @@ class LogRaptor(object):
         if sys.stdout.isatty():
             sys.stdout.write('\n')
         if unknown > 0:
-            logger.error('found {} lines with an unknown log format.'.format(unknown))
+            logger.error('found %d lines with an unknown log format', unknown)
         if extra_tags:
             num_lines = sum(extra_tags.values())
-            logger.warning(u'found {} unknown extra app tags.'.format(num_lines))
-            logger.warning(u'unknown app tags: {}'.format(dict(extra_tags)))
+            logger.warning('found %d unknown extra app tags', num_lines)
+            logger.warning('unknown app tags: %r', dict(extra_tags))
             if sys.stdout.isatty():
                 sys.stdout.write('\n')
 
@@ -556,7 +575,7 @@ class LogRaptor(object):
             dispatcher.send_message(self.get_run_summary(run_stats))
         dispatcher.close()
 
-        logger.info("matcher processed %d files." % len(files))
+        logger.info("matcher processed %d files.", len(files))
         return matches > 0
 
     def create_dispatcher(self):
@@ -566,7 +585,8 @@ class LogRaptor(object):
         before_context = max(self.args.before_context, self.args.context)
         after_context = max(self.args.after_context, self.args.context)
 
-        if self.args.files_with_match is not None or self.args.count or self.args.only_matching or self.args.quiet:
+        if self.args.files_with_match is not None or \
+                self.args.count or self.args.only_matching or self.args.quiet:
             # Sending of log lines disabled by arguments
             return UnbufferedDispatcher(self._channels)
         elif before_context == 0 and after_context == 0:
@@ -605,15 +625,15 @@ class LogRaptor(object):
         channels = [sect.rsplit('_')[0] for sect in self.config.sections(suffix='_channel')]
         channels.sort()
         disabled_apps = [app for app in self._config_apps.keys() if app not in self._apps]
-        return u''.join([
-            u"\n--- %s configuration ---" % __package__,
-            u"\nConfiguration file: %s" % self.config.cfgfile,
-            u"\nConfiguration directory: %s" % self.confdir,
-            u"\nConfigured applications: %s" % ', '.join(self._config_apps.keys()),
-            u"\nDisabled applications: %s" % ', '.join(disabled_apps) if disabled_apps else '',
-            u"\nFilter fields: %s" % ', '.join(self.config.options('fields')),
-            u"\nOutput channels: %s" % ', '.join(channels) if channels else u'No channels defined',
-            u"\nReports: %s\n" % ', '.join(
+        return ''.join([
+            "\n--- %s configuration ---" % __package__,
+            "\nConfiguration file: %s" % self.config.cfgfile,
+            "\nConfiguration directory: %s" % self.confdir,
+            "\nConfigured applications: %s" % ', '.join(self._config_apps.keys()),
+            "\nDisabled applications: %s" % ', '.join(disabled_apps) if disabled_apps else '',
+            "\nFilter fields: %s" % ', '.join(self.config.options('fields')),
+            "\nOutput channels: %s" % ', '.join(channels) if channels else 'No channels defined',
+            "\nReports: %s\n" % ', '.join(
                 [section[:-7] for section in self.config.sections(suffix='_report')]
             ),
             ''
@@ -629,19 +649,21 @@ class LogRaptor(object):
         run_stats = run_stats.copy()
         run_stats['files'] = len(run_stats['files'])
         summary = [
-            u'\n--- %s run summary ---' % __package__,
-            u'Number of processed files: %(files)d',
-            u'Total lines read: %(lines)d',
-            u'Total log events matched: %(matches)d',
+            '\n--- %s run summary ---' % __package__,
+            'Number of processed files: %(files)d',
+            'Total lines read: %(lines)d',
+            'Total log events matched: %(matches)d',
         ]
         if any([app.matches or app.unparsed for app in self.apps.values()]):
             if self.matcher == 'unruled':
                 summary.append("Applications found (application rules not used):")
                 for app in filter(lambda x: x.matches, self.apps.values()):
-                    summary.append(u'  %s(matches=%d)' % (app.name, app.matches))
+                    summary.append('  %s(matches=%d)' % (app.name, app.matches))
             else:
                 summary.append("Applications found:")
                 for app in filter(lambda x: x.matches or x.unparsed, self.apps.values()):
-                    summary.append(u'  %s(matches=%d, unparsed=%s)' % (app.name, app.matches, app.unparsed))
+                    summary.append(
+                        '  %s(matches=%d, unparsed=%s)' % (app.name, app.matches, app.unparsed)
+                    )
         summary.append('\n')
         return '\n'.join(summary) % run_stats

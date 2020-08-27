@@ -14,7 +14,7 @@ delimitation options. Each search run can be sent to an output channel (stdout, 
 file) and can produces a customizable report.
 
 The program can parse logs written in RFC 3164 and RFC 5424 formats. Lograptor requires
-Python >= 2.7, and is provided with a base configuration for a set of well known applications.
+Python >= 3.5, and is provided with a base configuration for a set of well known applications.
 You can easily add new applications or new rules to match other unparsed logs.
 
 The project uses parts of Epylog under LGPL terms with author's permission.

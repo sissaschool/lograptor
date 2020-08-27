@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 """
 This module contains additional class and functions to handle time
 and date values for lograptor package.
 """
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -21,8 +20,6 @@ and date values for lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 import datetime
 import re
 
@@ -43,10 +40,11 @@ DATE_FORMATS = (
 
 
 def parse_last_period(last):
-    """
+    r"""
     Parse the --last value and return the time difference in seconds.
+
+    :param last: a string with format (hour|day|week|month|[+]?\d+[hdwm]).
     """
-    
     wordmap = {
         'hour': '1h',
         'day': '1d',
@@ -55,7 +53,7 @@ def parse_last_period(last):
     }
 
     # seconds
-    multmap = {
+    diff_map = {
         'h': 3600,
         'd': 86400,
         'w': 604800,
@@ -65,20 +63,22 @@ def parse_last_period(last):
     if last in wordmap:
         last = wordmap[last]
 
-    cat = last[-1:].lower()
+    try:
+        cat = last[-1:].lower()
+    except (AttributeError, TypeError):
+        raise TypeError("'last' argument must be a string")
 
-    if cat not in multmap:
-        raise TypeError
+    if cat not in diff_map:
+        raise ValueError("invalid format for 'last' argument")
 
-    try: 
+    try:
         num = int(last[:-1])
+    except ValueError:
+        raise ValueError("invalid format for 'last' argument") from None
+    else:
         if num <= 0:
-            raise TypeError
-    except ValueError: 
-        raise TypeError
-    
-    diff = num * multmap[cat]    
-    return diff
+            raise ValueError("invalid format for 'last' argument")
+        return num * diff_map[cat]
 
 
 def get_datetime_interval(timestamp, diff, offset=0):
@@ -86,6 +86,10 @@ def get_datetime_interval(timestamp, diff, offset=0):
     Returns datetime interval from timestamp backward in the past,
     computed using the milliseconds difference passed as argument.
     The final datetime is corrected with an optional offset.
+
+    :param timestamp: a POSIX timestamp in seconds from *epoch*.
+    :param diff: a difference in seconds between the initial time and the final time.
+    :param offset: an offset in seconds to be applied to final datetime.
     """
     fin_datetime = datetime.datetime.fromtimestamp(timestamp + offset)
     ini_datetime = datetime.datetime.fromtimestamp(timestamp - diff)
@@ -97,12 +101,11 @@ def parse_date_period(date):
     Parse the --date value and return a couple of datetime object.
     The format is [YYYY]MMDD[,[YYYY]MMDD].
     """
-    import datetime
-    
-    now = datetime.datetime.today()
+    date = date.strip()
     date_len = len(date)
-    
+
     if date_len == 4:
+        now = datetime.datetime.today()
         date1 = str(now.year) + date
         date2 = str(now.year) + date + "235959"
     elif date_len == 8:
@@ -110,16 +113,17 @@ def parse_date_period(date):
         date2 = date + "235959"
     elif date_len == 9:
         if date[4] != ',':
-            raise TypeError
+            raise ValueError("invalid format for argument 'date'")
+        now = datetime.datetime.today()
         date1 = str(now.year) + date[0:4]
         date2 = str(now.year) + date[5:9] + "235959"
     elif date_len == 17:
         if date[8] != ',':
-            raise TypeError
+            raise ValueError("invalid format for argument 'date'")
         date1 = date[0:8]
         date2 = date[9:17] + "235959"
     else:
-        raise TypeError
+        raise ValueError("invalid format for argument 'date'")
 
     try:
         date1 = datetime.datetime.strptime(date1, "%Y%m%d")
@@ -130,11 +134,11 @@ def parse_date_period(date):
             raise ValueError("Error in the first date value in --date parameter, "
                              "use --date=[YYYY]MMDD,[YYYY]MMDD")
     try:
-        date2 = datetime.datetime.strptime(date2, "%Y%m%d%H%M%S")        
+        date2 = datetime.datetime.strptime(date2, "%Y%m%d%H%M%S")
     except ValueError:
         raise ValueError("Error in the second date value in --date parameter, "
                          "use --date=[YYYY]MMDD,[YYYY]MMDD")
-        
+
     if date1 > date2:
         raise ValueError("Wrong parameter --date: the first date is after the second!")
 
@@ -143,13 +147,11 @@ def parse_date_period(date):
 
 class TimeRange(object):
     """
-    A simple class to manage time range intervals
+    A simple class to manage time range intervals.
+
+    :param time_range: a string having the format HH:MM,HH:MM.
     """
     def __init__(self, time_range):
-        """
-        Constructor from timerange string.
-        The time range format is HH:MM,HH:MM.
-        """
         try:
             start_time, end_time = time_range.split(',')
         except ValueError:
@@ -158,43 +160,43 @@ class TimeRange(object):
         self.start_time = datetime.datetime.strptime(start_time.strip(), '%H:%M').time()
         self.end_time = datetime.datetime.strptime(end_time.strip(), '%H:%M').time()
         if self.start_time == self.end_time:
-            raise ValueError("times must be differents!")
+            raise ValueError("start and end times must be different!")
 
         self.h1 = self.start_time.hour
         self.m1 = self.start_time.minute
         self.h2 = self.end_time.hour
         self.m2 = self.end_time.minute
 
-    def between(self, time_):
+    def between(self, tm):
         """
-        Compare if the parameter HH:MM is in the time range.
+        Compare if the argument HH:MM is in the time range.
         """
-        hour = int(time_[0:2])
-        minute = int(time_[3:5])
-        return not (
-            hour < self.h1 or hour > self.h2 or
-            (hour == self.h1 and minute < self.m1) or
-            (hour == self.h2 and minute > self.m2)
-        )
+        hour = int(tm[0:2])
+        minute = int(tm[3:5])
+        return self.h1 <= hour <= self.h2 and \
+            (hour != self.h1 or minute >= self.m1) and \
+            (hour != self.h2 or minute <= self.m2)
 
 
 def strftimegen(start_dt, end_dt):
     """
-    Return a generator function for datetime format strings.
-    The generator produce a day-by-day sequence starting from the first datetime
-    to the second datetime argument.
+    Return a generator function for datetime format strings. The generator
+    produces a day-by-day sequence starting from the first datetime to the
+    second datetime argument.
     """
     if start_dt > end_dt:
-        raise ValueError("the start datetime is after the end datetime: (%r,%r)" % (start_dt, end_dt))
+        message = "the start datetime is after the end datetime: ({!r}, {!r})"
+        raise ValueError(message.format(start_dt, end_dt))
 
-    def iterftime(string):
-        date_subs = [i for i in DATE_FORMATS if i[1].search(string) is not None]
+    def iterftime(date_pattern):
+        date_subs = [i for i in DATE_FORMATS if i[1].search(date_pattern) is not None]
+
         if not date_subs:
-            yield string
+            yield date_pattern
         else:
             dt = start_dt
-            date_path = string
             while end_dt >= dt:
+                date_path = date_pattern
                 for item in date_subs:
                     date_path = item[1].sub(dt.strftime(item[0]), date_path)
                 yield date_path

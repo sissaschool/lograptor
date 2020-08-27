@@ -1,9 +1,5 @@
-# -*- coding: utf-8 -*-
-"""
-This module contain exception classes for lograptor package.
-"""
 #
-# Copyright (C), 2011-2018, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,15 +16,8 @@ This module contain exception classes for lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from __future__ import unicode_literals, absolute_import
-
 import logging
-try:
-    import configparser
-except ImportError:
-    # Fall back for Python 2.x
-    import ConfigParser as configparser
-
+import configparser
 
 logger = logging.getLogger(__name__)
 
@@ -38,20 +27,14 @@ class LogRaptorException(Exception):
 
 
 class LogFormatError(LogRaptorException):
-    """
-    This exception is raised when there are errors with the
-    format of syslog file processed.
-    """
+    """Error in the format of the processed log data."""
     def __init__(self, message):
         Exception.__init__(self, message)
         logger.debug('!FormatError: {0}'.format(message))
 
 
 class LogRaptorConfigError(LogRaptorException):
-    """
-    This exception is raised when there are errors in a configuration
-    file or when there are misconfiguration problems.
-    """
+    """Error in a configuration file or a misconfiguration of the package."""
     def __init__(self, message):
         Exception.__init__(self, message)
         logger.debug('!ConfigError: {0}'.format(message))
@@ -77,10 +60,7 @@ class LogRaptorNoOptionError(LogRaptorException, configparser.NoOptionError):
 
 
 class LogRaptorOptionError(LogRaptorException):
-    """
-    This exception is raised when there is a wrong option values or
-    when there are conflicts between options.
-    """
+    """Error in an option value or conflict between options."""
     def __init__(self, option, message=None):
         if message is None:
             message = 'syntax error for option %r' % option
@@ -91,27 +71,26 @@ class LogRaptorOptionError(LogRaptorException):
 
 
 class RuleMissingError(LogRaptorException):
-    """
-    This exception is raised when a rule definition is missing.
-    """
+    """Raised when a rule definition is missing."""
     def __init__(self, message):
         Exception.__init__(self, message)
         logger.debug('!RuleMissingError: {0}'.format(message))
 
 
 class FileMissingError(LogRaptorException):
-    """
-    This exception is raised when a file is missing.
-    """
+    """Raised when a file is missing."""
     def __init__(self, message):
         Exception.__init__(self, message)
         logger.debug('!FileMissingError: {0}'.format(message))
 
 
 class FileAccessError(LogRaptorException):
-    """
-    This exception is raised when lograptor has problem to access to a file.
-    """
+    """Raised when an existing file cannot be accessed."""
     def __init__(self, message):
         Exception.__init__(self, message)
         logger.debug('!FileAccessError: {0}'.format(message))
+
+
+__all__ = ['LogRaptorException', 'LogFormatError', 'LogRaptorNoOptionError',
+           'LogRaptorArgumentError', 'LogRaptorNoSectionError', 'LogRaptorConfigError',
+           'LogRaptorOptionError', 'RuleMissingError', 'FileMissingError', 'FileAccessError']
