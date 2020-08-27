@@ -20,7 +20,7 @@ system logs analysis. The log analysis is based on application or device
 that originated the message, using a set of rules for matching and for
 report composition.
 
-The project uses parts of Epylog under LGPL terms with author's permission.
+The project uses parts of Epylog package under LGPL terms with author's permission.
 
 Please send feedback for bugs, feature requests, suggestions, comments and
 criticism.
@@ -53,6 +53,9 @@ After the installation copy the default configuration files of the package sourc
   /etc/lograptor/report_template.txt   Report plain text template
   /etc/lograptor/conf.d/*.conf         Configuration files for applications
 
+For configuring the package at user level put your configuration in
+`~/.config/lograptor/lograptor.conf`.
+
 For more info about main configuration file please see "man lograptor.conf".
 For each application a configuration file is needed. Logs of unconfigured
 applications are simply ignored by the program. For more info please see
@@ -73,7 +76,7 @@ For more information on usage options see "lograptor --help" or
 
 LICENSE
 -------
-Copyright (C), 2011-2017, by SISSA - International School for Advanced Studies.
+Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
 
 Lograptor is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
