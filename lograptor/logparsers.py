@@ -68,7 +68,7 @@ class ParserRFC3164(LogParser):
         ])
         extra = set(self.fields) - set(rfc3164_fields)
         if extra:
-            msg = u'no RFC 3164 fields in pattern: {0}'.format(extra)
+            msg = 'no RFC 3164 fields in pattern: {0}'.format(extra)
             raise LogRaptorConfigError(msg)
 
 

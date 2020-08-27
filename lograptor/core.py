@@ -57,7 +57,7 @@ class LogRaptor(object):
     """
     This is the core class of the lograptor package.
 
-    :param args: Namespace of arguments with run options.
+    :param args: Namespace with run options, as provided by CLI argument parser.
     """
     DEFAULT_CONFIG_FILES = (
         'lograptor.conf',
@@ -75,9 +75,9 @@ class LogRaptor(object):
         else:
             self.args = args
             self.set_logger()
+            logger.debug("is_atty: %r", os.isatty(STDIN_FILENO))
             logger.debug("is_pipe: %r", is_pipe(STDIN_FILENO))
             logger.debug("is_redirected: %r", is_redirected(STDIN_FILENO))
-            logger.debug("is_atty: %r", os.isatty(STDIN_FILENO))
             logger.debug("args=%r", args)
 
         # Create a lookup cache when required by arguments
@@ -168,6 +168,15 @@ class LogRaptor(object):
     @property
     def exclude_dir(self):
         return self.args.exclude_dir
+
+    def has_stdin_input_data(self):
+        """
+        Returns `True` if input data is from standard input, `False` otherwise.
+        Log data is taken from standard input if no input files are provided and the
+        standard input is an interactive shell (a TTY) from a pipe or a redirection.
+        """
+        return not self.args.files and os.isatty(STDIN_FILENO) and \
+            (is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO))
 
     def set_logger(self):
         """
@@ -296,8 +305,17 @@ class LogRaptor(object):
 
     @protected_property
     def hosts(self):
-        hosts = [re.compile(fnmatch.translate(host)) for host in set(self.args.hosts or ['*'])]
-        logger.debug('hosts to be processed: %r', hosts)
+        hosts = []
+        for pattern in set(self.args.hosts or ['*']):
+            hosts.append(re.compile(fnmatch.translate(pattern)))
+
+            # If pattern has a dotted local hostname part add another pattern for local part
+            if '.' in pattern:
+                local_hostname = pattern.split('.')[0]
+                if local_hostname and '*' not in local_hostname:
+                    hosts.append(re.compile(fnmatch.translate(local_hostname)))
+
+        logger.debug('host patterns to be processed: %r', hosts)
         return hosts
 
     @property
@@ -315,7 +333,7 @@ class LogRaptor(object):
         (<start datetime>, <end_datetime>) items. An item is `None` if there isn't a limit.
         """
         if self.args.time_period is None:
-            if self.args.files or is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO):
+            if self.args.files or self.has_stdin_input_data():
                 time_period = (None, None)
             else:
                 diff = 86400  # 24h = 86400 seconds
@@ -391,11 +409,8 @@ class LogRaptor(object):
                              include=self.include, exclude=self.exclude,
                              exclude_dir=self.exclude_dir)
             logmap.add(self.args.files, apps)
-        elif is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO):
-            # No files and input by a pipe
-            logger.error("is_pipe: %r", is_pipe(STDIN_FILENO))
-            logger.error("is_redirected: %r", is_redirected(STDIN_FILENO))
-            logger.error("is_atty: %r", os.isatty(STDIN_FILENO))
+        elif self.has_stdin_input_data():
+            # No files provided but input is from a tty pipe/redirection
             logmap = [(sys.stdin, apps)]
         else:
             # Build the LogMap instance adding the list of files from app config files
@@ -403,6 +418,7 @@ class LogRaptor(object):
                              follow_symlinks=self.follow_symlinks,
                              include=self.include, exclude=self.exclude,
                              exclude_dir=self.exclude_dir)
+
             for app in apps:
                 logmap.add(app.files, [app])
 
