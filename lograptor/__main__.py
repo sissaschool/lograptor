@@ -21,8 +21,8 @@ Execute lograptor module as a script (see PEP-338).
 # @Author Davide Brunato <brunato@sissa.it>
 #
 
-if not __package__:
-    # When this module is runned without loading the package then
+if not globals().get('__package__'):
+    # When this module is executed without loading the package then
     # __package__ is None or '' and the relative imports are disabled.
     # In this case import the package and set __package__.
     #

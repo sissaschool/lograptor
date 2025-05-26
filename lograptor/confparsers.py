@@ -164,7 +164,7 @@ class EnvConfigParser(RawConfigParser):
                 raise
             return RawConfigParser.getint(self, default_section, option)
 
-    def getfloat(self, section, option, default_section=None):
+    def getfloat(self, section, option, default_section=None) -> float:
         try:
             return RawConfigParser.getfloat(self, section, option)
         except NoOptionError:
@@ -224,7 +224,7 @@ class EnvConfigParser(RawConfigParser):
         sections.update(self._sections)
         return list(filter(lambda x: x.startswith(prefix) and x.endswith(suffix), sections.keys()))
 
-    def items(self, section, raw=False, vars_=None):
+    def items(self, section, raw=False, vars=None):
         try:
             opts = self.__defaults[section].copy()
         except KeyError:
@@ -235,8 +235,8 @@ class EnvConfigParser(RawConfigParser):
         except KeyError:
             raise LogRaptorNoSectionError(section)
 
-        if vars_:
-            for key, value in vars_.items():
+        if vars:
+            for key, value in vars.items():
                 opts[key] = value
         if '__name__' in opts:
             del opts['__name__']
@@ -250,11 +250,11 @@ class EnvConfigParser(RawConfigParser):
             ]
 
 
-class LogRaptorConfig(EnvConfigParser, object):
+class LogRaptorConfig(EnvConfigParser):
     _DEFAULTS = {
         'main': {
             'confdir': './conf.d/',
-            'tmpdir': '/var/tmp/',
+            'tempdir': '/var/tmp/',
             'logdir': '/var/log/',
             'logfile': '/var/log/lograptor.log',
             'email_address': 'root@{0}'.format(socket.gethostname()),

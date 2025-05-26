@@ -39,24 +39,24 @@ class TestLookupCache(object):
         cache = LookupCache(args, self.config)
 
         assert cache.ip_pattern.pattern.startswith('((?:(?:25[0-5]')
-        assert cache.hostsmap == {}
-        assert cache.uidsmap == {}
+        assert cache.hostmap == {}
+        assert cache.uidmap == {}
 
     def test_host_lookup(self):
         args = self.cli_parser.parse_args([])
         cache = LookupCache(args, self.config)
 
-        cache.hostsmap['127.0.0.1'] = 'raptor'
-        assert cache.gethost('127.0.0.1') == 'raptor'
+        cache.hostmap['127.0.0.1'] = 'raptor'
+        assert cache.get_hostname('127.0.0.1') == 'raptor'
 
     def test_uid_lookup(self):
         args = self.cli_parser.parse_args([])
         cache = LookupCache(args, self.config)
 
-        cache.uidsmap[100] = 'foo'
-        assert cache.getuname('100') == 'foo'
-        assert cache.getuname(100) == 'foo'
+        cache.uidmap[100] = 'foo'
+        assert cache.get_username('100') == 'foo'
+        assert cache.get_username(100) == 'foo'
 
         if platform.system() == 'Linux':
-            assert cache.getuname('0') == 'root'
-            assert cache.getuname(0) == 'root'
+            assert cache.get_username('0') == 'root'
+            assert cache.get_username(0) == 'root'

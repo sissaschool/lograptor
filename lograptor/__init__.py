@@ -1,5 +1,5 @@
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2025, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #

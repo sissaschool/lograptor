@@ -19,7 +19,7 @@
 __author__ = "Davide Brunato"
 __copyright__ = "Copyright 2011-2020, SISSA"
 __license__ = "LGPLv2.1+"
-__version__ = "1.3.0"
+__version__ = "2.0.0"
 __maintainer__ = "Davide Brunato"
 __email__ = "brunato@sissa.it"
 __status__ = "Production"

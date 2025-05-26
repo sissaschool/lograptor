@@ -3,7 +3,7 @@
 Command line interface of the lograptor package.
 """
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2025, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -24,7 +24,6 @@ import sys
 import argparse
 import time
 import re
-import sre_constants
 
 from .core import LogRaptor
 from .info import __version__, __description__
@@ -88,7 +87,7 @@ def filter_spec(arg):
             try:
                 re.compile(pattern)
                 _filter[field] = pattern
-            except sre_constants.error:
+            except re.error:
                 raise argparse.ArgumentTypeError("wrong regex pattern in filter %r" % flt)
         except ValueError:
             raise argparse.ArgumentTypeError('filter %r: wrong format!' % flt)
@@ -417,8 +416,8 @@ def lograptor(files, patterns=None, matcher='ruled', cfgfiles=None, apps=None,
 
 
 def main():
-    if sys.version_info < (3, 5, 0):
-        sys.stderr.write("You need Python 3.5+ to run this program\n")
+    if sys.version_info < (3, 9, 0):
+        sys.stderr.write("You need Python 3.9+ to run this program\n")
         sys.exit(1)
 
     cli_parser = create_argument_parser()

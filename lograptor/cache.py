@@ -25,8 +25,8 @@ import pwd
 class LookupCache(object):
     """
     Name cache for names, that maps IPs to DNS names, UIDs to usernames.
-    The names can be mapped into random generated values for obfuscate
-    the input names, maintaining a correspondence for the entire process.
+    Names can be mapped into random generated values for obfuscate the
+    input names, maintaining a correspondence for the entire process.
     """
 
     def __init__(self, args, config):
@@ -49,11 +49,11 @@ class LookupCache(object):
             self._maps[flt] = {}
 
     @property
-    def hostsmap(self):
+    def hostmap(self):
         return self._maps['host']
 
     @property
-    def uidsmap(self):
+    def uidmap(self):
         return self._maps['uid']
 
     def map_value(self, value, gid):
@@ -78,15 +78,15 @@ class LookupCache(object):
             ip_match = self.ip_pattern.search(value)
             if ip_match is None:
                 return value
-            host = self.gethost(ip_match.group(1))
+            host = self.get_hostname(ip_match.group(1))
             if host == ip_match.group(1) or value.startswith(host):
                 return value
             return ''.join([
                 value[:ip_match.start(1)],
-                self.gethost(ip_match.group(1)),
+                self.get_hostname(ip_match.group(1)),
                 value[ip_match.end(1):]])
         elif (base_gid == 'user' or base_gid == 'uid') and self.uid_lookup:
-            return self.getuname(value)
+            return self.get_username(value)
         else:
             return value
 
@@ -126,9 +126,11 @@ class LookupCache(object):
         parts.append(s[k:])
         return ''.join(parts)
 
-    def gethost(self, ip_addr):
+    def get_hostname(self, ip_addr):
         """
-        Do reverse lookup on an ip address
+        Do reverse lookup on an ip address.
+
+        :param ip_addr: ipV4 or ipV6 address
         """
         # Handle silly fake ipv6 addresses
         try:
@@ -141,7 +143,7 @@ class LookupCache(object):
             return ip_addr
 
         try:
-            return self.hostsmap[ip_addr]
+            return self.hostmap[ip_addr]
         except KeyError:
             pass
 
@@ -150,16 +152,16 @@ class LookupCache(object):
         except socket.error:
             name = ip_addr
 
-        self.hostsmap[ip_addr] = name
+        self.hostmap[ip_addr] = name
         return name
 
-    def getuname(self, uid):
+    def get_username(self, uid):
         """
         Get the username of a given uid.
         """
         uid = int(uid)
         try:
-            return self.uidsmap[uid]
+            return self.uidmap[uid]
         except KeyError:
             pass
 
@@ -168,5 +170,5 @@ class LookupCache(object):
         except (KeyError, AttributeError):
             name = "uid=%d" % uid
 
-        self.uidsmap[uid] = name
+        self.uidmap[uid] = name
         return name

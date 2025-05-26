@@ -10,9 +10,9 @@ package-build
 project-sync.py
 build/
 deb_dist/
+development/
 dist/
 doc/_build/
-doc/*.pdf
 doc/_static/
 doc/_templates/
 man/*.html

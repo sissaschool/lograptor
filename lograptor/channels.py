@@ -1,8 +1,5 @@
-"""
-This module defines communication channels for lograptor package.
-"""
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2025, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -19,6 +16,9 @@ This module defines communication channels for lograptor package.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
+"""
+This module defines communication channels for lograptor package.
+"""
 import os
 import re
 import time
@@ -44,9 +44,9 @@ from .utils import mail_message, do_chunked_gzip
 logger = logging.getLogger(__package__)
 
 
-class grep_colors:
+class GrepColors:
     """
-    Define a structure for grep color codes.
+    Define a structure for create a setting of grep color codes.
     """
     DEFAULT_SPEC = "ms=01;31:mc=01;31:sl=:cx=:fn=35:ln=32:bn=32:se=36"
     mt = ms = mc = sl = cx = fn = ln = bn = se = ''
@@ -72,15 +72,14 @@ class grep_colors:
             setattr(self, attr, ''.join(['\033[%dm' % int(v) for v in values.split(';')]))
 
 
-GREP_COLORS = grep_colors(os.environ.get('GREP_COLORS'))
+GREP_COLORS = GrepColors(os.environ.get('GREP_COLORS'))
+"""Default instance from GREP_COLORS environment variable."""
 
 
-class AbstractChannel(object):
+class AbstractChannel(metaclass=abc.ABCMeta):
     """
-    Abstract base class for lograptor's channels.
+    Abstract base class for lograptor channels.
     """
-    __metaclass__ = abc.ABCMeta
-
     TEMP_DIR = None
 
     def __init__(self, name, args, config):
@@ -99,9 +98,9 @@ class AbstractChannel(object):
     def set_tempdir(self):
         if self.TEMP_DIR:
             return
-        tmpdir = self.config.get('main', 'tmpdir')
-        if tmpdir:
-            tempfile.tempdir = tmpdir
+        tempdir = self.config.get('main', 'tempdir')
+        if tempdir:
+            tempfile.tempdir = tempdir
         try:
             self.TEMP_DIR = tempfile.mkdtemp('.lograptor')
         except OSError:

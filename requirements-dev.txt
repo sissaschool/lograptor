@@ -1,7 +1,9 @@
 # Requirements for setup a development environment for the xmlschema package.
 setuptools
 pytest
-tox
+coverage
+mypy
+tox>=77.0
 Sphinx
 sphinx_rtd_theme
 -e .

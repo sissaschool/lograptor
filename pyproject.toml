@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools >= 77.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lograptor"
+version = "2.0.0"
+description = "Command-line utility for processing log files"
+readme = "README.rst"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+authors = [
+    { name = "Davide Brunato", email = "brunato@sissa.it" },
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Internet :: Log Analysis",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Text Processing :: Filters",
+    "Topic :: Utilities"
+]
+
+[project.optional-dependencies]
+dev = [
+    "coverage",
+    "flake8",
+    "mypy",
+    "tox",
+    "lograptor[docs]"
+]
+docs = [
+    "sphinx",
+    "sphinx_rtd_theme",
+]
+
+[project.scripts]
+lograptor = "lograptor.api:main"
+
+[project.urls]
+Homepage = "https://github.com/sissaschool/lograptor"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.package-data]
+xmlschema = [
+    # 'py.typed',
+    'config/lograptor.conf',
+    'config/report_template.html',
+    'config/report_template.txt',
+    'config/conf.d/*.conf',
+]
+
+[tool.setuptools.packages.find]
+include = ["lograptor*"]
+namespaces = false
+
+[tool.mypy]
+show_error_code_links = true
+
+[tool.coverage.run]
+branch = true
+source = ["lograptor"]
+# omit = []
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError()",
+    'in self._etree_iterparse\(',
+    'in PyElementTree.iterparse\(',
+]
