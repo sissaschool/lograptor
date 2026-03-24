@@ -24,7 +24,7 @@ import gzip
 import tempfile
 
 from lograptor.utils import do_chunked_gzip, get_value_unit, get_fmt_results, \
-    htmlsafe, safe_expand, results_to_string, protected_property, normalize_path, \
+    html_safe, safe_expand, results_to_string, protected_property, normalize_path, \
     open_resource, is_redirected
 
 
@@ -99,8 +99,8 @@ class TestUtils(object):
             get_value_unit(1024 ** 3, 'MiB', 'X')
         assert exc_info.value.args[0] == "unknown metric prefix 'X'"
 
-    def test_htmlsafe(self):
-        assert htmlsafe('ab<&;cd>') == 'ab&lt;&amp;;cd&gt;'
+    def test_html_safe(self):
+        assert html_safe('ab<&;cd>') == 'ab&lt;&amp;;cd&gt;'
 
     def test_get_fmt_results(self):
         fmt = '<font color="darkred">{0}</font>'

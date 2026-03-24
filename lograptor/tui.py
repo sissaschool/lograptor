@@ -3,7 +3,7 @@ This module contains functions and classes to manage output on text-based
 user interface (TUI).
 """
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -22,9 +22,10 @@ user interface (TUI).
 #
 import os
 import sys
+from typing import IO
 
 
-def get_terminal_size():
+def get_terminal_size() -> tuple[int, int]:
     """
     Get the terminal size in width and height. Works on Linux, Mac OS X, Windows, Cygwin (Windows).
 
@@ -46,18 +47,21 @@ def get_terminal_size():
     return tuple_xy
 
 
-def get_windows_terminal_size():
+def get_windows_terminal_size() -> tuple[int, int] | None:
     """Get the terminal size of a Windows OS terminal."""
     from ctypes import windll, create_string_buffer
 
     # stdin handle is -10
     # stdout handle is -11
     # stderr handle is -12
-    handle = windll.kernel32.GetStdHandle(-12)
+    try:
+        handle = windll.kernel32.GetStdHandle(-12)  # noqa: F821
+    except AttributeError:
+        return None
 
     try:
         csbi = create_string_buffer(22)
-        res = windll.kernel32.GetConsoleScreenBufferInfo(handle, csbi)
+        res = windll.kernel32.GetConsoleScreenBufferInfo(handle, csbi)  # noqa: F821
     except (IOError, OSError):
         return None
 
@@ -72,7 +76,7 @@ def get_windows_terminal_size():
         return None
 
 
-def get_unix_tput_terminal_size():
+def get_unix_tput_terminal_size() -> tuple[int, int] | None:
     """
     Get the terminal size of a UNIX terminal using the tput UNIX command. See:
     http://stackoverflow.com/questions/263890/how-do-i-find-the-width-height-of-a-terminal-window
@@ -90,15 +94,17 @@ def get_unix_tput_terminal_size():
         return None
 
 
-def get_unix_ioctl_terminal_size():
+def get_unix_ioctl_terminal_size() -> tuple[int, int] | None:
     """Get the terminal size of a UNIX terminal using the ioctl UNIX command."""
     def ioctl_gwinsz(fd):
         try:
             import fcntl
             import termios
             import struct
-            return struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ, '1234'))
-        except (IOError, OSError):
+            return struct.unpack(
+                'hh', fcntl.ioctl(fd, termios.TIOCGWINSZ, '1234')  # noqa
+            )
+        except (IOError, OSError, TypeError):
             return None
 
     cr = ioctl_gwinsz(0) or ioctl_gwinsz(1) or ioctl_gwinsz(2)
@@ -117,7 +123,7 @@ def get_unix_ioctl_terminal_size():
     return int(cr[1]), int(cr[0])
 
 
-class ProgressBar(object):
+class ProgressBar:
     """
     Draw a progress toolbar to stdout. The toolbar is initialized calling
     the function with the first argument set to None.
@@ -130,7 +136,10 @@ class ProgressBar(object):
     :ivar width: the effective width of the progress bar, in characters.
     :ivar percentage: the progress percentage.
     """
-    def __init__(self, output, max_value=0, label='', width_percentage=0.25):
+    def __init__(self, output: IO,
+                 max_value: int = 0, label: str = '',
+                 width_percentage: float = 0.25):
+
         self.output = output
         if max_value <= 0:
             raise ValueError("Maximum value of a progress bar must be positive number.")
@@ -145,7 +154,7 @@ class ProgressBar(object):
         self.output.write('[{}] {} {}'.format(' ' * self.width, format(0, '1d'), self.label))
         self.output.flush()
 
-    def redraw(self, value):
+    def redraw(self, value: int | float) -> None:
         if self.percentage == 100:
             return
 

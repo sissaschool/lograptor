@@ -3,7 +3,7 @@ This module contains additional class and functions to handle time
 and date values for lograptor package.
 """
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -22,7 +22,7 @@ and date values for lograptor package.
 #
 import datetime
 import re
-
+from collections.abc import Iterator, Callable
 
 DATE_FORMATS = (
     ('%%', re.compile(r"(%%)")),        # a literal %
@@ -31,15 +31,15 @@ DATE_FORMATS = (
     ('%b', re.compile(r"(?<!%)(%b)")),  # locale's abbreviated month name (e.g., Jan)
     ('%B', re.compile(r"(?<!%)(%B)")),  # locale's full month name (e.g., January)
     ('%d', re.compile(r"(?<!%)(%d)")),  # day of month (e.g., 01)
-    ('%j', re.compile(r"(?<!%)(%j)")),  # day of the year as zero padded decimal number (0 .. 366)
-    ('%m', re.compile(r"(?<!%)(%m)")),  # month (01..12)
-    ('%w', re.compile(r"(?<!%)(%w)")),  # day of the week (0 .. 6), 1 is monday
-    ('%y', re.compile(r"(?<!%)(%y)")),  # last two digits of year (00..99)
+    ('%j', re.compile(r"(?<!%)(%j)")),  # day of the year as zero padded decimal number (0 ... 366)
+    ('%m', re.compile(r"(?<!%)(%m)")),  # month (01 ... 12)
+    ('%w', re.compile(r"(?<!%)(%w)")),  # day of the week (0 ... 6), 1 is monday
+    ('%y', re.compile(r"(?<!%)(%y)")),  # last two digits of year (00 ... 99)
     ('%Y', re.compile(r"(?<!%)(%Y)"))   # year
 )
 
 
-def parse_last_period(last):
+def parse_last_period(last: str) -> int:
     r"""
     Parse the --last value and return the time difference in seconds.
 
@@ -81,7 +81,9 @@ def parse_last_period(last):
         return num * diff_map[cat]
 
 
-def get_datetime_interval(timestamp, diff, offset=0):
+def get_datetime_interval(timestamp: float | int,
+                          diff: float | int,
+                          offset: float | int =0) -> tuple[datetime.datetime, datetime.datetime]:
     """
     Returns datetime interval from timestamp backward in the past,
     computed using the milliseconds difference passed as argument.
@@ -96,7 +98,7 @@ def get_datetime_interval(timestamp, diff, offset=0):
     return ini_datetime, fin_datetime
 
 
-def parse_date_period(date):
+def parse_date_period(date: str) -> tuple[datetime.datetime, datetime.datetime]:
     """
     Parse the --date value and return a couple of datetime object.
     The format is [YYYY]MMDD[,[YYYY]MMDD].
@@ -145,13 +147,13 @@ def parse_date_period(date):
     return date1, date2
 
 
-class TimeRange(object):
+class TimeRange:
     """
     A simple class to manage time range intervals.
 
     :param time_range: a string having the format HH:MM,HH:MM.
     """
-    def __init__(self, time_range):
+    def __init__(self, time_range: str):
         try:
             start_time, end_time = time_range.split(',')
         except ValueError:
@@ -167,7 +169,7 @@ class TimeRange(object):
         self.h2 = self.end_time.hour
         self.m2 = self.end_time.minute
 
-    def between(self, tm):
+    def between(self, tm: str) -> bool:
         """
         Compare if the argument HH:MM is in the time range.
         """
@@ -178,17 +180,18 @@ class TimeRange(object):
             (hour != self.h2 or minute <= self.m2)
 
 
-def strftimegen(start_dt, end_dt):
+def get_stride_generator(start_dt: datetime.datetime, end_dt: datetime.datetime) \
+        -> Callable[[str], Iterator[str]]:
     """
-    Return a generator function for datetime format strings. The generator
-    produces a day-by-day sequence starting from the first datetime to the
-    second datetime argument.
+    Return a generator function for datetime format strings. The generator produces
+    a day-by-day sequence starting from the fi rst datetime to the second datetime
+    argument.
     """
     if start_dt > end_dt:
         message = "the start datetime is after the end datetime: ({!r}, {!r})"
         raise ValueError(message.format(start_dt, end_dt))
 
-    def iterftime(date_pattern):
+    def iter_ftime(date_pattern):
         date_subs = [i for i in DATE_FORMATS if i[1].search(date_pattern) is not None]
 
         if not date_subs:
@@ -202,4 +205,4 @@ def strftimegen(start_dt, end_dt):
                 yield date_path
                 dt = dt + datetime.timedelta(days=1)
 
-    return iterftime
+    return iter_ftime

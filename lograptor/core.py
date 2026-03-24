@@ -29,6 +29,7 @@ import fileinput
 import sys
 import fnmatch
 from collections import Counter
+from functools import cached_property
 
 from .exceptions import LogRaptorConfigError, FileMissingError, \
     LogFormatError, LogRaptorOptionError, LogRaptorArgumentError
@@ -86,24 +87,8 @@ class LogRaptor(object):
         else:
             self.name_cache = None
 
-        # Get configuration using properties
-        self._encodings = self.encodings
-        self._matcher = self.matcher
-        self._patterns = self.patterns
-        self._time_period = self.time_period
-        self._fields = self.fields
-        self._hosts = self.hosts
-
-        # Load applications
         self._config_apps = self._read_apps()
         self._config_tags = {}
-        self._apps = self.apps
-        self._tags = self.apptags
-        self._logmap = self.logmap
-
-        # Setup output channels
-        self._channels = self.channels
-        self._report = self.report
 
         if args.loglevel == 4:
             logger.debug("End of lograptor setup!!")
@@ -113,14 +98,13 @@ class LogRaptor(object):
         """
         Read the configuration of applications returning a dictionary
 
-        :return: A dictionary with application names as keys and configuration \
-        object as values.
+        :return: A dictionary with application names as keys and configuration object as values.
         """
         apps = {}
-        for cfgfile in glob.iglob(os.path.join(self.confdir, '*.conf')):
-            name = os.path.basename(cfgfile)[0:-5]
+        for config_file in glob.iglob(os.path.join(self.confdir, '*.conf')):
+            name = os.path.basename(config_file)[0:-5]
             try:
-                app = AppLogParser(name, cfgfile, self.args, self.logdir,
+                app = AppLogParser(name, config_file, self.args, self.logdir,
                                    self.fields, self.name_cache, self.report)
             except (LogRaptorOptionError, LogRaptorConfigError, LogFormatError) as err:
                 logger.error('cannot add app %r: %s', name, err)
@@ -180,8 +164,8 @@ class LogRaptor(object):
 
     def set_logger(self):
         """
-        Setup lograptor logger with an handler and a formatter. The logging
-        level is defined by a [0..4] range, where an higher value means a
+        Setup lograptor logger with a handler and a formatter. The logging
+        level is defined by a [0..4] range, where a higher value means a
         more verbose logging. The loglevel value is mapped to correspondent
         logging module's value:
 
@@ -198,7 +182,7 @@ class LogRaptor(object):
         effective_level = max(logging.DEBUG, logging.CRITICAL - self.args.loglevel * 10)
         logger.setLevel(effective_level)
 
-        # Add an handler if missing
+        # Add a handler if missing
         if not logger.handlers:
             if sys.stdout.isatty():
                 handler = logging.StreamHandler()
@@ -220,17 +204,17 @@ class LogRaptor(object):
             handler.setLevel(effective_level)
             handler.setFormatter(formatter)
 
-    @protected_property
+    @cached_property
     def report(self):
         logger.debug("configure a %r report ...", self.args.report)
         if self.args.report is False:
             return False
         elif self.args.report is None:
-            return Report('default', self._patterns, self.args, self.config)
+            return Report('default', self.patterns, self.args, self.config)
         else:
-            return Report(self.args.report, self._patterns, self.args, self.config)
+            return Report(self.args.report, self.patterns, self.args, self.config)
 
-    @protected_property
+    @cached_property
     def patterns(self):
         """
         A tuple with re.RegexObject objects created from regex pattern arguments.
@@ -349,12 +333,12 @@ class LogRaptor(object):
         confdir = self.config.get('main', 'confdir')
         return normalize_path(confdir, base_path=os.path.dirname(self.config.cfgfile))
 
-    @property
+    @cached_property
     def logdir(self):
         confdir = self.config.get('main', 'logdir')
         return normalize_path(confdir, base_path=os.path.dirname(self.config.cfgfile))
 
-    @property
+    @cached_property
     def encodings(self):
         return self.config.get('main', 'encodings').split(',')
 
@@ -382,7 +366,7 @@ class LogRaptor(object):
         Map from log app-name to an application.
         """
         logger.debug("populate tags map ...")
-        apps = self._apps.keys()
+        apps = self.apps.keys()
         unknown = set(apps)
         unknown.difference_update(self._config_apps.keys())
         if unknown:
@@ -400,11 +384,11 @@ class LogRaptor(object):
                     tagmap[tag] = [app]
         return tagmap
 
-    @protected_property
+    @cached_property
     def logmap(self):
-        apps = sorted(self._apps.values(), key=lambda x: x.priority)
+        apps = sorted(self.apps.values(), key=lambda x: x.priority)
         if self.args.files:
-            logmap = FileMap(self._time_period, recursive=self.recursive,
+            logmap = FileMap(self.time_period, recursive=self.recursive,
                              follow_symlinks=self.follow_symlinks,
                              include=self.include, exclude=self.exclude,
                              exclude_dir=self.exclude_dir)
@@ -414,7 +398,7 @@ class LogRaptor(object):
             logmap = [(sys.stdin, apps)]
         else:
             # Build the LogMap instance adding the list of files from app config files
-            logmap = FileMap(self._time_period, recursive=self.recursive,
+            logmap = FileMap(self.time_period, recursive=self.recursive,
                              follow_symlinks=self.follow_symlinks,
                              include=self.include, exclude=self.exclude,
                              exclude_dir=self.exclude_dir)
@@ -434,14 +418,10 @@ class LogRaptor(object):
                 self.args.with_filename = True
         return logmap
 
-    @protected_property
+    @cached_property
     def channels(self):
         """Output channels"""
-        try:
-            return self._channels
-        except AttributeError:
-            logger.debug("initialize output channels ...")
-
+        logger.debug("initialize output channels ...")
         channels = self.args.channels
         config_channels = [
             sec.rpartition('_')[0] for sec in self.config.sections(suffix='_channel')
@@ -461,6 +441,7 @@ class LogRaptor(object):
                 output_channels.append(MailChannel(channel, self.args, self.config))
             else:
                 raise LogRaptorConfigError('unknown channel type %r' % channel_type)
+
         return output_channels
 
     def __repr__(self):
@@ -488,7 +469,7 @@ class LogRaptor(object):
 
         # Iter between log files. The iteration use the log files modified between the
         # initial and the final date, skipping the other files.
-        for (source, apps) in self._logmap:
+        for (source, apps) in self.logmap:
             if apps is not None:
                 logger.info('process %r for apps %r', source, apps)
             else:
@@ -497,7 +478,7 @@ class LogRaptor(object):
                 continue
 
             try:
-                for encoding in self._encodings:
+                for encoding in self.encodings:
                     try:
                         result = matcher_engine(source, apps, encoding)
                     except UnicodeDecodeError:
@@ -529,9 +510,9 @@ class LogRaptor(object):
                 if self.args.loglevel:
                     logger.error(msg)
 
-        if not files and self._time_period[0] is not None:
+        if not files and self.time_period[0] is not None:
             raise FileMissingError("no file in time period {}!".format([
-                datetime.datetime.strftime(e, '%Y-%m-%dT%H:%M:%S') for e in self._time_period
+                datetime.datetime.strftime(e, '%Y-%m-%dT%H:%M:%S') for e in self.time_period
             ]))
         elif not lines:
             return False
@@ -563,13 +544,13 @@ class LogRaptor(object):
             if sys.stdout.isatty():
                 sys.stdout.write('\n')
 
-        # If the final report is requested then purge all unmatched threads and set time stamps.
-        # Otherwise send final run summary if messages are not disabled.
+        # If the final report is requested then purge all unmatched threads and set time stamps,
+        # otherwise send final run summary if messages are not disabled.
         if matches > 0 and self.report:
             self.report.set_stats(run_stats)
-            self._report.make(self._apps)
-            formats = list(set([fmt for channel in self._channels for fmt in channel.formats]))
-            report_parts = self._report.get_report_parts(self._apps, formats)
+            self.report.make(self.apps)
+            formats = list(set([fmt for channel in self.channels for fmt in channel.formats]))
+            report_parts = self.report.get_report_parts(self.apps, formats)
             dispatcher.send_report(report_parts)
         elif self.args.loglevel and not self.args.quiet:
             dispatcher.send_message(self.get_run_summary(run_stats))
@@ -588,14 +569,14 @@ class LogRaptor(object):
         if self.args.files_with_match is not None or \
                 self.args.count or self.args.only_matching or self.args.quiet:
             # Sending of log lines disabled by arguments
-            return UnbufferedDispatcher(self._channels)
+            return UnbufferedDispatcher(self.channels)
         elif before_context == 0 and after_context == 0:
             # Don't need line buffering
-            return UnbufferedDispatcher(self._channels)
+            return UnbufferedDispatcher(self.channels)
         elif self.args.thread:
-            return ThreadedDispatcher(self._channels, before_context, after_context)
+            return ThreadedDispatcher(self.channels, before_context, after_context)
         else:
-            return LineBufferDispatcher(self._channels, before_context, after_context)
+            return LineBufferDispatcher(self.channels, before_context, after_context)
 
     def create_matcher(self, dispatcher, parsers=None):
         return create_matcher(
@@ -624,7 +605,7 @@ class LogRaptor(object):
         # Create a dummy report object if necessary
         channels = [sect.rsplit('_')[0] for sect in self.config.sections(suffix='_channel')]
         channels.sort()
-        disabled_apps = [app for app in self._config_apps.keys() if app not in self._apps]
+        disabled_apps = [app for app in self._config_apps.keys() if app not in self.apps]
         return ''.join([
             "\n--- %s configuration ---" % __package__,
             "\nConfiguration file: %s" % self.config.cfgfile,

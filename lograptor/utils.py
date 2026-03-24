@@ -1,5 +1,5 @@
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -22,6 +22,7 @@ import io
 import stat
 import string
 from functools import wraps
+from typing import IO, Optional
 from urllib.request import urlopen
 
 from .tui import ProgressBar
@@ -29,7 +30,7 @@ from .tui import ProgressBar
 GZIP_CHUNK_SIZE = 8192
 
 
-def do_chunked_gzip(infh, outfh, filename):
+def do_chunked_gzip(infh: IO, outfh: IO, filename: str) -> None:
     """
     A memory-friendly way of compressing the data.
 
@@ -48,7 +49,7 @@ def do_chunked_gzip(infh, outfh, filename):
         if infh.closed:
             infh = open(infh.name, 'r')
 
-    readsize = 0
+    read_size = 0
     sys.stdout.write('Gzipping {0}: '.format(filename))
 
     if input_size:
@@ -60,18 +61,18 @@ def do_chunked_gzip(infh, outfh, filename):
                 break
 
             gzfh.write(bytes(chunk, "utf-8"))
-            readsize += len(chunk)
-            progressbar.redraw(readsize)
+            read_size += len(chunk)
+            progressbar.redraw(read_size)
 
     gzfh.close()
 
 
-def mail_message(smtp_server, message, from_address, rcpt_addresses):
+def mail_message(smtp_server: str, message: str, from_address: str, rcpt_addresses: list[str]):
     """
     Send an e-mail message using the smtp protocol.
 
     :param smtp_server: a full path to an external command \
-    (eg. "/usr/sbin/sendmail -t") or an address of a SMTP server.
+    (e.g. "/usr/sbin/sendmail -t") or an address of a SMTP server.
     :param message: the message to send, complete of headers.
     :param from_address: the sender e-mail address.
     :param rcpt_addresses: a list with recipient e-mail addresses.
@@ -89,7 +90,7 @@ def mail_message(smtp_server, message, from_address, rcpt_addresses):
         server.quit()                                           # pragma: no cover
 
 
-MEASURE_UNITS = {'', 'B', 'Bytes', 'Byte', 'B/s', 'bps', 'bit/s', 'b/s'}
+MEASURE_UNITS = frozenset(('', 'B', 'Bytes', 'Byte', 'B/s', 'bps', 'bit/s', 'b/s'))
 
 METRIC_PREFIXES = {
     '': (0, 'K'), 'k': (1, 'M'),
@@ -104,7 +105,7 @@ METRIC_PREFIXES = {
 }
 
 
-def get_value_unit(value, unit='', prefix='T'):
+def get_value_unit(value: int | float, unit: str = '', prefix: str = 'T') -> tuple[int | float, str]:
     """
     Return a human-readable value with unit specification. Try to
     transform the unit prefix to the one passed as parameter. When
@@ -164,7 +165,7 @@ def get_value_unit(value, unit='', prefix='T'):
     return value, '{0}{1}'.format(unit_prefix, unit)
 
 
-def htmlsafe(unsafe):
+def html_safe(unsafe: str) -> str:
     """Escapes html control characters."""
     return unsafe.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
@@ -202,7 +203,8 @@ def get_fmt_results(results, limit=5, sep='::', fmt=None):
     return result_list
 
 
-def field_multisub(strings, field, values):
+def field_multisub(strings: list[str], field: str, values: str) -> list[str]:
+    """Use string.Template to substitute fields with values."""
     return list({
         string.Template(s).safe_substitute({field: v}) for v in values for s in strings
     })
@@ -218,10 +220,10 @@ def exact_sub(s, mapping):
     return s, fields
 
 
-def safe_expand(template, substitution_map):
+def safe_expand(template: str, substitution_map: dict[str, str]) -> str:
     """
     Safe string template expansion. Raises an error if the provided
-    substitution map has circularities.
+    substitution map has circularity.
     """
     for _ in range(len(substitution_map) + 1):
         _template = template
@@ -239,11 +241,11 @@ def results_to_string(results):
     ])
 
 
-def is_pipe(fd):
+def is_pipe(fd: int) -> bool:
     return stat.S_ISFIFO(os.fstat(fd).st_mode)
 
 
-def is_redirected(fd):
+def is_redirected(fd: int) -> bool:
     return stat.S_ISREG(os.fstat(fd).st_mode)
 
 
@@ -267,7 +269,7 @@ def protected_property(func):
     return proxy_wrapper
 
 
-def normalize_path(path, base_path=None):
+def normalize_path(path: str, base_path: Optional[str] = None):
     path = path.strip()
     if path.startswith('~/'):
         home = os.path.expanduser("~/")
@@ -280,17 +282,17 @@ def normalize_path(path, base_path=None):
         return os.path.abspath(os.path.join(base_path, path))
 
 
-def open_resource(source):
+def open_resource(source: str | IO) -> IO:
     """
     Opens a resource in binary reading mode.
 
-    :param source: a filepath or an URL.
+    :param source: a filepath or a URL.
     """
     try:
         return open(source, mode='rb')
     except (IOError, OSError):
         try:
-            resource = urlopen(source)  # source is an URL
+            resource = urlopen(source)  # source is a URL
         except ValueError:
             pass
         else:

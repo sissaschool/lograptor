@@ -28,11 +28,12 @@ from collections import namedtuple, OrderedDict
 from collections.abc import MutableMapping
 from string import Template
 
+from doc.conf import html_theme
 from .info import __version__
 from .exceptions import (LogRaptorNoOptionError, LogRaptorNoSectionError, LogRaptorOptionError,
                          RuleMissingError, LogRaptorConfigError)
 from . import tui
-from .utils import get_fmt_results, htmlsafe, get_value_unit, normalize_path
+from .utils import get_fmt_results, html_safe, get_value_unit, normalize_path
 
 
 logger = logging.getLogger(__package__)
@@ -290,7 +291,7 @@ class ReportData(MutableMapping):
             html = '<table border="0" width="100%" rules="cols" cellpadding="2">\n'\
                    '<tr><th colspan="2" align="left"><h3><font color="{1}">'\
                    '{0}</font></h3></th></tr>\n'\
-                   .format(htmlsafe(self.title.strip()), self.color)
+                   .format(html_safe(self.title.strip()), self.color)
 
             for res in self.results:
                 html = '{0}<tr><td valign="top" align="right">{1}</td>'\
@@ -301,7 +302,7 @@ class ReportData(MutableMapping):
             html = '<table border="0" width="100%" rules="cols" cellpadding="2">\n'\
                    '<tr><th colspan="2" align="left"><h3><font color="{1}">'\
                    '{0}</font></h3></th></tr>\n'\
-                   .format(htmlsafe(self.title.strip()), self.color)
+                   .format(html_safe(self.title.strip()), self.color)
 
             if self.results[0] is not None:
                 for res in self.results:
@@ -317,7 +318,7 @@ class ReportData(MutableMapping):
             html = '<h3><font color="{1}">{0}</font></h3>'\
                    '<table width="100%" rules="cols" cellpadding="2">\n'\
                    '<tr bgcolor="#aaaaaa">'\
-                   .format(htmlsafe(self.title.strip()), self.color)
+                   .format(html_safe(self.title.strip()), self.color)
 
             headers = re.split(r'\s*,\s*', self.headers)
             for i in range(len(headers)):
