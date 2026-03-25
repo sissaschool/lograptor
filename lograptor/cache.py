@@ -1,5 +1,5 @@
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -20,43 +20,64 @@ import re
 import socket
 import string
 import pwd
+from argparse import Namespace
+from dataclasses import dataclass
+from itertools import chain
 
 
-class LookupCache(object):
+@dataclass(slots=True)
+class LookupCache:
     """
     Name cache for names, that maps IPs to DNS names, UIDs to usernames.
     Names can be mapped into random generated values for obfuscate the
     input names, maintaining a correspondence for the entire process.
     """
+    _maps: dict[str, dict[str | int, str]]
+    _uidmap: dict[int, str]
+    _hostmap: dict[str, str]
+    fields: list[str]
+    mapexp: int
+    mapmax: int
+    base_gid_pattern: re.Pattern[str]
+    ip_pattern: re.Pattern[str]
+    ip_lookup: bool = False
+    uid_lookup: bool = False
+    anonymize: bool = False
 
-    def __init__(self, args, config):
-        self._maps = {}
-        self.mapexp = config.getint('main', 'mapexp')
-        self.mapmax = 10 ** self.mapexp
-        self.ip_lookup = args.ip_lookup
-        self.uid_lookup = args.uid_lookup
-        self.anonymize = args.anonymize
-        self.fields = config.options('fields')
-        self.base_gid_pattern = re.compile('^([a-zA-Z_]+)')
+    @classmethod
+    def from_args(cls, args: Namespace, config):
+        mapexp = config.getint('main', 'mapexp')
         ipv4_pattern = config.get('patterns', 'IPV4_ADDRESS')
         ipv6_pattern = config.get('patterns', 'IPV6_ADDRESS')
-        self.ip_pattern = re.compile('({0}|{1})'.format(ipv4_pattern, ipv6_pattern))
-        self.clear()
+        fields = config.options('fields')
+        maps = {k: {} for k in chain(fields, ('host', 'thread', 'uid'))}
+        return cls(
+            _maps=maps,
+            _uidmap=maps['uid'],
+            _hostmap=maps['host'],
+            fields=fields,
+            mapexp=mapexp,
+            mapmax=10 ** mapexp,
+            base_gid_pattern=re.compile('^([a-zA-Z_]+)'),
+            ip_pattern=re.compile(f'({ipv4_pattern}|{ipv6_pattern}'),
+            ip_lookup=args.ip_lookup,
+            uid_lookup=args.uid_lookup,
+            anonymize=args.anonymize,
+        )
 
-    def clear(self):
-        self._maps.clear()
-        for flt in set(self.fields) | {'host', 'thread', 'uid'}:
-            self._maps[flt] = {}
+    def clear(self) -> None:
+        for values in self._maps.values():
+            values.clear()
 
     @property
-    def hostmap(self):
-        return self._maps['host']
+    def hostmap(self) -> dict[str | int, str]:
+        return self._hostmap
 
     @property
-    def uidmap(self):
-        return self._maps['uid']
+    def uidmap(self) -> dict[str | int, str]:
+        return self._uidmap
 
-    def map_value(self, value, gid):
+    def map_value(self, value: str, gid: str) -> str:
         """
         Return the value for a group id, applying requested mapping.
         Map only groups related to a filter, ie when the basename of
@@ -74,7 +95,7 @@ class LookupCache(object):
                     return new_item
             except KeyError:
                 return value
-        elif base_gid in ['client', 'mail', 'from', 'rcpt', 'user'] and self.ip_lookup:
+        elif base_gid in ('client', 'mail', 'from', 'rcpt', 'user') and self.ip_lookup:
             ip_match = self.ip_pattern.search(value)
             if ip_match is None:
                 return value
@@ -90,10 +111,8 @@ class LookupCache(object):
         else:
             return value
 
-    def match_to_dict(self, match, gids):
-        """
-        Map values from match into a dictionary.
-        """
+    def match_to_dict(self, match: re.Match[str], gids: list[str]) -> dict[str, str]:
+        """Map values from match into a dictionary."""
         values = {}
         for gid in gids:
             try:
@@ -102,7 +121,7 @@ class LookupCache(object):
                 pass
         return values
 
-    def match_to_string(self, match, gids, values=None):
+    def match_to_string(self, match: re.Match[str], gids: list[str], values=None):
         """
         Return the mapped string from match object. If a dictionary of
         values is provided then use it to build the string.
@@ -126,7 +145,7 @@ class LookupCache(object):
         parts.append(s[k:])
         return ''.join(parts)
 
-    def get_hostname(self, ip_addr):
+    def get_hostname(self, ip_addr: str) -> str:
         """
         Do reverse lookup on an ip address.
 
@@ -155,7 +174,7 @@ class LookupCache(object):
         self.hostmap[ip_addr] = name
         return name
 
-    def get_username(self, uid):
+    def get_username(self, uid: str) -> str:
         """
         Get the username of a given uid.
         """

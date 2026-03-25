@@ -42,7 +42,7 @@ from .dispatchers import UnbufferedDispatcher, LineBufferDispatcher, ThreadedDis
 from .report import Report
 from .channels import TermChannel, MailChannel, FileChannel
 from .timedate import get_datetime_interval
-from .utils import is_pipe, is_redirected, protected_property, normalize_path, safe_expand
+from .utils import is_pipe, is_redirected, normalize_path, safe_expand
 
 logger = logging.getLogger(__package__)
 
@@ -83,7 +83,7 @@ class LogRaptor(object):
 
         # Create a lookup cache when required by arguments
         if any([args.anonymize, args.uid_lookup, args.ip_lookup]):
-            self.name_cache = LookupCache(args, self.config)
+            self.name_cache = LookupCache.from_args(args, self.config)
         else:
             self.name_cache = None
 
@@ -247,7 +247,7 @@ class LogRaptor(object):
         except re.error as err:
             raise LogRaptorArgumentError('wrong regex syntax for pattern: %r' % err)
 
-    @protected_property
+    @cached_property
     def files(self):
         """
         A list of input sources. Each item can be a file path, a glob path or URL.
@@ -258,7 +258,7 @@ class LogRaptor(object):
         else:
             return self.args.files
 
-    @protected_property
+    @cached_property
     def fields(self):
         logger.debug("get fields from arguments ...")
         unknown = [k for item in self.filters for k in item
@@ -271,7 +271,7 @@ class LogRaptor(object):
             k: safe_expand(v, patterns) for k, v in self.config.items('fields')
         }
 
-    @protected_property
+    @cached_property
     def matcher(self):
         """
         Matcher engine: ruled, unruled, unparsed.
@@ -287,7 +287,7 @@ class LogRaptor(object):
             raise LogRaptorArgumentError('matcher', 'unknown matcher argument %r' % matcher)
         return matcher
 
-    @protected_property
+    @cached_property
     def hosts(self):
         hosts = []
         for pattern in set(self.args.hosts or ['*']):
@@ -310,7 +310,7 @@ class LogRaptor(object):
         """
         return self.args.time_range
 
-    @protected_property
+    @cached_property
     def time_period(self):
         """
         Time period that is determined from the arguments --date and --last. It's a 2-tuple with
@@ -342,7 +342,7 @@ class LogRaptor(object):
     def encodings(self):
         return self.config.get('main', 'encodings').split(',')
 
-    @protected_property
+    @cached_property
     def apps(self):
         """
         Dictionary with loaded applications.
@@ -360,7 +360,7 @@ class LogRaptor(object):
             return {k: v for k, v in self._config_apps.items()
                     if k in apps and v.enabled == enabled}
 
-    @protected_property
+    @cached_property
     def apptags(self):
         """
         Map from log app-name to an application.

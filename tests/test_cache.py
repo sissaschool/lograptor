@@ -1,5 +1,5 @@
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -36,7 +36,7 @@ class TestLookupCache(object):
 
     def test_init_cache(self):
         args = self.cli_parser.parse_args([])
-        cache = LookupCache(args, self.config)
+        cache = LookupCache.from_args(args, self.config)
 
         assert cache.ip_pattern.pattern.startswith('((?:(?:25[0-5]')
         assert cache.hostmap == {}
@@ -44,14 +44,14 @@ class TestLookupCache(object):
 
     def test_host_lookup(self):
         args = self.cli_parser.parse_args([])
-        cache = LookupCache(args, self.config)
+        cache = LookupCache.from_args(args, self.config)
 
         cache.hostmap['127.0.0.1'] = 'raptor'
         assert cache.get_hostname('127.0.0.1') == 'raptor'
 
     def test_uid_lookup(self):
         args = self.cli_parser.parse_args([])
-        cache = LookupCache(args, self.config)
+        cache = LookupCache.from_args(args, self.config)
 
         cache.uidmap[100] = 'foo'
         assert cache.get_username('100') == 'foo'

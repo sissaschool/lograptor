@@ -1,5 +1,5 @@
 #
-# Copyright (C), 2011-2025, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -46,7 +46,7 @@ logger = logging.getLogger(__package__)
 
 class GrepColors:
     """
-    Define a structure for create a setting of grep color codes.
+    Settings for grep color codes.
     """
     DEFAULT_SPEC = "ms=01;31:mc=01;31:sl=:cx=:fn=35:ln=32:bn=32:se=36"
     mt = ms = mc = sl = cx = fn = ln = bn = se = ''
@@ -352,7 +352,7 @@ class MailChannel(NoTermChannel):
         if self.rawfh:
             self.rawfh.write(self.group_sep)
 
-    def send_report(self, report_parts):
+    def send_report(self, report_parts, output=sys.stdout):
         """
         Publish by sending the report by e-mail
         """
@@ -361,13 +361,13 @@ class MailChannel(NoTermChannel):
             filter(lambda x: x.fmt in self.formats, report_parts),
             key=lambda x: self.formats.index(x.fmt)
         )
-        fmtname = '{0}-{1}.{2}' if len(report_parts) > 1 else '{0}.{2}'
+        name_fmt = '{0}-{1}.{2}' if len(report_parts) > 1 else '{0}.{2}'
         root_part = MIMEMultipart('mixed')
         root_part.preamble = 'This is a multi-part message in MIME format.'
 
         logger.debug('Creating the text/"text_type" parts')
         for i, text_part in enumerate(report_parts):
-            attachment_name = fmtname.format(socket.gethostname(), i, text_part.ext)
+            attachment_name = name_fmt.format(socket.gethostname(), i, text_part.ext)
             attach_part = MIMEText(text_part.text, text_part.ext, 'utf-8')
             attach_part.add_header('Content-Disposition', 'attachment', filename=attachment_name)
             root_part.attach(attach_part)
@@ -469,7 +469,7 @@ class MailChannel(NoTermChannel):
         root_part['X-Mailer'] = '{0}-{1}'.format(package_name, __version__)
 
         mail_message(self.smtp_server, root_part.as_string(), self.email_address, self.mailto)
-        print('Mailed the report to: {0}'.format(','.join(self.mailto)))
+        print(f"Mailed the report to: {','.join(self.mailto)}", file=output)
 
 
 class FileChannel(NoTermChannel):
@@ -486,17 +486,16 @@ class FileChannel(NoTermChannel):
         self.dirmask = config.get(section, 'dirmask')
         self.filemask = config.get(section, 'filemask')
         self.pubdir = config.get(section, 'pubdir')
-        maskmsg = 'Invalid mask for {0}: {1}'
 
         try:
             self.dirname = time.strftime(self.dirmask, time.localtime())
         except ValueError:
-            raise LogRaptorConfigError(maskmsg.format('dirmask', self.dirmask))
+            raise LogRaptorConfigError(f"Invalid mask for option 'dirmask': {self.dirmask!r}")
 
         try:
             self.filename = time.strftime(self.filemask, time.localtime())
         except TypeError:
-            LogRaptorConfigError(maskmsg.format('filemask', self.filemask))
+            raise LogRaptorConfigError(f"Invalid mask for option 'filemask': {self.filemask!r}")
 
         self.rawlogs = config.getboolean(section, 'save_rawlogs')
         if self.rawlogs:
@@ -568,10 +567,10 @@ class FileChannel(NoTermChannel):
         if self.rawfh:
             self.rawfh.write(self.group_sep)
 
-    def send_report(self, report_parts):
+    def send_report(self, report_parts, output=sys.stdout):
         """
         Publish the report parts to local files. Each report part is a text
-        with a title and specific extension. For html and plaintext sending
+        with a title and specific extension. For HTML and plaintext sending
         the report part is unique, for csv send also the stats and unparsed
         string are plain text and report items are csv texts.
         """
@@ -589,16 +588,16 @@ class FileChannel(NoTermChannel):
                 logger.error('Error creating directory {!r}: {}'.format(workdir, e))
                 return
 
-        fmtname = '{0}-{1}-{2}.{3}' if len(report_parts) > 1 else '{0}-{2}.{3}'
+        name_fmt = '{0}-{1}-{2}.{3}' if len(report_parts) > 1 else '{0}-{2}.{3}'
 
         for i, text_part in enumerate(filter(lambda x: x.fmt in self.formats, report_parts)):
-            filename = fmtname.format(self.filename, i, socket.gethostname(), text_part.ext)
-            repfile = os.path.join(workdir, filename)
-            logger.info('Dumping the report part %d into %r', i, repfile)
-            fh = open(repfile, 'w')
+            filename = name_fmt.format(self.filename, i, socket.gethostname(), text_part.ext)
+            report_file = os.path.join(workdir, filename)
+            logger.info('Dumping the report part %d into %r', i, report_file)
+            fh = open(report_file, 'w')
             fh.write(text_part.text)
             fh.close()
-            print('Report part saved in: %r' % repfile)
+            print(f'Report part saved in: {report_file!r}', file=output)
 
         if self.notify:
             logger.info('Creating an email message')
@@ -606,27 +605,27 @@ class FileChannel(NoTermChannel):
             smtp_server = self.config.get('main', 'smtp_server')
             publoc = os.path.join(self.pubroot, self.dirname)
 
-            eml = MIMEText('New lograptor report is available at:\r\n{0}'.format(publoc))
-            eml['Subject'] = '{0} system events: {1} (report notification)'.format(
+            eml = MIMEText(f'New lograptor report is available at:\r\n{publoc}')
+            eml['Subject'] = '{} system events: {} (report notification)'.format(
                 socket.gethostname(), time.strftime('%c', time.localtime())
             )
             eml['Date'] = formatdate()
             eml['From'] = email_address
             eml['To'] = ', '.join(self.notify)
-            eml['X-Mailer'] = '{0}-{1}'.format(package_name, __version__)
+            eml['X-Mailer'] = f'{package_name}-{__version__}'
 
             mail_message(smtp_server, eml.as_string(), email_address, self.notify)
-            print('Notification mailed to: {0}'.format(','.join(self.notify)))
+            print(f"Notification mailed to: {','.join(self.notify)}", file=output)
 
         if self.rawlogs:
-            logfilename = '{0}.log'.format(self.filename)
-            logfile = os.path.join(workdir, '{0}.gz'.format(logfilename))
+            filename = '{0}.log'.format(self.filename)
+            logfile = os.path.join(workdir, f'{filename}.gz')
 
-            logger.info('Gzipping logs and writing them to %r', logfilename)
+            logger.info('Gzipping logs and writing them to %r', logfile)
             outfh = open(logfile, 'w+b')
-            do_chunked_gzip(self.rawfh, outfh, logfilename)
+            do_chunked_gzip(self.rawfh, outfh, filename)
             outfh.close()
-            print('Gzipped logs saved in: {0}'.format(logfile))
+            print(f'Gzipped logs saved in: {logfile}', file=output)
 
         # Purge old reports
         self.prune_old()

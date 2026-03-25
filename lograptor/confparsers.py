@@ -2,7 +2,7 @@
 This module defines classes and methods to handle lograptor configurations.
 """
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -26,8 +26,11 @@ from configparser import NoOptionError, DuplicateSectionError, RawConfigParser
 
 from .exceptions import LogRaptorNoSectionError, LogRaptorNoOptionError, FileMissingError
 
+_UNSET = object()
 
-class EnvInterpolation(object):
+
+# noinspection PyShadowingBuiltins,PyUnusedLocal,PyMethodMayBeStatic,PyPep8Naming
+class EnvInterpolation:
     _KEYCRE = re.compile(r"%\(([^)]+)\)s")
 
     def before_get(self, parser, section, option, value, defaults):
@@ -55,6 +58,7 @@ class EnvInterpolation(object):
             accum.append(string.Template(rawval).safe_substitute(parser.env))
 
 
+# noinspection PyShadowingBuiltins
 class EnvConfigParser(RawConfigParser):
     """
     Environment-based configuration parser.
@@ -72,7 +76,7 @@ class EnvConfigParser(RawConfigParser):
     :param env: Environment values passed as keyword arguments.
     """
     _DEFAULT_INTERPOLATION = EnvInterpolation()
-    optionxform = str  # Case sensitive option names
+    optionxform = str  # case-sensitive option names
 
     _DEFAULTS = {}
 
@@ -120,6 +124,7 @@ class EnvConfigParser(RawConfigParser):
                 "no configuration file in the list {} exists or is accessible!".format(filenames)
             )
 
+    # noinspection PyShadowingBuiltins
     def get(self, section, option, default_section=None, raw=False, vars=None):
         if default_section is None:
             default_section = section
@@ -147,16 +152,16 @@ class EnvConfigParser(RawConfigParser):
         if raw or value is None:
             return value
         elif used_defaults:
-            options = self.options(section)
-            return self._interpolation.before_get(self, default_section, option, value, options)
+            defaults = dict(self.__defaults[default_section])
+            return self._interpolation.before_get(self, default_section, option, value, defaults)
         else:
-            options = self.options(section)
-            return self._interpolation.before_get(self, section, option, value, options)
+            defaults = {}  # FIXME? Maybe
+            return self._interpolation.before_get(self, section, option, value, defaults)
 
-    def _get(self, section, conv, option, **kwargs):
+    def _get(self, section, conv, option, **_kwargs):
         return conv(self.get(section, option))
 
-    def getint(self, section, option, default_section=None):
+    def getint(self, section, option, *, default_section=None, **kwargs):
         try:
             return RawConfigParser.getint(self, section, option)
         except NoOptionError:
@@ -164,7 +169,7 @@ class EnvConfigParser(RawConfigParser):
                 raise
             return RawConfigParser.getint(self, default_section, option)
 
-    def getfloat(self, section, option, default_section=None) -> float:
+    def getfloat(self, section, option, *, default_section=None, **kwargs) -> float:
         try:
             return RawConfigParser.getfloat(self, section, option)
         except NoOptionError:
@@ -172,7 +177,7 @@ class EnvConfigParser(RawConfigParser):
                 raise
             return RawConfigParser.getfloat(self, default_section, option)
 
-    def getboolean(self, section, option, default_section=None):
+    def getboolean(self, section, option, *, default_section=None, **kwargs):
         try:
             return RawConfigParser.getboolean(self, section, option)
         except NoOptionError:
@@ -224,7 +229,10 @@ class EnvConfigParser(RawConfigParser):
         sections.update(self._sections)
         return list(filter(lambda x: x.startswith(prefix) and x.endswith(suffix), sections.keys()))
 
-    def items(self, section, raw=False, vars=None):
+    def items(self, section: str = _UNSET, raw: bool = False, vars: dict[str, str] | None = None):
+        if section == _UNSET:
+            return super().items(raw=raw, vars=vars)
+
         try:
             opts = self.__defaults[section].copy()
         except KeyError:
