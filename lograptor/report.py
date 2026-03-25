@@ -187,19 +187,19 @@ class ReportData(MutableMapping):
     def __len__(self):
         return len(self._data)
 
-    def __eq__(self, repitem):
+    def __eq__(self, other: 'ReportData'):
         """
         Compare two 'table' report items. When True the report items
         results are mergeable.
         """
-        if self.function != 'table' or repitem.function != 'table':
+        if self.function != 'table' or other.function != 'table':
             return False
 
-        if self.title != repitem.title:
+        if self.title != other.title:
             return False
 
         head1 = re.split(r'\s*,\s*', self.headers)
-        head2 = re.split(r'\s*,\s*', repitem.headers)
+        head2 = re.split(r'\s*,\s*', other.headers)
         if len(head1) != len(head2):
             return False
         for k in range(len(head1)):
