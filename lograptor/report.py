@@ -2,7 +2,7 @@
 This module defines classes for building the report produced by a program run.
 """
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -28,12 +28,11 @@ from collections import namedtuple, OrderedDict
 from collections.abc import MutableMapping
 from string import Template
 
-from doc.conf import html_theme
-from .info import __version__
-from .exceptions import (LogRaptorNoOptionError, LogRaptorNoSectionError, LogRaptorOptionError,
+from lograptor.info import __version__
+from lograptor.exceptions import (LogRaptorNoOptionError, LogRaptorNoSectionError, LogRaptorOptionError,
                          RuleMissingError, LogRaptorConfigError)
-from . import tui
-from .utils import get_fmt_results, html_safe, get_value_unit, normalize_path
+from lograptor import tui
+from lograptor.utils import get_fmt_results, html_safe, get_value_unit, normalize_path
 
 
 logger = logging.getLogger(__package__)
@@ -284,7 +283,7 @@ class ReportData(MutableMapping):
 
     def make_html(self):
         """
-        Make the text representation of a report element as html.
+        Make the text representation of a report element as HTML.
         """
         html = None
         if self.function == 'total':
@@ -370,9 +369,11 @@ class ReportData(MutableMapping):
         """
         import csv
         from io import StringIO
+        rows: list[list[str] | tuple[str, ...]]
 
         out = StringIO()
-        writer = csv.writer(out, delimiter='|', lineterminator='\n', quoting=csv.QUOTE_MINIMAL)
+        kwargs = dict(delimiter='|', lineterminator='\n', quoting=csv.QUOTE_MINIMAL)
+        writer = csv.writer(out, **kwargs)
 
         if self.function == 'total':
             writer.writerows(self.results)
@@ -643,7 +644,7 @@ class Report(object):
 
     def make_html_page(self, valumap):
         """
-        Builds the report as html page, using the template page from file.
+        Builds the report as HTML page, using the template page from file.
         """
         logger.info('Making an html report using template %r', self.html_template)
         fh = open(self.html_template)

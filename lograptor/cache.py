@@ -59,7 +59,7 @@ class LookupCache:
             mapexp=mapexp,
             mapmax=10 ** mapexp,
             base_gid_pattern=re.compile('^([a-zA-Z_]+)'),
-            ip_pattern=re.compile(f'({ipv4_pattern}|{ipv6_pattern}'),
+            ip_pattern=re.compile(f'({ipv4_pattern}|{ipv6_pattern})'),
             ip_lookup=args.ip_lookup,
             uid_lookup=args.uid_lookup,
             anonymize=args.anonymize,

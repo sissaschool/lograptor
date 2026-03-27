@@ -2,7 +2,7 @@
 This module defines classes and methods for parsing log headers.
 """
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -21,14 +21,25 @@ This module defines classes and methods for parsing log headers.
 #
 import re
 from collections import namedtuple
-from .exceptions import LogRaptorConfigError
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
+
+from lograptor.exceptions import LogRaptorConfigError
+
+if TYPE_CHECKING:
+    from lograptor.application import AppRule
 
 
-class LogParser(object):
+class LogParser:
     """
     Base class for building parsers for logs.
+
+    :param pattern: Pattern to match logs, optional in subclasses.
+    :param app: optional related AppRule to use the parser only with a specific app.
     """
-    def __init__(self, pattern, app=None):
+    __slots__ = ('parser', 'app', 'fields', 'LogData')
+
+    def __init__(self, pattern: str, app: 'AppRule | None' = None):
         """
         Compile the pattern and record group fields. Check if pattern
         include mandatory named groups.
@@ -61,8 +72,8 @@ class ParserRFC3164(LogParser):
                r'(?P<host>\S{1,255})\s+'
                r'(?P<message>(?P<apptag>[^ \[\(\:]{1,32})(?:[\[\(\:])?.*))')
 
-    def __init__(self, pattern=None):
-        LogParser.__init__(self, pattern or self.PATTERN)
+    def __init__(self, pattern: str | None = None, app: 'AppRule | None' = None):
+        super().__init__(pattern or self.PATTERN, app)
         rfc3164_fields = tuple([
             'pri', 'month', 'day', 'ltime', 'repeat', 'host', 'apptag', 'message'
         ])
@@ -87,8 +98,8 @@ class ParserRFC5424(LogParser):
     # The RFC5424 no-value
     NILVALUE = '-'
 
-    def __init__(self, pattern=None):
-        LogParser.__init__(self, pattern or self.PATTERN)
+    def __init__(self, pattern: str | None = None, app: 'AppRule | None' = None):
+        super().__init__(pattern or self.PATTERN, app)
         rfc5424_fields = tuple([
             'pri', 'ver', 'year', 'month', 'day', 'ltime', 'secfrac', 'offset',
             'host', 'apptag', 'procid', 'msgid', 'message'
@@ -99,16 +110,19 @@ class ParserRFC5424(LogParser):
             raise LogRaptorConfigError(msg)
 
 
-class CycleParsers(object):
+class CycleParsers:
     """
     Class that define an iterator for a set of parsers. The additional
     method "detect" permits to find the first parser suitable for the
     argument or return None in alternative.
     """
-    PARSERS = [ParserRFC3164(), ParserRFC5424()]
+    __slots__ = ('parsers', 'index', 'num_parsers')
 
-    def __init__(self, parsers=None):
-        self.parsers = parsers or self.PARSERS
+    def __init__(self, parsers: Sequence[LogParser] | None = None):
+        if parsers is None:
+            parsers = (ParserRFC3164(), ParserRFC5424())
+
+        self.parsers = parsers
         self.index = 0
         self.num_parsers = len(self.parsers)
 

@@ -24,7 +24,9 @@ import socket
 import re
 from configparser import NoOptionError, DuplicateSectionError, RawConfigParser
 
-from .exceptions import LogRaptorNoSectionError, LogRaptorNoOptionError, FileMissingError
+from lograptor.exceptions import (
+    LogRaptorNoSectionError, LogRaptorNoOptionError, FileMissingError
+)
 
 _UNSET = object()
 

@@ -25,7 +25,7 @@ from functools import wraps
 from typing import IO, Optional
 from urllib.request import urlopen
 
-from .tui import ProgressBar
+from lograptor.tui import ProgressBar
 
 GZIP_CHUNK_SIZE = 8192
 
@@ -72,7 +72,7 @@ def mail_message(smtp_server: str, message: str, from_address: str, rcpt_address
     Send an e-mail message using the smtp protocol.
 
     :param smtp_server: a full path to an external command \
-    (e.g. "/usr/sbin/sendmail -t") or an address of a SMTP server.
+    (e.g. "/usr/sbin/sendmail -t") or an address of an SMTP server.
     :param message: the message to send, complete of headers.
     :param from_address: the sender e-mail address.
     :param rcpt_addresses: a list with recipient e-mail addresses.
@@ -113,7 +113,7 @@ def get_value_unit(value: int | float, unit: str = '', prefix: str = 'T') -> tup
 
     :param value: a numerical value.
     :param unit: a string containing the measure unit and maybe a metric prefix. \
-    To use a base of 1024 provide an IEC metric prefix (eg. TiB instead of TB).
+    To use a base of 1024 provide an IEC metric prefix (e.g. TiB instead of TB).
     :param prefix: the target metric prefix, for default is 'T' (Tera).
     """
     if not unit:

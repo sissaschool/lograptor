@@ -3,7 +3,7 @@
 Command line interface of the lograptor package.
 """
 #
-# Copyright (C), 2011-2025, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -25,13 +25,13 @@ import argparse
 import time
 import re
 
-from .core import LogRaptor
-from .info import __version__, __description__
-from .exceptions import (
+from lograptor.core import LogRaptor
+from lograptor.info import __version__, __description__
+from lograptor.exceptions import (
     LogRaptorConfigError, LogRaptorOptionError, LogFormatError, FileMissingError,
     FileAccessError, LogRaptorArgumentError
 )
-from .timedate import get_datetime_interval, parse_date_period, parse_last_period, TimeRange
+from lograptor.timedate import get_datetime_interval, parse_date_period, parse_last_period, TimeRange
 
 
 # noinspection PyShadowingBuiltins
@@ -73,7 +73,7 @@ def positive_integer(arg):
         return value
 
 
-def filter_spec(arg):
+def filter_spec(arg: str) -> dict[str, str]:
     _filter = dict()
     for flt in arg.split(','):
         try:
@@ -94,7 +94,7 @@ def filter_spec(arg):
     return _filter
 
 
-def comma_separated_string(arg):
+def comma_separated_string(arg: str) -> list[str]:
     return [x.strip() for x in arg.split(',')]
 
 

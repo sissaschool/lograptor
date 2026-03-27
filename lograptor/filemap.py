@@ -2,7 +2,7 @@
 This module defines classes to handle iteration over log files.
 """
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -26,54 +26,63 @@ import glob
 import os
 import platform
 from datetime import datetime
-from collections import OrderedDict
-from collections.abc import MutableMapping
+from collections.abc import MutableMapping, Iterable
+from functools import partial
+from typing import Any
 
-from .timedate import strftimegen
+from lograptor.timedate import generate_datetime_formats
 
 logger = logging.getLogger(__name__)
 
 
-class GlobDict(MutableMapping):
+class GlobDict(MutableMapping[str, Any]):
     """
     A dictionary that uses glob patterns as keys. Includes two additional methods
     glob and iglob to iterate once over dictionary glob patterns, returning couples
     with a path and a list of values.
     """
-    def __init__(self, recursive=False, follow_symlinks=False, include=None,
-                 exclude=None, exclude_dir=None, dict_class=dict):
-        self._data = dict_class()
-        self._pathnames = []
+    __slots__ = ('_data', '_paths', 'recursive', 'follow_symlinks',
+                 'include', 'exclude', 'exclude_dir')
+
+    def __init__(self,
+                 recursive: bool = False,
+                 follow_symlinks: bool = False,
+                 include: list[str] | None = None,
+                 exclude: list[str] | None = None,
+                 exclude_dir: list[str] | None = None):
+
+        self._data = {}
+        self._paths = []
         self.recursive = recursive
         self.follow_symlinks = follow_symlinks
         self.include = include or []
         self.exclude = exclude or []
         self.exclude_dir = exclude_dir or []
 
-    def __getitem__(self, path):
+    def __getitem__(self, path: str):
         if not isinstance(path, str):
             raise TypeError("path must be a string")
         return self._data[path]
 
-    def __setitem__(self, path, value):
+    def __setitem__(self, path: str, value):
         if not isinstance(path, str):
             raise TypeError("path must be a string")
         if path not in self._data:
             # Update _globs paths
             items = set()
-            for pathname in self._pathnames:
+            for pathname in self._paths:
                 if fnmatch.fnmatch(path, pathname):
                     break
                 if fnmatch.fnmatch(pathname, path):
                     items.add(pathname)
             else:
-                self._pathnames.append(path)
+                self._paths.append(path)
             if items:
-                self._pathnames = [i for i in self._pathnames if i not in items]
+                self._paths = [i for i in self._paths if i not in items]
         self._data[path] = value
 
-    def __delitem__(self, path):
-        for pathname in self._pathnames:
+    def __delitem__(self, path: str):
+        for pathname in self._paths:
             if fnmatch.fnmatch(path, pathname):
                 break
         del self._data[path]
@@ -106,25 +115,26 @@ class GlobDict(MutableMapping):
     def glob(self, path):
         return list(self.iglob(path))
 
-    def iter_paths(self, pathnames=None, mapfunc=None):
+    def iter_paths(self, paths: Iterable[str] | None = None,
+                   mapper=None):
         """
-        Special iteration on paths. Yields couples of path and items. If a expanded path
+        Special iteration on paths. Yields couples of path and items. If an expanded path
         doesn't match with any files a couple with path and `None` is returned.
 
-        :param pathnames: Iterable with a set of pathnames. If is `None` uses the all \
-        the stored pathnames.
-        :param mapfunc: A mapping function for building the effective path from various \
-        wildcards (eg. time spec wildcards).
+        :param paths: Iterable with a set of filepaths. If is `None` uses the all \
+        the stored paths.
+        :param mapper: A mapping function for building the effective path from various \
+        wildcards (e.g. time spec wildcards).
         :return: Yields 2-tuples.
         """
-        pathnames = pathnames or self._pathnames
-        if self.recursive and not pathnames:
-            pathnames = ['.']
-        elif not pathnames:
+        paths = paths or self._paths
+        if self.recursive and not paths:
+            paths = ['.']
+        elif not paths:
             yield []
 
-        if mapfunc is not None:
-            for mapped_paths in map(mapfunc, pathnames):
+        if mapper is not None:
+            for mapped_paths in map(mapper, paths):
                 for path in mapped_paths:
                     if self.recursive and (os.path.isdir(path) or os.path.islink(path)):
                         for t in os.walk(path, followlinks=self.follow_symlinks):
@@ -138,7 +148,7 @@ class GlobDict(MutableMapping):
                         if empty_glob:
                             yield path, None
         else:
-            for path in pathnames:
+            for path in paths:
                 if self.recursive and (os.path.isdir(path) or os.path.islink(path)):
                     for t in os.walk(path, followlinks=self.follow_symlinks):
                         for filename, values in self.iglob(os.path.join(t[0], '*')):
@@ -152,12 +162,18 @@ class GlobDict(MutableMapping):
                         yield path, None
 
 
-class FileMap(object):
-    """
-    A class for building collections of files and for iterating over them.
-    """
-    def __init__(self, time_period=None, recursive=False, follow_symlinks=False, include=None,
-                 exclude=None, exclude_dir=None):
+class FileMap:
+    """A class for building collections of files and iterating over them."""
+
+    __slots__ = ('_filemap', 'start_dt', 'end_dt')
+
+    def __init__(self,
+                 time_period: tuple[datetime | None, datetime | None] | None =None,
+                 recursive: bool = False,
+                 follow_symlinks: bool = False,
+                 include: list[str] | None = None,
+                 exclude: list[str] | None = None,
+                 exclude_dir: list[str] | None = None):
         """
         :param time_period: Time period for filtering the iteration over files. \
         When is `(None, None)` no filter is applied to selected files.
@@ -165,9 +181,13 @@ class FileMap(object):
         start_dt, end_dt = time_period or (None, None)
         if start_dt is not None and end_dt is not None and start_dt > end_dt:
             ValueError("start datetime must not be after the end datetime")
-        self._filemap = GlobDict(recursive=recursive, follow_symlinks=follow_symlinks,
-                                 include=include, exclude=exclude, exclude_dir=exclude_dir,
-                                 dict_class=OrderedDict)
+        self._filemap = GlobDict(
+            recursive=recursive,
+            follow_symlinks=follow_symlinks,
+            include=include,
+            exclude=exclude,
+            exclude_dir=exclude_dir
+        )
         self.start_dt = start_dt
         self.end_dt = end_dt
 
@@ -179,8 +199,8 @@ class FileMap(object):
             for path, items in self._filemap.iter_paths():
                 yield path, items
         else:
-            for path, items in self._filemap.iter_paths(
-                    mapfunc=strftimegen(self.start_dt, self.end_dt)):
+            func = partial(generate_datetime_formats, start_dt=self.start_dt, end_dt=self.end_dt)
+            for path, items in self._filemap.iter_paths(mapper=func):
                 if items is None:
                     yield path, items
                 elif self.check_stat(path):
@@ -189,7 +209,7 @@ class FileMap(object):
     def __len__(self):
         return len(list(self.__iter__()))
 
-    def check_stat(self, path):
+    def check_stat(self, path: str):
         """
         Checks logfile stat information for excluding files not in datetime
         period. On Linux it's possible to checks only modification time,
@@ -198,12 +218,12 @@ class FileMap(object):
         about file creation date and times are available, so is possible to
         exclude too newer files.
         """
-        statinfo = os.stat(path)
-        st_mtime = datetime.fromtimestamp(statinfo.st_mtime)
+        st_info = os.stat(path)
+        st_mtime = datetime.fromtimestamp(st_info.st_mtime)
         if platform.system() == 'Linux':
             check = st_mtime >= self.start_dt
         else:
-            st_ctime = datetime.fromtimestamp(statinfo.st_ctime)
+            st_ctime = datetime.fromtimestamp(st_info.st_ctime)
             check = st_mtime >= self.start_dt and st_ctime <= self.end_dt
 
         if not check:

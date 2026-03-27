@@ -35,13 +35,13 @@ class TestConfigParser(object):
     def check_option(lograptor_config, section, default_section, options):
         for opt, value in options.items():
             if isinstance(value, bool):
-                config_value = lograptor_config.getboolean(section, opt, default_section)
+                config_value = lograptor_config.getboolean(section, opt, default_section=default_section)
             elif isinstance(value, int):
-                config_value = lograptor_config.getint(section, opt, default_section)
+                config_value = lograptor_config.getint(section, opt, default_section=default_section)
             elif isinstance(value, float):
-                config_value = lograptor_config.getfloat(section, opt, default_section)
+                config_value = lograptor_config.getfloat(section, opt, default_section=default_section)
             else:
-                config_value = lograptor_config.get(section, opt, default_section)
+                config_value = lograptor_config.get(section, opt, default_section=default_section)
             assert config_value == value, \
                 'config option %r of section %r does not match.' % (opt, section)
 

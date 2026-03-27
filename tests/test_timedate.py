@@ -1,5 +1,5 @@
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -18,9 +18,10 @@
 #
 import pytest
 import datetime
+from functools import partial
 
 from lograptor.timedate import parse_last_period, get_datetime_interval, \
-    parse_date_period, TimeRange, strftimegen
+    parse_date_period, TimeRange, generate_datetime_formats
 
 
 class TestTimeDateHelpers(object):
@@ -119,12 +120,13 @@ class TestTimeDateHelpers(object):
         assert time_range.between('10:59') is True
         assert time_range.between('09:59') is False
 
-    def test_strftimegen(self):
+    def test_generate_datetime_formats(self):
         dt1 = datetime.datetime(2020, 8, 15, 23, 59, 59)
         dt2 = datetime.datetime(2020, 8, 18)
 
         with pytest.raises(ValueError):
-            strftimegen(dt2, dt1)
+            list(generate_datetime_formats('%d', start_dt=dt2, end_dt=dt1))
 
-        assert list(strftimegen(dt1, dt2)('%d')) == ['15', '16', '17']
-        assert list(strftimegen(dt1, dt2)('%m-%d')) == ['08-15', '08-16', '08-17']
+        func = partial(generate_datetime_formats, start_dt=dt1, end_dt=dt2)
+        assert list(func('%d')) == ['15', '16', '17']
+        assert list(func('%m-%d')) == ['08-15', '08-16', '08-17']

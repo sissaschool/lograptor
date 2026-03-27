@@ -22,7 +22,7 @@ and date values for lograptor package.
 #
 import datetime
 import re
-from collections.abc import Iterator, Callable
+from collections.abc import Iterator
 
 DATE_FORMATS = (
     ('%%', re.compile(r"(%%)")),        # a literal %
@@ -180,29 +180,27 @@ class TimeRange:
             (hour != self.h2 or minute <= self.m2)
 
 
-def get_stride_generator(start_dt: datetime.datetime, end_dt: datetime.datetime) \
-        -> Callable[[str], Iterator[str]]:
+def generate_datetime_formats(date_pattern: str,
+                              start_dt: datetime.datetime,
+                              end_dt: datetime.datetime) -> Iterator[str]:
     """
     Return a generator function for datetime format strings. The generator produces
-    a day-by-day sequence starting from the fi rst datetime to the second datetime
+    a day-by-day sequence starting from the first datetime to the second datetime
     argument.
     """
     if start_dt > end_dt:
         message = "the start datetime is after the end datetime: ({!r}, {!r})"
         raise ValueError(message.format(start_dt, end_dt))
 
-    def iter_ftime(date_pattern):
-        date_subs = [i for i in DATE_FORMATS if i[1].search(date_pattern) is not None]
+    date_subs = [i for i in DATE_FORMATS if i[1].search(date_pattern) is not None]
 
-        if not date_subs:
-            yield date_pattern
-        else:
-            dt = start_dt
-            while end_dt >= dt:
-                date_path = date_pattern
-                for item in date_subs:
-                    date_path = item[1].sub(dt.strftime(item[0]), date_path)
-                yield date_path
-                dt = dt + datetime.timedelta(days=1)
-
-    return iter_ftime
+    if not date_subs:
+        yield date_pattern
+    else:
+        dt = start_dt
+        while end_dt >= dt:
+            date_path = date_pattern
+            for item in date_subs:
+                date_path = item[1].sub(dt.strftime(item[0]), date_path)
+            yield date_path
+            dt = dt + datetime.timedelta(days=1)

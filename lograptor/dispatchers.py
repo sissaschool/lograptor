@@ -2,7 +2,7 @@
 This module defines classes to handle events dispatching for lograptor.
 """
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -19,49 +19,65 @@ This module defines classes to handle events dispatching for lograptor.
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from collections import OrderedDict, deque
-from itertools import chain, repeat
 import abc
+from collections import deque
+from collections.abc import Sequence, Callable
+from functools import partial
+from itertools import chain, repeat
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from lograptor.channels import AbstractChannel
 
 
 # noinspection PyUnusedLocal
-def dummy(*args, **kwargs):
-    return
+def no_dispatch(*args, **kwargs):
+    """Do nothing, used to set dispatchers with no channels."""
 
 
-def create_dispatcher(functions):
-
-    def dispatch(*args, **kwargs):
-        for _func in functions:
-            _func(*args, **kwargs)
-
-    if not functions:
-        return dummy
-    elif len(functions) == 1:
-        return functions[0]
-    else:
-        return dispatch
+def dispatch(*args, functions: Sequence[Callable[[...], Any]], **kwargs):
+    """Dispatch arguments to a sequence of functions."""
+    for func in functions:
+        func(*args, **kwargs)
 
 
-class AbstractDispatcher(object):
+_DISPATCHERS = (
+    'open',
+    'close',
+    'send_message',
+    'send_selected',
+    'send_context',
+    'send_separator',
+    'send_report'
+)
 
-    __metaclass__ = abc.ABCMeta
 
-    def __init__(self, channels):
-        self.channels = tuple(channels)
+class AbstractDispatcher(metaclass=abc.ABCMeta):
+    """Abstract base class to handle events dispatching."""
+
+    channels: tuple['AbstractChannel', ...]
 
     def __setattr__(self, name, value):
         if name == 'channels':
             if not isinstance(value, tuple):
                 value = tuple(value)
-            self.open = create_dispatcher([channel.open for channel in value])
-            self.close = create_dispatcher([channel.close for channel in value])
-            self.send_message = create_dispatcher([channel.send_message for channel in value])
-            self.send_selected = create_dispatcher([channel.send_selected for channel in value])
-            self.send_context = create_dispatcher([channel.send_context for channel in value])
-            send_separator = create_dispatcher([channel.send_separator for channel in value])
-            self.send_separator = chain([lambda *args: None], repeat(send_separator))
-            self.send_report = create_dispatcher([channel.send_report for channel in value])
+
+            if not value:
+                for attr in _DISPATCHERS:
+                    setattr(self, attr, no_dispatch)
+            elif len(value) == 1:
+                for attr in _DISPATCHERS:
+                    setattr(self, attr, getattr(value[0], attr))
+            else:
+                self.open = partial(dispatch, functions=[ch.open for ch in value])
+                self.close = partial(dispatch, functions=[ch.close for ch in value])
+                self.send_message = partial(dispatch, functions=[ch.send_message for ch in value])
+                self.send_selected = partial(dispatch, functions=[ch.send_selected for ch in value])
+                self.send_context = partial(dispatch, functions=[ch.send_context for ch in value])
+                send_separator = partial(dispatch, functions=[ch.send_separator for ch in value])
+                self.send_separator = chain([lambda *args: None], repeat(send_separator))
+                self.send_report = partial(dispatch, functions=[ch.send_report for ch in value])
+
         super(AbstractDispatcher, self).__setattr__(name, value)
 
     def dispatch(self, method, *args, **kwargs):
@@ -83,8 +99,10 @@ class AbstractDispatcher(object):
 
 class UnbufferedDispatcher(AbstractDispatcher):
 
-    def __init__(self, channels):
-        super(UnbufferedDispatcher, self).__init__(channels)
+    __slots__ = _DISPATCHERS + ('channels',)
+
+    def __init__(self, channels: Sequence['AbstractChannel']):
+        self.channels = tuple(channels)
 
     def __setattr__(self, name, value):
         super(UnbufferedDispatcher, self).__setattr__(name, value)
@@ -103,9 +121,21 @@ class UnbufferedDispatcher(AbstractDispatcher):
 
 class LineBufferDispatcher(deque, AbstractDispatcher):
 
-    def __init__(self, channels, before_context, after_context):
+    __slots__ = _DISPATCHERS + (
+        'channels',
+        'before_context',
+        'after_context',
+        'last_line',
+        'context_until',
+    )
+
+    def __init__(self,
+                 channels: Sequence['AbstractChannel'],
+                 before_context: int = 0,
+                 after_context: int = 0):
+
         super(LineBufferDispatcher, self).__init__(maxlen=before_context)
-        AbstractDispatcher.__init__(self, channels)
+        self.channels = tuple(channels)
         self.before_context = before_context
         self.after_context = after_context
         self.last_line = 0
@@ -139,17 +169,32 @@ class LineBufferDispatcher(deque, AbstractDispatcher):
         self.clear()
 
 
-class ThreadedDispatcher(OrderedDict, AbstractDispatcher):
+class ThreadedDispatcher(dict, AbstractDispatcher):
     """
     A cache for multiple threads.
     """
-    def __init__(self, channels, before_context, after_context, max_threads=1000):
+    __slots__ = _DISPATCHERS + (
+        'channels',
+        'before_context',
+        'after_context',
+        'context',
+        'max_threads',
+    )
+
+    def __init__(self,
+                 channels: Sequence['AbstractChannel'],
+                 before_context: int = 0,
+                 after_context: int = 0,
+                 max_threads: int = 1000):
+
         super(ThreadedDispatcher, self).__init__()
-        AbstractDispatcher.__init__(self, channels)
+        self.channels = tuple(channels)
+
         if before_context <= 0:
             raise ValueError("before_context must be a positive integer")
         if after_context <= 0:
             raise ValueError("after_context must be a positive integer")
+
         self.before_context = before_context
         self.after_context = after_context
         self.context = before_context + after_context + 1

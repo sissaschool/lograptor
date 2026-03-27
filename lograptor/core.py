@@ -54,7 +54,7 @@ except ValueError:
 STANDARD_ENCODINGS = ['utf_8', 'latin1', 'latin2']
 
 
-class LogRaptor(object):
+class LogRaptor:
     """
     This is the core class of the lograptor package.
 

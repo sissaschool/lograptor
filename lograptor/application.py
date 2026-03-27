@@ -2,7 +2,7 @@
 Module to manage lograptor applications
 """
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -25,16 +25,16 @@ import string
 import configparser
 from collections import Counter
 
-from .exceptions import LogRaptorConfigError, RuleMissingError, LogRaptorOptionError
-from .confparsers import AppConfig
-from .report import ReportData
-from .utils import field_multisub, exact_sub
+from lograptor.exceptions import LogRaptorConfigError, RuleMissingError, LogRaptorOptionError
+from lograptor.confparsers import AppConfig
+from lograptor.report import ReportData
+from lograptor.utils import field_multisub, exact_sub
 
 
 logger = logging.getLogger(__package__)
 
 
-class AppRule(object):
+class AppRule:
     """
     Class to manage application rules. The rules are used to
     parse the log lines and to store matching results.
@@ -50,8 +50,13 @@ class AppRule(object):
         - used_by_report : True if is used by a report rule
         - key_gids : map from gid to result key tuple index
     """
+    __slots__ = ('name', 'pattern', 'app', 'key_gids', 'results', 'filter_keys',
+                 'full_match', 'used_by_report', '_last_idx')
 
-    def __init__(self, name, pattern, app, filter_keys=None):
+    def __init__(self, name: str,
+                 pattern: str,
+                 app: 'AppLogParser',
+                 filter_keys: list[str] | None = None):
         """
         Initialize AppRule.
 
@@ -198,9 +203,9 @@ class AppRule(object):
         """
         Return the list of events, with a specific order and filtered by a condition.
         An element of the list is a tuple with three component. The first is the main
-        attribute (first field). The second the second field/label, usually a string
-        that identify the service. The third is a dictionary with a key-tuple composed
-        by all other fields and values indicating the number of events associated.
+        attribute (first field). The second field/label, usually a string that identify
+        the service. The third is a dictionary with a key-tuple composed by all other
+        fields and values indicating the number of events associated.
         """
 
         def insert_row():
@@ -278,7 +283,7 @@ class AppRule(object):
         return reslist
 
 
-class AppLogParser(object):
+class AppLogParser:
     """
     Class to manage application log rules and results
     """
@@ -407,7 +412,7 @@ class AppLogParser(object):
             Element #1 (has_full_match): True if a rule match and is a filter or the
                 app has not filters; False if a rule match but is not a filter;
                 None otherwise;
-            Element #2 (app_thread): Thread value if a rule match and it has a "thread"
+            Element #2 (app_thread): Thread value if a rule match, and it has a "thread"
                 group, None otherwise;
             Element #3 (output_data): Mapping dictionary if a rule match and a map
                 of output is requested (--anonymize/--ip/--uid options).

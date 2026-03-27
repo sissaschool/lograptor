@@ -35,10 +35,10 @@ from email.mime.multipart import MIMEMultipart
 from email.utils import formatdate, make_msgid
 from io import BytesIO
 
-from .exceptions import LogRaptorConfigError
-from .info import __version__
 from . import __name__ as package_name
-from .utils import mail_message, do_chunked_gzip
+from lograptor.exceptions import LogRaptorConfigError
+from lograptor.info import __version__
+from lograptor.utils import mail_message, do_chunked_gzip
 
 
 logger = logging.getLogger(__package__)
@@ -307,14 +307,14 @@ class MailChannel(NoTermChannel):
         self.mailto = list(set(re.split(r'\s*, \s*', config.get('%s_channel' % name, 'mailto'))))
 
         # if self.args.report is not None and self.report.need_rawlogs():
-        self.rawlogs = config.getboolean(section, 'include_rawlogs', 'mail_channel')
+        self.rawlogs = config.getboolean(section, 'include_rawlogs', default_section='mail_channel')
         if self.rawlogs:
             self.set_tempdir()
             self.rawlogs_limit = config.getint('%s_channel' % name, 'rawlogs_limit') * 1024
         else:
             self.rawlogs_limit = 0
 
-        self.gpg_encrypt = config.getboolean(section, 'gpg_encrypt', 'mail_channel')
+        self.gpg_encrypt = config.getboolean(section, 'gpg_encrypt', default_section='mail_channel')
         logger.debug('recipients = %r', self.mailto)
         logger.debug('rawlogs = %r', self.rawlogs)
         logger.debug('rawlogs_limit = %r', self.rawlogs_limit)
