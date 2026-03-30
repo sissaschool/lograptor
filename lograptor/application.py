@@ -23,11 +23,15 @@ import logging
 import re
 import string
 import configparser
+from argparse import Namespace
 from collections import Counter
+from functools import cached_property
 
+from lograptor.logparsers import LogData
+from lograptor.cache import LookupCache
 from lograptor.exceptions import LogRaptorConfigError, RuleMissingError, LogRaptorOptionError
 from lograptor.confparsers import AppConfig
-from lograptor.report import ReportData
+from lograptor.report import Report, ReportData
 from lograptor.utils import field_multisub, exact_sub
 
 
@@ -52,6 +56,8 @@ class AppRule:
     """
     __slots__ = ('name', 'pattern', 'app', 'key_gids', 'results', 'filter_keys',
                  'full_match', 'used_by_report', '_last_idx')
+
+    key_gids: list[str] | tuple[str, ...]
 
     def __init__(self, name: str,
                  pattern: str,
@@ -93,7 +99,7 @@ class AppRule:
     def __repr__(self):
         return "%s(name=%r, app=%r)" % (self.__class__.__name__, self.name, self.app.name)
 
-    def add_result(self, values):
+    def add_result(self, values: dict[str, str]):
         """
         Add a tuple or increment the value of an existing one
         in the rule results dictionary.
@@ -101,14 +107,14 @@ class AppRule:
         self._last_idx = tuple(values[gid] for gid in self.key_gids)
         self.results[self._last_idx] += 1
 
-    def increase_last(self, k):
-        """
-        Increase the last result by k.
-        """
+    def increase_last(self, n: int):
+        """Increase the last result by a positive number."""
+        if not isinstance(n, int) or n < 0:
+            raise TypeError("argument must be a non-negative integer")
         if self._last_idx is not None:
-            self.results[self._last_idx] += k
+            self.results[self._last_idx] += n
 
-    def total_events(self, condition, value_field=None):
+    def total_events(self, condition: str, value_field: str | None = None) -> int:
         """
         Returns total number of events in the rule's result set. The *condition* selects
         the events to count. If also a *value field* is provided the function computes
@@ -141,7 +147,8 @@ class AppRule:
                     tot += results[key] * int(key[val])
         return tot
 
-    def top_events(self, num, value_field, usemax, gid):
+    def top_events(self, num: int, value_field: str, usemax: bool, gid: str) \
+            -> list[list[int | list[str]] | None]:
         """
         Returns a list with the top *num* list of events. Each element
         contains a value, indicating the number of events, and a list of
@@ -169,7 +176,7 @@ class AppRule:
             return []
 
         results = self.results
-        top = [None] * num
+        top: list[list[int | list[str]] | None] = [None] * num
         pos = self.key_gids.index(gid)
         val = None
 
@@ -221,7 +228,7 @@ class AppRule:
                     else:
                         row[n] = tabkey[j]
                     j += 1
-            reslist.append(row)
+            result_list.append(row)
 
         if not self.results:
             return []
@@ -249,11 +256,11 @@ class AppRule:
                 row_template.append(None)
 
         # Set the processing table and reduced key length
-        keylen = len(pos) - (len(fields) - cols) - 1
-        tabvalues = dict()
+        keylen: int = len(pos) - (len(fields) - cols) - 1
+        tabvalues = {}
         tabkey = None
 
-        reslist = []
+        result_list = []
         for key in sorted(results, key=lambda x: x[pos[0]]):
             # Skip results that don't satisfy the condition
             if has_cond:
@@ -280,14 +287,23 @@ class AppRule:
 
         if tabvalues:
             insert_row()
-        return reslist
+        return result_list
 
 
 class AppLogParser:
     """
-    Class to manage application log rules and results
+    Class for parsing application log rules and results.
     """
-    def __init__(self, name, cfgfile, args, logdir, fields, name_cache=None, report=None):
+    __slots__ = ('__dict__', 'name', 'name_cache', '_report', '_thread', 'matches',
+                 'unparsed', '_last_rule', '_last_idx', 'rules', 'has_filters')
+
+    def __init__(self, name: str,
+                 cfgfile: str,
+                 args: Namespace,
+                 logdir: str,
+                 fields: dict[str, str],
+                 name_cache: LookupCache | None = None,
+                 report: Report | None = None):
         """
         :param name: application name
         :param cfgfile: application config file
@@ -316,43 +332,61 @@ class AppLogParser:
 
         self.config = AppConfig(cfgfiles=cfgfile, appname=name, logdir=logdir)
 
-        self.description = self.config.get('main', 'description')
-        self.tags = list(set(re.split(r'\s*,\s*', self.config.get('main', 'tags'))))
-        self._files = list(set(re.split(r'\s*,\s*', self.config.get('main', 'files'))))
-        self.enabled = self.config.getboolean('main', 'enabled')
-        self.priority = self.config.getint('main', 'priority')
-        self.files = field_multisub(self._files, 'host', args.hosts or ['*'])
-
-        logger.debug('app %r run tags: %r', name, self.tags)
-        logger.debug('app %r run files: %r', name, self.files)
-        logger.debug('app %r: enabled=%r, priority=%s', name, self.enabled, self.priority)
+        if logger.level <= logging.DEBUG:
+            logger.debug('app %r run tags: %r', name, self.tags)
+            logger.debug('app %r run files: %r', name, self.files)
+            logger.debug('app %r: enabled=%r, priority=%s', name, self.enabled, self.priority)
 
         self.rules = self.parse_rules()
-
-        if self._report:
-            subreports = [sr.name for sr in self._report.subreports]
-            self.report_data = [e for e in self.get_report_data() if e.subreport in subreports]
 
         self.has_filters = any([rule.filter_keys for rule in self.rules])
 
         if self.has_filters:
             # If the app has filters, reorder rules putting the filters first.
             self.rules = sorted(self.rules, key=lambda x: x.filter_keys)
-            logger.debug('filter rules of app %r: %d', name, len(self.filters))
-            logger.debug('other rules of app %r: %d', name, len(self.rules) - len(self.filters))
+            if logger.level <= logging.DEBUG:
+                logger.debug('filter rules of app %r: %d', name, len(self.filters))
+                logger.debug('other rules of app %r: %d', name, len(self.rules) - len(self.filters))
         else:
             for rule in self.rules:
                 rule.full_match = True
+
         logger.info('initialized app %r with %d pattern rules', name, len(self.rules))
 
     def __repr__(self):
         return "%s(name=%r)" % (self.__class__.__name__, self.name)
 
-    @property
-    def filters(self):
+    @cached_property
+    def description(self) -> str:
+        return self.config.get('main', 'description')
+
+    @cached_property
+    def tags(self) -> list[str]:
+        return list(set(re.split(r'\s*,\s*', self.config.get('main', 'tags'))))
+
+    @cached_property
+    def enabled(self) -> bool:
+        return self.config.getboolean('main', 'enabled')
+
+    @cached_property
+    def priority(self) -> int:
+        return self.config.getint('main', 'priority')
+
+    @cached_property
+    def files(self) -> list[str]:
+        files = list(set(re.split(r'\s*,\s*', self.config.get('main', 'files'))))
+        return field_multisub(files, 'host', self.args.hosts or ['*'])
+
+    @cached_property
+    def filters(self) -> list[AppRule]:
         return [rule for rule in self.rules if rule.filter_keys]
 
-    def get_report_data(self):
+    @cached_property
+    def report_data(self) -> list[ReportData]:
+        if not isinstance(self._report, Report):
+            return []
+
+        subreports = [sr.name for sr in self._report.subreports]
         report_data = []
         for section in filter(lambda x: x not in ['main', 'rules'], self.config.sections()):
             options = self.config.items(section)
@@ -364,9 +398,10 @@ class AppLogParser:
                 logger.error('skip report data %r for app %r: %s', section, self.name, err)
             else:
                 report_data.append(data_item)
-        return report_data
 
-    def parse_rules(self):
+        return [e for e in report_data if e.subreport in subreports]
+
+    def parse_rules(self) -> list[AppRule]:
         """
         Add a set of rules to the app, dividing between filter and other rule set
         """
@@ -394,16 +429,15 @@ class AppLogParser:
                     rules.append(AppRule(option, _pattern, self))
         return rules
 
-    def increase_last(self, k):
-        """
-        Increase the counter of the last matched rule by k.
-        """
+    def increase_last(self, n: int) -> None:
+        """Increase the counter of the last matched rule by an integer value."""
         try:
-            self._last_rule.increase_last(k)
+            self._last_rule.increase_last(n)
         except AttributeError:
             pass
 
-    def match_rules(self, log_data):
+    def match_rules(self, log_data: LogData) \
+            -> tuple[bool, bool | None, str | None, dict[str, str] | None]:
         """
         Process a log line data message with app's pattern rules.
         Return a tuple with this data:

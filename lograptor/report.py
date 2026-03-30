@@ -29,8 +29,8 @@ from collections.abc import MutableMapping
 from string import Template
 
 from lograptor.info import __version__
-from lograptor.exceptions import (LogRaptorNoOptionError, LogRaptorNoSectionError, LogRaptorOptionError,
-                         RuleMissingError, LogRaptorConfigError)
+from lograptor.exceptions import LogRaptorNoOptionError, LogRaptorNoSectionError, \
+    LogRaptorOptionError, RuleMissingError, LogRaptorConfigError
 from lograptor import tui
 from lograptor.utils import get_fmt_results, html_safe, get_value_unit, normalize_path
 

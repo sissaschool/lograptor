@@ -22,12 +22,19 @@ This module defines classes and methods for parsing log headers.
 import re
 from collections import namedtuple
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import NamedTuple, TYPE_CHECKING
 
 from lograptor.exceptions import LogRaptorConfigError
 
 if TYPE_CHECKING:
     from lograptor.application import AppRule
+
+
+class LogData(NamedTuple):
+    """Base log data namedtuple, used for type annotations."""
+    app: str
+    host: str
+    message: str
 
 
 class LogParser:

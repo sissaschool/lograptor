@@ -168,7 +168,7 @@ class FileMap:
     __slots__ = ('_filemap', 'start_dt', 'end_dt')
 
     def __init__(self,
-                 time_period: tuple[datetime | None, datetime | None] | None =None,
+                 time_period: tuple[datetime | None, datetime | None] | None = None,
                  recursive: bool = False,
                  follow_symlinks: bool = False,
                  include: list[str] | None = None,

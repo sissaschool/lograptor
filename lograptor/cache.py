@@ -21,6 +21,7 @@ import socket
 import string
 import pwd
 from argparse import Namespace
+from collections.abc import Mapping
 from dataclasses import dataclass
 from itertools import chain
 
@@ -121,7 +122,7 @@ class LookupCache:
                 pass
         return values
 
-    def match_to_string(self, match: re.Match[str], gids: list[str], values=None):
+    def match_to_string(self, match: re.Match[str], gids: Mapping[str, int], values=None):
         """
         Return the mapped string from match object. If a dictionary of
         values is provided then use it to build the string.

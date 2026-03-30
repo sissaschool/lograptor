@@ -83,7 +83,7 @@ def parse_last_period(last: str) -> int:
 
 def get_datetime_interval(timestamp: float | int,
                           diff: float | int,
-                          offset: float | int =0) -> tuple[datetime.datetime, datetime.datetime]:
+                          offset: float | int = 0) -> tuple[datetime.datetime, datetime.datetime]:
     """
     Returns datetime interval from timestamp backward in the past,
     computed using the milliseconds difference passed as argument.
