@@ -153,6 +153,8 @@ class TimeRange:
 
     :param time_range: a string having the format HH:MM,HH:MM.
     """
+    __slots__ = ('start_time', 'end_time', 'h1', 'm1', 'h2', 'm2')
+
     def __init__(self, time_range: str):
         try:
             start_time, end_time = time_range.split(',')

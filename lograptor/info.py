@@ -26,7 +26,7 @@ __status__ = "Production"
 __description__ = "Command-line utility for processing log files."
 
 LONG_DESCRIPTION = """
-Lograptor is a command-line interface for system's logs processing.
+Lograptor is a command-line interface for system logs processing.
 
 Pattern matching searches can be performed together with filtering
 rules and scope delimitation options. Each run can produce data and

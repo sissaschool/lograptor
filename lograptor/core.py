@@ -1,8 +1,8 @@
 """
-This module defines core classes and methods for lograptor package.
+This module defines core runner class for lograptor package.
 """
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -21,28 +21,31 @@ This module defines core classes and methods for lograptor package.
 #
 import os
 import time
-import datetime
 import re
 import glob
 import logging
 import fileinput
 import sys
 import fnmatch
+import warnings
 from collections import Counter
+from datetime import datetime
 from functools import cached_property
+from typing import Any, Sequence
 
-from .exceptions import LogRaptorConfigError, FileMissingError, \
-    LogFormatError, LogRaptorOptionError, LogRaptorArgumentError
-from .confparsers import LogRaptorConfig
-from .application import AppLogParser
-from .matcher import create_matcher
-from .filemap import FileMap
-from .cache import LookupCache
-from .dispatchers import UnbufferedDispatcher, LineBufferDispatcher, ThreadedDispatcher
-from .report import Report
-from .channels import TermChannel, MailChannel, FileChannel
-from .timedate import get_datetime_interval
-from .utils import is_pipe, is_redirected, normalize_path, safe_expand
+from lograptor.exceptions import (LogRaptorConfigError, FileMissingError,
+    LogFormatError, LogRaptorOptionError, LogRaptorArgumentError)
+from lograptor.confparsers import LogRaptorConfig
+from lograptor.application import AppLogParser
+from lograptor.logparsers import LogParser
+from lograptor.matcher import create_matcher
+from lograptor.filemap import FileMap
+from lograptor.cache import LookupCache
+from lograptor.dispatchers import UnbufferedDispatcher, LineBufferDispatcher, ThreadedDispatcher
+from lograptor.report import Report
+from lograptor.channels import TermChannel, MailChannel, FileChannel
+from lograptor.timedate import get_datetime_interval, TimeRange
+from lograptor.utils import is_pipe, is_redirected, normalize_path, safe_expand
 
 logger = logging.getLogger(__package__)
 
@@ -51,7 +54,7 @@ try:
 except ValueError:
     STDIN_FILENO = 0
 
-STANDARD_ENCODINGS = ['utf_8', 'latin1', 'latin2']
+DEFAULT_ENCODINGS = ('utf_8', 'latin1', 'latin2')
 
 
 class LogRaptor:
@@ -73,101 +76,27 @@ class LogRaptor:
         except (IOError, OSError) as err:
             logger.critical('no configuration available in files %r: %r', args.cfgfiles, err)
             raise FileMissingError('abort %r for previous errors' % __package__)
-        else:
-            self.args = args
-            self.set_logger()
-            logger.debug("is_atty: %r", os.isatty(STDIN_FILENO))
-            logger.debug("is_pipe: %r", is_pipe(STDIN_FILENO))
-            logger.debug("is_redirected: %r", is_redirected(STDIN_FILENO))
+
+        self.args = args
+        self.set_logger()
+
+        if logger.level <= logging.DEBUG:
             logger.debug("args=%r", args)
 
-        # Create a lookup cache when required by arguments
-        if any([args.anonymize, args.uid_lookup, args.ip_lookup]):
-            self.name_cache = LookupCache.from_args(args, self.config)
-        else:
-            self.name_cache = None
+            if self.interactive:
+                choice = input("DEBUG level set: do you want to activate the debugger? (y/n): ...")
+                if choice.lower() in ('y', 'yes'):
+                    breakpoint()
 
-        self._config_apps = self._read_apps()
-        self._config_tags = {}
-
-        if args.loglevel == 4:
-            logger.debug("End of lograptor setup!!")
-            input("press <ENTER> to continue ...")
-
-    def _read_apps(self):
-        """
-        Read the configuration of applications returning a dictionary
-
-        :return: A dictionary with application names as keys and configuration object as values.
-        """
-        apps = {}
-        for config_file in glob.iglob(os.path.join(self.confdir, '*.conf')):
-            name = os.path.basename(config_file)[0:-5]
-            try:
-                app = AppLogParser(name, config_file, self.args, self.logdir,
-                                   self.fields, self.name_cache, self.report)
-            except (LogRaptorOptionError, LogRaptorConfigError, LogFormatError) as err:
-                logger.error('cannot add app %r: %s', name, err)
-            else:
-                apps[name] = app
-
-        if not apps:
-            raise LogRaptorConfigError('no configured application in %r!' % self.confdir)
-        return apps
-
-    # Argument properties
-    @property
-    def filters(self):
-        """Log processor filters."""
-        return self.args.filters
-
-    @property
-    def recursive(self):
-        return self.args.recursive or self.args.dereference_recursive
-
-    @property
-    def follow_symlinks(self):
-        return self.args.dereference_recursive
-
-    @property
-    def include(self):
-        return self.args.include
-
-    @property
-    def exclude(self):
-        if self.exclude_from:
-            try:
-                exclude = [p.rstrip('\n') for p in fileinput.input(self.args.exclude_from)]
-            except (IOError, OSError) as err:
-                raise LogRaptorArgumentError('exclude-from', err)
-            else:
-                return exclude.extend(self.args.exclude)
-        else:
-            return self.args.exclude
-
-    @property
-    def exclude_from(self):
-        return self.args.exclude_from
-
-    @property
-    def exclude_dir(self):
-        return self.args.exclude_dir
-
-    def has_stdin_input_data(self):
-        """
-        Returns `True` if input data is from standard input, `False` otherwise.
-        Log data is taken from standard input if no input files are provided and the
-        standard input is an interactive shell (a TTY) from a pipe or a redirection.
-        """
-        return not self.args.files and os.isatty(STDIN_FILENO) and \
-            (is_pipe(STDIN_FILENO) or is_redirected(STDIN_FILENO))
+    def __repr__(self):
+        return "<%s %r at %#x>" % (self.__class__.__name__, self.config.cfgfile, id(self))
 
     def set_logger(self):
         """
         Setup lograptor logger with a handler and a formatter. The logging
         level is defined by a [0..4] range, where a higher value means a
         more verbose logging. The loglevel value is mapped to correspondent
-        logging module's value:
+        logging module value:
 
         LOG_CRIT=0 (syslog.h value is 2) ==> logging.CRITICAL
         LOG_ERR=1 (syslog.h value is 3) ==> logging.ERROR
@@ -204,14 +133,134 @@ class LogRaptor:
             handler.setLevel(effective_level)
             handler.setFormatter(formatter)
 
+    def clear(self):
+        """Clear out cached properties."""
+        for k, v in self.__class__.__dict__.items():
+            if isinstance(v, cached_property):
+                self.__dict__.pop(k, None)
+
+    @cached_property
+    def interactive(self) -> bool:
+        """Is True if the standard input is a TTY or a pipe or a redirection."""
+        try:
+            stdin_fileno = sys.stdin.fileno()
+        except ValueError:
+            return sys.stdin.isatty()
+        else:
+            if logger.level <= logging.DEBUG:
+                logger.debug("is_atty: %r", os.isatty(STDIN_FILENO))
+                logger.debug("is_pipe: %r", is_pipe(STDIN_FILENO))
+                logger.debug("is_redirected: %r", is_redirected(STDIN_FILENO))
+            return os.isatty(stdin_fileno) and (is_pipe(stdin_fileno) or is_redirected(stdin_fileno))
+
+    @cached_property
+    def config_apps(self) -> dict[str, AppLogParser]:
+        """Returns a dictionary with configured applications."""
+        logger.debug("load configured applications ...")
+
+        apps: dict[str, AppLogParser] = {}
+        for config_file in glob.iglob(os.path.join(self.confdir, '*.conf')):
+            name = os.path.basename(config_file)[0:-5]
+            try:
+                app = AppLogParser(name, config_file, self.args, self.logdir,
+                                   self.fields, self.name_cache, self.report)
+            except (LogRaptorOptionError, LogRaptorConfigError, LogFormatError) as err:
+                logger.error('cannot add app %r: %s', name, err)
+            else:
+                apps[name] = app
+
+        if not apps:
+            raise LogRaptorConfigError('no configured application in %r!' % self.confdir)
+        return apps
+
+    @cached_property
+    def apps(self) -> dict[str, AppLogParser]:
+        """Returns a dictionary with selected applications."""
+        logger.debug('load selected applications ...')
+
+        if not self.args.apps:
+            # Without argument -a/--apps selects only the enabled applications
+            return {k: v for k, v in self.config_apps.items() if v.enabled}
+
+        if unknown := set(self.args.apps) - set(self.config_apps.keys()):
+            raise LogRaptorArgumentError("--apps", "not found apps %r" % list(unknown))
+        return {k: v for k, v in self.config_apps.items() if k in self.args.apps}
+
+    @cached_property
+    def apptags(self) -> dict[str, list[AppLogParser]]:
+        """
+        Map from log app-name to an application.
+        """
+        logger.debug("populate tags map ...")
+        apps = [v for v in self.config_apps.values() if v.name in self.apps]
+
+        tagmap: dict[str, list[AppLogParser]] = {}
+        for app in sorted(apps, key=lambda x: (x.priority, x.name)):
+            for tag in app.tags:
+                if not tag:
+                    raise LogRaptorConfigError('found an empty tag for app %r' % app.name)
+                try:
+                    tagmap[tag].append(app)
+                except KeyError:
+                    tagmap[tag] = [app]
+        return tagmap
+
+    @property
+    def filters(self) -> dict[str, str]:
+        """If not empty process log lines that match all the conditions for rule field values."""
+        return self.args.filters
+
+    @cached_property
+    def recursive(self) -> bool:
+        """"If True read all files under each directory, recursively."""
+        return self.args.recursive or self.args.dereference_recursive
+
+    @cached_property
+    def follow_symlinks(self) -> bool:
+        """If True read all files under each directory, recursively and follow all symlinks."""
+        return self.args.dereference_recursive
+
+    @property
+    def include(self) -> list[str]:
+        """"Search only in files that match any provided GLOB pattern."""
+        return self.args.include
+
+    @cached_property
+    def exclude(self) -> list[str]:
+        """
+        List of GLOB patterns for excluding files whose base name matches any of them.
+        Includes GLOB patterns expressed by both --exclude and --exclude-from options.
+        """
+        if self.args.exclude_from:
+            try:
+                exclude = [p.rstrip('\n') for p in fileinput.input(self.args.exclude_from)]
+            except (IOError, OSError) as err:
+                if self.interactive:
+                    raise LogRaptorArgumentError('exclude-from', err)
+                warnings.warn(f'processing exclude-from option fails: {err}', UserWarning)
+                return self.args.exclude
+            else:
+                exclude.extend(self.args.exclude)
+                return exclude
+        else:
+            return self.args.exclude
+
+    @property
+    def exclude_dir(self) -> list[str]:
+        """"List of GLOB patterns for excluding directories whose base name matches any of them."""
+        return self.args.exclude_dir
+
     @cached_property
     def report(self):
         logger.debug("configure a %r report ...", self.args.report)
         if self.args.report is False:
+            # Default: no report
             return False
         elif self.args.report is None:
+            # When --report option is provided without a name.
             return Report('default', self.patterns, self.args, self.config)
         else:
+            # When --report <name> option is provided.
             return Report(self.args.report, self.patterns, self.args, self.config)
 
     @cached_property
@@ -248,7 +297,7 @@ class LogRaptor:
             raise LogRaptorArgumentError('wrong regex syntax for pattern: %r' % err)
 
     @cached_property
-    def files(self):
+    def files(self) -> list[str]:
         """
         A list of input sources. Each item can be a file path, a glob path or URL.
         """
@@ -272,7 +321,7 @@ class LogRaptor:
         }
 
     @cached_property
-    def matcher(self):
+    def matcher(self) -> str:
         """
         Matcher engine: ruled, unruled, unparsed.
         """
@@ -283,8 +332,8 @@ class LogRaptor:
         else:
             matcher = self.args.matcher
 
-        if matcher not in ['ruled', 'unruled', 'unparsed']:
-            raise LogRaptorArgumentError('matcher', 'unknown matcher argument %r' % matcher)
+        if matcher not in ('ruled', 'unruled', 'unparsed'):
+            raise LogRaptorArgumentError('matcher', 'invalid argument matcher=%r' % matcher)
         return matcher
 
     @cached_property
@@ -303,7 +352,7 @@ class LogRaptor:
         return hosts
 
     @property
-    def time_range(self):
+    def time_range(self) -> TimeRange | None:
         """
         Selected time range for log matching. A `None` value for time
         range means no time restriction (equivalent to 0:00-23:59).
@@ -311,13 +360,15 @@ class LogRaptor:
         return self.args.time_range
 
     @cached_property
-    def time_period(self):
+    def time_period(self) -> tuple[datetime | None, datetime | None]:
         """
         Time period that is determined from the arguments --date and --last. It's a 2-tuple with
         (<start datetime>, <end_datetime>) items. An item is `None` if there isn't a limit.
         """
+        time_period: tuple[datetime | None, datetime | None]
+
         if self.args.time_period is None:
-            if self.args.files or self.has_stdin_input_data():
+            if self.args.files or self.interactive:
                 time_period = (None, None)
             else:
                 diff = 86400  # 24h = 86400 seconds
@@ -329,60 +380,19 @@ class LogRaptor:
         return time_period
 
     @property
-    def confdir(self):
+    def confdir(self) -> str:
         confdir = self.config.get('main', 'confdir')
         return normalize_path(confdir, base_path=os.path.dirname(self.config.cfgfile))
 
     @cached_property
-    def logdir(self):
+    def logdir(self) -> str:
         confdir = self.config.get('main', 'logdir')
         return normalize_path(confdir, base_path=os.path.dirname(self.config.cfgfile))
 
     @cached_property
-    def encodings(self):
-        return self.config.get('main', 'encodings').split(',')
-
-    @cached_property
-    def apps(self):
-        """
-        Dictionary with loaded applications.
-        """
-        logger.debug("initialize applications ...")
-        enabled = None
-        apps = self.args.apps or self._config_apps.keys()
-        unknown = set(apps) - set(self._config_apps.keys())
-        if unknown:
-            raise LogRaptorArgumentError("--apps", "not found apps %r" % list(unknown))
-
-        if apps or enabled is None:
-            return {k: v for k, v in self._config_apps.items() if k in apps}
-        else:
-            return {k: v for k, v in self._config_apps.items()
-                    if k in apps and v.enabled == enabled}
-
-    @cached_property
-    def apptags(self):
-        """
-        Map from log app-name to an application.
-        """
-        logger.debug("populate tags map ...")
-        apps = self.apps.keys()
-        unknown = set(apps)
-        unknown.difference_update(self._config_apps.keys())
-        if unknown:
-            raise ValueError("unknown apps: %r" % list(unknown))
-
-        apps = [v for v in self._config_apps.values() if v.name in apps]
-        tagmap = {}
-        for app in sorted(apps, key=lambda x: (x.priority, x.name)):
-            for tag in app.tags:
-                if not tag:
-                    raise LogRaptorConfigError('found an empty tag for app %r' % app.name)
-                try:
-                    tagmap[tag].append(app)
-                except KeyError:
-                    tagmap[tag] = [app]
-        return tagmap
+    def encodings(self) -> tuple[str, ...]:
+        """Logfile encodings, usually 'utf_8', 'latin1' or 'latin2'"""
+        return tuple(self.config.get('main', 'encodings').split(',')) or DEFAULT_ENCODINGS
 
     @cached_property
     def logmap(self):
@@ -393,7 +403,7 @@ class LogRaptor:
                              include=self.include, exclude=self.exclude,
                              exclude_dir=self.exclude_dir)
             logmap.add(self.args.files, apps)
-        elif self.has_stdin_input_data():
+        elif self.interactive:
             # No files provided but input is from a tty pipe/redirection
             logmap = [(sys.stdin, apps)]
         else:
@@ -419,7 +429,7 @@ class LogRaptor:
         return logmap
 
     @cached_property
-    def channels(self):
+    def channels(self) -> list[TermChannel | MailChannel | FileChannel]:
         """Output channels"""
         logger.debug("initialize output channels ...")
         channels = self.args.channels
@@ -444,10 +454,14 @@ class LogRaptor:
 
         return output_channels
 
-    def __repr__(self):
-        return "<%s %r at %#x>" % (self.__class__.__name__, self.config.cfgfile, id(self))
+    @cached_property
+    def name_cache(self) -> LookupCache | None:
+        # Create a lookup cache when required by arguments
+        if self.args.anonymize or self.args.uid_lookup or self.args.ip_lookup:
+            return LookupCache.from_args(self.args, self.config)
+        return None
 
-    def __call__(self, dispatcher=None, parsers=None):
+    def __call__(self, dispatcher=None, parsers=None) -> bool:
         """
         Log processing main routine. Iterate over the log files calling
         the processing internal routine for each file.
@@ -512,14 +526,14 @@ class LogRaptor:
 
         if not files and self.time_period[0] is not None:
             raise FileMissingError("no file in time period {}!".format([
-                datetime.datetime.strftime(e, '%Y-%m-%dT%H:%M:%S') for e in self.time_period
+                datetime.strftime(e, '%Y-%m-%dT%H:%M:%S') for e in self.time_period
             ]))
         elif not lines:
             return False
 
         try:
-            first_event = datetime.datetime.fromtimestamp(first_event)
-            last_event = datetime.datetime.fromtimestamp(last_event)
+            first_event = datetime.fromtimestamp(first_event)
+            last_event = datetime.fromtimestamp(last_event)
         except (TypeError, UnboundLocalError):
             first_event = last_event = None
 
@@ -559,7 +573,7 @@ class LogRaptor:
         logger.info("matcher processed %d files.", len(files))
         return matches > 0
 
-    def create_dispatcher(self):
+    def create_dispatcher(self) -> UnbufferedDispatcher | ThreadedDispatcher | LineBufferDispatcher:
         """
         Return a dispatcher for configured channels.
         """
@@ -578,7 +592,7 @@ class LogRaptor:
         else:
             return LineBufferDispatcher(self.channels, before_context, after_context)
 
-    def create_matcher(self, dispatcher, parsers=None):
+    def create_matcher(self, dispatcher, parsers: Sequence[LogParser] | None = None):
         return create_matcher(
             dispatcher=dispatcher,
             parsers=parsers,
@@ -598,7 +612,7 @@ class LogRaptor:
             name_cache=self.name_cache,
         )
 
-    def get_config(self):
+    def get_config(self) -> str:
         """
         Return a formatted text with main configuration parameters.
         """
@@ -620,7 +634,7 @@ class LogRaptor:
             ''
         ])
 
-    def get_run_summary(self, run_stats):
+    def get_run_summary(self, run_stats: dict[str, Any]) -> str:
         """
         Produce a text summary from run statistics.
 

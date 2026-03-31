@@ -24,9 +24,11 @@ import re
 import os
 import socket
 import time
-from collections import namedtuple, OrderedDict
+from argparse import Namespace
+from collections import namedtuple
 from collections.abc import MutableMapping
 from string import Template
+from typing import TYPE_CHECKING, Any
 
 from lograptor.info import __version__
 from lograptor.exceptions import LogRaptorNoOptionError, LogRaptorNoSectionError, \
@@ -34,13 +36,19 @@ from lograptor.exceptions import LogRaptorNoOptionError, LogRaptorNoSectionError
 from lograptor import tui
 from lograptor.utils import get_fmt_results, html_safe, get_value_unit, normalize_path
 
+if TYPE_CHECKING:
+    from lograptor.application import AppRule, AppLogParser
 
 logger = logging.getLogger(__package__)
 
-TextPart = namedtuple('TextPart', 'fmt text ext')
+
+class TextPart(namedtuple('TextPart', 'fmt text ext')):
+    fmt: str
+    text: str
+    ext: str
 
 
-class ReportData(MutableMapping):
+class ReportData(MutableMapping[str, Any]):
     """
     Class to manage the report items defined for an
     application's logs parsed by lograptor.
@@ -56,15 +64,20 @@ class ReportData(MutableMapping):
         r'(\s*:\s*(?P<add2res>\+)?(?P<valfld>\w+)(\[(?P<unit>(|K|M|G|T)'
         r'(b|bits|B|Bytes))])?)?\s*\)')
 
-    def __init__(self, name, options, rules):
-        self._data = OrderedDict()
+    def __init__(self, name: str, options: list[tuple[str, str]], rules: list['AppRule']):
+        self._data: dict[str, Any] = {}
         self.name = name
-        self.subreport = self.title = self.color = self.function = None
-        self.rules = dict()
+        self.rules = {}
         self.results = []
-        self.text = None
-        self.html = None
-        self.csv = None
+
+        self.subreport: str | None = None
+        self.title: str | None = None
+        self.color: str | None = None
+        self.function: str | None = None
+
+        self.text: str | None = None
+        self.html: str | None = None
+        self.csv: str | None = None
         n_headers = 0
 
         for opt, value in options:
@@ -171,22 +184,22 @@ class ReportData(MutableMapping):
     def __repr__(self):
         return u"<%s '%s' at %#x>" % (self.__class__.__name__, self.name, id(self))
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str):
         return self._data[key]
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value):
         self._data[key] = value
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: str):
         del self._data[key]
 
     def __iter__(self):
         return iter(self._data)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._data)
 
-    def __eq__(self, other: 'ReportData'):
+    def __eq__(self, other: 'ReportData') -> bool:
         """
         Compare two 'table' report items. When True the report items
         results are mergeable.
@@ -208,32 +221,32 @@ class ReportData(MutableMapping):
 
         # TODO if requested: matching also reports item gids
 
-    def make_text(self, width):
+    def make_text(self, width: int) -> None:
         """
         Make the text representation of a report data element.
         """
-        def mformat(reslist):
+        def mformat(results: list[str]) -> str:
             _text = ""
-            _buffer = reslist[0]
-            for j in range(1, len(reslist)):
-                if (_buffer == "") or (len(_buffer) + len(reslist[j])) <= (width - len(filling)):
-                    if reslist[j][0] == '[' and reslist[j][-1] == ']':
-                        _buffer = '{0} {1}'.format(_buffer, reslist[j])
+            _buffer = results[0]
+            for j in range(1, len(results)):
+                if (_buffer == "") or (len(_buffer) + len(results[j])) <= (width - len(filling)):
+                    if results[j][0] == '[' and results[j][-1] == ']':
+                        _buffer = f'{_buffer} {results[j]}'
                     else:
-                        _buffer = '{0}, {1}'.format(_buffer, reslist[j])
+                        _buffer = f'{_buffer}, {results[j]}'
                 else:
-                    _text = '{0}{1}\n{2}'.format(_text, _buffer, filling)
-                    _buffer = reslist[j]
-            _text = '{0}{1}'.format(_text, _buffer)
+                    _text = f'{_text}{_buffer}\n{filling}'
+                    _buffer = results[j]
+            _text = f'{_text}{_buffer}'
             return _text
 
-        text = '\n----- {0} -----\n\n'.format(self.title.strip())
+        text = f'\n----- {self.title.strip()} -----\n\n'
 
         if self.function == 'total':
             width1 = max(len(res[0]) for res in self.results if res is not None)
             for res in self.results:
                 padding = ' ' * (width1 - len(res[0]) + 1)
-                text = '{0}{1}{2}| {3}\n'.format(text, res[0], padding, res[1])
+                text = f"{text}{res[0]}{padding}| {res[1]}\n"
 
         elif self.function == 'top':
             if self.results[0] is not None:
@@ -243,17 +256,17 @@ class ReportData(MutableMapping):
                      max(len(', '.join(res[1])) for res in self.results if res is not None)]
                 )
 
-                text = '{0}{1} | {2}\n'.format(text, ' ' * width1, self.headers.strip('"'))
-                text = '{0}{1}-+-{2}-\n'.format(text, '-' * width1, '-' * width2)
+                text = "{0}{1} | {2}\n".format(text, ' ' * width1, self.headers.strip('"'))
+                text = f"{text}{'-' * width1}-+-{'-' * width2}-\n"
 
                 for res in self.results:
                     if res is not None:
                         padding = ' ' * (width1 - len(res[0]) + 1)
-                        filling = '{0}| '.format(' ' * (width1 + 1))
+                        filling = f"{' ' * (width1 + 1)}| "
                         last_column = mformat(res[1])
-                        text = '{0}{1}{2}| {3}\n'.format(text, res[0], padding, last_column)
+                        text = f"{text}{res[0]}{padding}| {last_column}\n"
             else:
-                text = '{0} {1}\n'.format(text, 'None')
+                text = f'{text} None\n'
 
         elif self.function == 'table':
             headers = re.split(r'\s*,\s*', self.headers)
@@ -263,12 +276,12 @@ class ReportData(MutableMapping):
                 colwidth.append(max([len(headers[i]), max(len(res[i]) for res in self.results)]))
 
             for i in range(len(headers) - 1):
-                text = '{0}{1}{2}| '.format(
+                text = "{0}{1}{2}| ".format(
                     text, headers[i].strip('"'), ' ' * (colwidth[i] - len(headers[i]) + 2)
                 )
 
             text = '{0}{1}\n'.format(text, headers[-1].strip('"'))
-            text = '{0}{1}\n'.format(text, '-' * (width - 1))
+            text = f"{text}{'-' * (width - 1)}\n"
 
             filling = ""
             for i in range(len(headers) - 1):
@@ -276,12 +289,12 @@ class ReportData(MutableMapping):
 
             for res in sorted(self.results, key=lambda x: x[0]):
                 for i in range(len(headers) - 1):
-                    text = '{0}{1}{2}| '.format(text, res[i], ' ' * (colwidth[i] - len(res[i])))
+                    text = f"{text}{res[i]}{' ' * (colwidth[i] - len(res[i]))}| "
                 last_column = get_fmt_results(res[-1], limit=5)
-                text = '{0}{1}\n'.format(text, mformat(last_column))
+                text = f"{text}{mformat(last_column)}\n"
         self.text = text
 
-    def make_html(self):
+    def make_html(self) -> None:
         """
         Make the text representation of a report element as HTML.
         """
@@ -393,7 +406,7 @@ class ReportData(MutableMapping):
                 row = list(res[:-1])
                 last_column = get_fmt_results(res[-1], limit=10)
                 if last_column[-1][0] == '[' and last_column[-1][-1] == ']':
-                    row.append('{0} {1}'.format(', '.join(last_column[:-1]), last_column[-1]))
+                    row.append(f"{', '.join(last_column[:-1])} {last_column[-1]}")
                 else:
                     row.append(', '.join(last_column))
                 rows.append(row)
@@ -405,12 +418,12 @@ class ReportData(MutableMapping):
         return self._report_data_regexp.search(self._data[opt])
 
 
-class Subreport(object):
+class Subreport:
     """
     Class to manage subreports
     """
 
-    def __init__(self, name, title):
+    def __init__(self, name: str, title: str):
         self.name = name
         self.title = title
         self.report_data = []
@@ -497,7 +510,7 @@ class Subreport(object):
                     else:
                         res[0] = str(res[0])
 
-    def make_format(self, fmt, width):
+    def make_format(self, fmt: str | None, width: int):
         """
         Make subreport text in a specified format
         """
@@ -541,13 +554,13 @@ class Report(object):
     This helper class holds the contents of a report before it is
     sent to selected channels.
     """
-    def __init__(self, name, patterns, args, config):
+    def __init__(self, name: str, patterns, args: Namespace, config):
         self.name = name
         self.patterns = patterns
         self.args = args
         self.config = config
 
-        self.stats = dict()
+        self.stats = {}
         self.runtime = time.localtime()
 
         # Read the report options from the config file
@@ -569,7 +582,7 @@ class Report(object):
             for opt, value in options.items() if opt.endswith('_subreport')
         ]
 
-    def make(self, apps):
+    def make(self, apps: dict[str, 'AppLogParser']):
         """
         Create the report from application results
         """
@@ -583,10 +596,13 @@ class Report(object):
     def cleanup(self):
         pass
 
-    def get_report_parts(self, apps, formats):
+    def get_report_parts(self, apps: dict[str, 'AppLogParser'], formats: list[str] | None = None):
         """
         Make report item texts in a specified format.
         """
+        if formats is None:
+            formats = ['text', 'html', 'csv']
+
         for fmt in formats:
             width = 100 if fmt is not None else tui.get_terminal_size()[0]
             for sr in self.subreports:
@@ -627,13 +643,13 @@ class Report(object):
                 report.extend(self.make_csv_tables())
         return report
 
-    def is_empty(self):
+    def is_empty(self) -> bool:
         """
         A report is empty when it hasn't subreports or when all subreports are empty.
         """
         return not any(self.subreports)
 
-    def set_stats(self, run_stats):
+    def set_stats(self, run_stats: dict[str, Any]) -> None:
         """
         Set run statistics for the report.
         """
@@ -642,7 +658,7 @@ class Report(object):
         self.stats['tot_files'] = len(run_stats['files'])
         self.stats['extra_tags'] = ', '.join(self.stats['extra_tags'])
 
-    def make_html_page(self, valumap):
+    def make_html_page(self, value_map: dict[str, str | None]) -> TextPart:
         """
         Builds the report as HTML page, using the template page from file.
         """
@@ -659,11 +675,11 @@ class Report(object):
                 parts.extend(report_data)
                 parts.append('\n<hr/>')
 
-        valumap['subreports'] = '\n'.join(parts)  # or "\n<<NO SUBREPORT RELATED EVENTS>>\n"
-        html_page = Template(template).safe_substitute(valumap)
+        value_map['subreports'] = '\n'.join(parts)  # or "\n<<NO SUBREPORT RELATED EVENTS>>\n"
+        html_page = Template(template).safe_substitute(value_map)
         return TextPart(fmt='html', text=html_page, ext='html')
 
-    def make_text_page(self, valumap):
+    def make_text_page(self, value_map: dict[str, str | None]) -> TextPart:
         """
         Builds the report as text page, using the template page from file.
         """
@@ -677,15 +693,15 @@ class Report(object):
             report_data = [item.text for item in sr.report_data if item.text]
             if report_data:
                 parts.append(
-                    '\n{1}\n***** {0} *****\n{1}'.format(sr.title, '*' * (len(sr.title) + 12))
+                    f"\n{'*' * (len(sr.title) + 12)}\n***** {sr.title} *****\n{'*' * (len(sr.title) + 12)}"
                 )
                 parts.extend(report_data)
 
-        valumap['subreports'] = '\n'.join(parts)  # "\n<<NO SUBREPORT RELATED EVENTS>>\n"
-        text_page = Template(template).safe_substitute(valumap)
+        value_map['subreports'] = '\n'.join(parts)  # "\n<<NO SUBREPORT RELATED EVENTS>>\n"
+        text_page = Template(template).safe_substitute(value_map)
         return TextPart(fmt='text', text=text_page, ext='txt')
 
-    def make_csv_tables(self):
+    def make_csv_tables(self) -> list[TextPart]:
         """
         Builds the report as a list of csv tables with titles.
         """

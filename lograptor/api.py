@@ -311,11 +311,11 @@ def create_argument_parser():
     )
     group.add_argument(
         "--exclude", metavar='GLOB', default=[], action="append",
-        help="skip files and directories matching GLOB"
+        help="skip files whose base name matches any of the file-name globs"
     )
     group.add_argument(
         "--exclude-from", metavar='FILE', default=[], action="append",
-        help="skip files matching any file pattern from FILE"
+        help="skip files whose base name matches any of the file-name globs read from FILE"
     )
     group.add_argument(
         "--exclude-dir", metavar='DIR', default=[], action="append",

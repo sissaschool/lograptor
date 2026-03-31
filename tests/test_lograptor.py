@@ -237,7 +237,7 @@ class TestLograptor(object):
 
     def test_filters(self, capsys):
         """
-        Test lograptor's filters.
+        Test lograptor filters.
         """
         tests = [
             ("-c -a postfix -F from=\"triceratops.*\" '' samples/*",

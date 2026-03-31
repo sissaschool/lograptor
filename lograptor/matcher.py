@@ -2,7 +2,7 @@
 This module define the matcher engine of lograptor package.
 """
 #
-# Copyright (C), 2011-2020, by SISSA - International School for Advanced Studies.
+# Copyright (C), 2011-2026, by SISSA - International School for Advanced Studies.
 #
 # This file is part of lograptor.
 #
@@ -21,26 +21,33 @@ This module define the matcher engine of lograptor package.
 #
 import sys
 import os
+import re
 import time
 import datetime
 import logging
 from collections import namedtuple, Counter
+from collections.abc import Iterable, Sequence
+from datetime import datetime
+from types import MappingProxyType
 
-
-from .logparsers import CycleParsers
-from .tui import ProgressBar
-from .utils import open_resource
+from lograptor.application import AppLogParser
+from lograptor.cache import LookupCache
+from lograptor.dispatchers import AbstractDispatcher
+from lograptor.logparsers import CycleParsers, LogData, LogParser
+from lograptor.timedate import TimeRange
+from lograptor.tui import ProgressBar
+from lograptor.utils import open_resource
 
 logger = logging.getLogger(__name__)
 
 
 # Map for month field from any admitted representation to numeric.
-MONTHMAP = {
+MONTHMAP = MappingProxyType({
     'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06',
     'Jul': '07', 'Aug': '08', 'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12',
     '01': '01', '02': '02', '03': '03', '04': '04', '05': '05', '06': '06',
     '07': '07', '08': '08', '09': '09', '10': '10', '11': '11', '12': '12'
-}
+})
 
 NILVALUE = '-'  # RFC-5424 NILVALUE
 
@@ -49,7 +56,8 @@ MatcherResult = namedtuple(
 )
 
 
-def get_mktime(year, month, day, ltime):
+
+def get_mktime(year: str, month: str, day: str, ltime) -> float:
     try:
         return time.mktime((
             int(year),
@@ -75,7 +83,10 @@ def get_mktime_period(time_period):
         return start_dt, time.mktime((2222, 2, 2, 0, 0, 0, 0, 0, 0))
 
 
-def get_app(log_data, apps, tags, extra_tags):
+def get_app(log_data: LogData,
+            apps: list['AppLogParser'],
+            tags: dict[str, list[AppLogParser]],
+            extra_tags: Counter[str]) -> AppLogParser | None:
     """
     Selects the application for log data matching.
 
@@ -91,7 +102,7 @@ def get_app(log_data, apps, tags, extra_tags):
         for app in apps:
             if app.match_rules(log_data)[0]:
                 return app
-        return
+        return None
 
     # Find app using the app-tag
     try:
@@ -105,7 +116,7 @@ def get_app(log_data, apps, tags, extra_tags):
     if not tag_apps:
         # Tag unmatched, skip the line
         extra_tags.update([apptag])
-        return
+        return None
     elif len(tag_apps) == 1:
         return tag_apps[0]
     else:
@@ -124,7 +135,7 @@ def create_cached_host_matcher():
     doesn't include host information considers the line as matched.
     The matcher has a cache for speed-up matching.
     """
-    def has_host_match(log_data, hosts):
+    def has_host_match(log_data: LogData, hosts: Iterable[re.Pattern[str]]) -> bool:
         try:
             hostname = log_data.host
         except AttributeError:
@@ -147,7 +158,8 @@ def create_cached_host_matcher():
 ##
 # Pattern search functions
 
-def inverted_pattern_search(line, patterns):
+def inverted_pattern_search(line: str, patterns: list[re.Pattern[str]]) \
+        -> tuple[bool, re.Match[str] | None, str]:
     if not patterns:
         return False, None, line
 
@@ -159,7 +171,8 @@ def inverted_pattern_search(line, patterns):
         return True, None, line
 
 
-def matching_pattern_search(line, patterns):
+def matching_pattern_search(line: str, patterns: list[re.Pattern[str]]) \
+        -> tuple[bool, re.Match[str] | None, str]:
     if not patterns:
         return True, None, line
 
@@ -171,7 +184,8 @@ def matching_pattern_search(line, patterns):
         return False, None, line
 
 
-def normal_pattern_search(line, patterns):
+def normal_pattern_search(line: str, patterns: list[re.Pattern[str]]) \
+        -> tuple[bool, re.Match[str] | None, str]:
     if not patterns:
         return True, None, line
 
@@ -183,10 +197,22 @@ def normal_pattern_search(line, patterns):
         return False, None, line
 
 
-def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=(), time_range=None,
-                   time_period=(None, None), patterns=(), invert=False, count=False,
-                   files_with_match=None, max_count=0, only_matching=False, quiet=False,
-                   thread=False, name_cache=None):
+def create_matcher(dispatcher: AbstractDispatcher,
+                   parsers: Sequence[LogParser] | None,
+                   apptags: dict[str, list[AppLogParser]],
+                   matcher: str = 'ruled',
+                   hosts: list[str] | tuple[()] = (),
+                   time_range: TimeRange | None = None,
+                   time_period: tuple[datetime | None, datetime | None]=(None, None),
+                   patterns=(),
+                   invert: bool = False,
+                   count: bool = False,
+                   files_with_match=None,
+                   max_count: int = 0,
+                   only_matching: bool = False,
+                   quiet: bool = False,
+                   thread: bool = False,
+                   name_cache: LookupCache | None = None):
     """
     Create a matcher engine.
     :return: A matcher function.
@@ -213,24 +239,24 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=(), time
 
     def process_logfile(source, apps, encoding='utf-8'):
         log_parser = next(parsers)
-        first_event = None
-        last_event = None
+        first_event: float | None = None
+        last_event: float | None = None
         app_thread = None
         selected_data = None
-        line_counter = 0
-        unknown_counter = 0
-        selected_counter = 0
-        extra_tags = Counter()
+        line_counter: int = 0
+        unknown_counter: int = 0
+        selected_counter: int = 0
+        extra_tags = Counter[str]()
         dispatcher.reset()
-        read_size = 0
-        progress_bar = None
+        read_size: int = 0
+        progress_bar: ProgressBar | None = None
 
         with open_resource(source) as logfile:
             # Set counters and status
             logfile_name = logfile.name
 
             fstat = os.fstat(logfile.fileno())
-            file_mtime = datetime.datetime.fromtimestamp(fstat.st_mtime)
+            file_mtime = datetime.fromtimestamp(fstat.st_mtime)
             file_year = file_mtime.year
             file_month = file_mtime.month
             prev_year = file_year - 1
@@ -267,8 +293,7 @@ def create_matcher(dispatcher, parsers, apptags, matcher='ruled', hosts=(), time
                 log_data = log_parser.get_data(log_match)
 
                 ###
-                # Process last event repetition
-                # (eg. 'last message repeated N times' RFC 3164's logs)
+                # Process last event repetition (e.g. 'last message repeated N times' RFC 3164's logs)
                 if getattr(log_data, 'repeat', None) is not None:
                     if selected_data is not None:
                         repeat = int(log_data.repeat)
