@@ -24,6 +24,7 @@ import sys
 import argparse
 import time
 import re
+from datetime import datetime
 
 from lograptor.core import LogRaptor
 from lograptor.info import __version__, __description__
@@ -61,7 +62,7 @@ class StoreOptionAction(argparse.Action):
         setattr(namespace, self.dest, self.const)
 
 
-def positive_integer(arg):
+def positive_integer(arg: str) -> int:
     try:
         value = int(arg)
         if value <= 0:
@@ -74,7 +75,8 @@ def positive_integer(arg):
 
 
 def filter_spec(arg: str) -> dict[str, str]:
-    _filter = dict()
+    filters: dict[str, str] = {}
+
     for flt in arg.split(','):
         try:
             field, pattern = flt.split('=', 1)
@@ -86,19 +88,19 @@ def filter_spec(arg: str) -> dict[str, str]:
 
             try:
                 re.compile(pattern)
-                _filter[field] = pattern
+                filters[field] = pattern
             except re.error:
                 raise argparse.ArgumentTypeError("wrong regex pattern in filter %r" % flt)
         except ValueError:
             raise argparse.ArgumentTypeError('filter %r: wrong format!' % flt)
-    return _filter
+    return filters
 
 
 def comma_separated_string(arg: str) -> list[str]:
     return [x.strip() for x in arg.split(',')]
 
 
-def last_period_spec(arg):
+def last_period_spec(arg: str) -> tuple[datetime, datetime]:
     try:
         diff = parse_last_period(arg)
     except ValueError:
@@ -114,7 +116,7 @@ def date_interval_spec(arg):
         raise argparse.ArgumentTypeError('%r: wrong format, use [YYYY]MMDD[,[YYYY]MMDD]' % arg)
 
 
-def create_argument_parser():
+def create_argument_parser() -> argparse.ArgumentParser:
     """
     Command line options and arguments parsing. This function return
     a list of options and the list of arguments (pattern, filenames).
@@ -428,12 +430,12 @@ def main():
             # If the command is called with no relevant args (eg. no args
             # or only --conf argument) then prints the configuration and exit.
             args.patterns.append('')
-            _lograptor = LogRaptor(args)
-            print(_lograptor.get_config())
+            runner = LogRaptor(args)
+            print(runner.get_config())
             sys.exit(0)
 
-        _lograptor = LogRaptor(args)
-        retval = _lograptor()
+        runner = LogRaptor(args)
+        retval = runner()
     except (LogRaptorArgumentError, LogRaptorOptionError, LogRaptorConfigError, LogFormatError,
             FileMissingError, FileAccessError) as err:
         if 'stdout' not in args.channels:

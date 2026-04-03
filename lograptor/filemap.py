@@ -51,8 +51,8 @@ class GlobDict(MutableMapping[str, Any]):
                  exclude: list[str] | None = None,
                  exclude_dir: list[str] | None = None):
 
-        self._data = {}
-        self._paths = []
+        self._data: dict[str, Any] = {}
+        self._paths: list[str] = []
         self.recursive = recursive
         self.follow_symlinks = follow_symlinks
         self.include = include or []
@@ -209,7 +209,7 @@ class FileMap:
     def __len__(self):
         return len(list(self.__iter__()))
 
-    def check_stat(self, path: str):
+    def check_stat(self, path: str) -> bool:
         """
         Checks logfile stat information for excluding files not in datetime
         period. On Linux it's possible to checks only modification time,
@@ -221,10 +221,11 @@ class FileMap:
         st_info = os.stat(path)
         st_mtime = datetime.fromtimestamp(st_info.st_mtime)
         if platform.system() == 'Linux':
-            check = st_mtime >= self.start_dt
+            check = self.start_dt is None or st_mtime >= self.start_dt
         else:
             st_ctime = datetime.fromtimestamp(st_info.st_ctime)
-            check = st_mtime >= self.start_dt and st_ctime <= self.end_dt
+            check = (self.start_dt is None or st_mtime >= self.start_dt) and \
+                    (self.end_dt is None or st_ctime <= self.end_dt)
 
         if not check:
             logger.info("file %r not in datetime period!", path)

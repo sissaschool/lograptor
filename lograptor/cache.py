@@ -24,6 +24,7 @@ from argparse import Namespace
 from collections.abc import Mapping
 from dataclasses import dataclass
 from itertools import chain
+from typing import cast, Hashable, Any
 
 
 @dataclass(slots=True)
@@ -33,7 +34,7 @@ class LookupCache:
     Names can be mapped into random generated values for obfuscate the
     input names, maintaining a correspondence for the entire process.
     """
-    _maps: dict[str, dict[str | int, str]]
+    _maps: dict[str, dict[Any, str]]
     _uidmap: dict[int, str]
     _hostmap: dict[str, str]
     fields: list[str]
@@ -51,7 +52,7 @@ class LookupCache:
         ipv4_pattern = config.get('patterns', 'IPV4_ADDRESS')
         ipv6_pattern = config.get('patterns', 'IPV6_ADDRESS')
         fields = config.options('fields')
-        maps = {k: {} for k in chain(fields, ('host', 'thread', 'uid'))}
+        maps: dict[str, dict[Any, str]] = {k: {} for k in chain(fields, ('host', 'thread', 'uid'))}
         return cls(
             _maps=maps,
             _uidmap=maps['uid'],
@@ -71,11 +72,11 @@ class LookupCache:
             values.clear()
 
     @property
-    def hostmap(self) -> dict[str | int, str]:
+    def hostmap(self) -> dict[str, str]:
         return self._hostmap
 
     @property
-    def uidmap(self) -> dict[str | int, str]:
+    def uidmap(self) -> dict[int, str]:
         return self._uidmap
 
     def map_value(self, value: str, gid: str) -> str:
@@ -84,7 +85,11 @@ class LookupCache:
         Map only groups related to a filter, ie when the basename of
         the group is identical to the name of a filter.
         """
-        base_gid = self.base_gid_pattern.search(gid).group(1)
+        try:
+            base_gid = self.base_gid_pattern.search(gid).group(1)  # type:ignore[union-attr]
+        except AttributeError:
+            return value
+
         if self.anonymize:
             try:
                 if value in self._maps[base_gid]:
@@ -175,7 +180,7 @@ class LookupCache:
         self.hostmap[ip_addr] = name
         return name
 
-    def get_username(self, uid: str) -> str:
+    def get_username(self, uid: str | int) -> str:
         """
         Get the username of a given uid.
         """

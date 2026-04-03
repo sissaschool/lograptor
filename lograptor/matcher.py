@@ -23,16 +23,15 @@ import sys
 import os
 import re
 import time
-import datetime
 import logging
 from collections import namedtuple, Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Sequence, Callable
 from datetime import datetime
 from types import MappingProxyType
 
 from lograptor.application import AppLogParser
 from lograptor.cache import LookupCache
-from lograptor.dispatchers import AbstractDispatcher
+from lograptor.dispatchers import DispatcherType, ThreadedDispatcher
 from lograptor.logparsers import CycleParsers, LogData, LogParser
 from lograptor.timedate import TimeRange
 from lograptor.tui import ProgressBar
@@ -51,13 +50,17 @@ MONTHMAP = MappingProxyType({
 
 NILVALUE = '-'  # RFC-5424 NILVALUE
 
-MatcherResult = namedtuple(
-    'MatcherResult', "lines matches unknown extra_tags first_event, last_event"
-)
+
+class MatcherResult(namedtuple('MatcherResult', "lines matches unknown extra_tags first_event, last_event")):
+    lines: int
+    matches: int
+    unknown: int
+    extra_tags: Counter[str]
+    first_event: float | None
+    last_event: float | None
 
 
-
-def get_mktime(year: str, month: str, day: str, ltime) -> float:
+def get_mktime(year: str, month: str, day: str, ltime) -> float | None:
     try:
         return time.mktime((
             int(year),
@@ -72,15 +75,17 @@ def get_mktime(year: str, month: str, day: str, ltime) -> float:
         return None
 
 
-def get_mktime_period(time_period):
-    try:
+def get_mktime_period(time_period: tuple[datetime | None, datetime | None]) -> tuple[float, float]:
+    """Convert a """
+    if time_period[0] is None:
+        start_dt = 0.0
+    else:
         start_dt = time.mktime(time_period[0].timetuple())
-    except AttributeError:
-        start_dt = float(0)
-    try:
-        return start_dt, time.mktime(time_period[1].timetuple())
-    except AttributeError:
+
+    if time_period[1] is None:
         return start_dt, time.mktime((2222, 2, 2, 0, 0, 0, 0, 0, 0))
+    else:
+        return start_dt, time.mktime(time_period[1].timetuple())
 
 
 def get_app(log_data: LogData,
@@ -129,13 +134,13 @@ def get_app(log_data: LogData,
             return tag_apps[0]
 
 
-def create_cached_host_matcher():
+def create_host_matcher(hosts: Iterable[re.Pattern[str]]) -> Callable[[LogData], bool]:
     """
     Create a matcher for hostname patterns. If the log line data
     doesn't include host information considers the line as matched.
     The matcher has a cache for speed-up matching.
     """
-    def has_host_match(log_data: LogData, hosts: Iterable[re.Pattern[str]]) -> bool:
+    def has_host_match(log_data: LogData) -> bool:
         try:
             hostname = log_data.host
         except AttributeError:
@@ -158,7 +163,7 @@ def create_cached_host_matcher():
 ##
 # Pattern search functions
 
-def inverted_pattern_search(line: str, patterns: list[re.Pattern[str]]) \
+def inverted_pattern_search(line: str, patterns: Sequence[re.Pattern[str]]) \
         -> tuple[bool, re.Match[str] | None, str]:
     if not patterns:
         return False, None, line
@@ -171,7 +176,7 @@ def inverted_pattern_search(line: str, patterns: list[re.Pattern[str]]) \
         return True, None, line
 
 
-def matching_pattern_search(line: str, patterns: list[re.Pattern[str]]) \
+def matching_pattern_search(line: str, patterns: Sequence[re.Pattern[str]]) \
         -> tuple[bool, re.Match[str] | None, str]:
     if not patterns:
         return True, None, line
@@ -184,7 +189,7 @@ def matching_pattern_search(line: str, patterns: list[re.Pattern[str]]) \
         return False, None, line
 
 
-def normal_pattern_search(line: str, patterns: list[re.Pattern[str]]) \
+def normal_pattern_search(line: str, patterns: Sequence[re.Pattern[str]]) \
         -> tuple[bool, re.Match[str] | None, str]:
     if not patterns:
         return True, None, line
@@ -197,17 +202,17 @@ def normal_pattern_search(line: str, patterns: list[re.Pattern[str]]) \
         return False, None, line
 
 
-def create_matcher(dispatcher: AbstractDispatcher,
+def create_matcher(dispatcher: DispatcherType,
                    parsers: Sequence[LogParser] | None,
                    apptags: dict[str, list[AppLogParser]],
                    matcher: str = 'ruled',
-                   hosts: list[str] | tuple[()] = (),
+                   patterns: Sequence[re.Pattern[str]] = (),
+                   hosts: Sequence[re.Pattern[str]] = (),
                    time_range: TimeRange | None = None,
-                   time_period: tuple[datetime | None, datetime | None]=(None, None),
-                   patterns=(),
+                   time_period: tuple[datetime | None, datetime | None] = (None, None),
                    invert: bool = False,
                    count: bool = False,
-                   files_with_match=None,
+                   files_with_match: bool | None = None,
                    max_count: int = 0,
                    only_matching: bool = False,
                    quiet: bool = False,
@@ -217,13 +222,13 @@ def create_matcher(dispatcher: AbstractDispatcher,
     Create a matcher engine.
     :return: A matcher function.
     """
-    parsers = CycleParsers(parsers)
+    cyclic_parser_selector = CycleParsers(parsers)
     max_matches = 1 if quiet else max_count
     use_app_rules = matcher != 'unruled'
     select_unparsed = matcher == 'unparsed'
     register_log_lines = not (quiet or count or files_with_match is not None)
     start_dt, end_dt = get_mktime_period(time_period)
-    has_host_match = create_cached_host_matcher() if hosts else None
+    has_host_match = create_host_matcher(hosts)
 
     if invert:
         pattern_search = inverted_pattern_search
@@ -234,11 +239,10 @@ def create_matcher(dispatcher: AbstractDispatcher,
 
     dispatch_selected = dispatcher.dispatch_selected
     dispatch_context = dispatcher.dispatch_context
-    display_progress_bar = sys.stdout.isatty() and \
-        all(c.name != 'stdout' for c in dispatcher.channels)
+    display_progress_bar = sys.stdout.isatty() and not dispatcher.has_channel('stdout')
 
-    def process_logfile(source, apps, encoding='utf-8'):
-        log_parser = next(parsers)
+    def process_logfile(source: str, apps: list[AppLogParser], encoding='utf-8'):
+        log_parser = next(cyclic_parser_selector)  # type: ignore[call-overload]
         first_event: float | None = None
         last_event: float | None = None
         app_thread = None
@@ -271,7 +275,7 @@ def create_matcher(dispatcher: AbstractDispatcher,
                 if line[-1] != '\n':
                     line += '\n'
 
-                if display_progress_bar:
+                if progress_bar is not None:
                     read_size += len(line)
                     if not line_counter % 100:
                         progress_bar.redraw(read_size)
@@ -281,7 +285,7 @@ def create_matcher(dispatcher: AbstractDispatcher,
                 log_match = log_parser.match(line)
                 if log_match is None:
                     # The current parser doesn't match: try another available parser.
-                    next_parser, log_match = parsers.detect(line)
+                    next_parser, log_match = cyclic_parser_selector.detect(line)
                     if log_match is not None:
                         log_parser = next_parser
                     elif line_counter == 1:
@@ -343,7 +347,7 @@ def create_matcher(dispatcher: AbstractDispatcher,
                 elif time_range is not None and not time_range.between(log_data.ltime):
                     # Excludes lines not in time range
                     continue
-                elif hosts and not has_host_match(log_data, hosts):
+                elif hosts and not has_host_match(log_data):
                     # Excludes lines with host restriction
                     continue
 
@@ -429,14 +433,15 @@ def create_matcher(dispatcher: AbstractDispatcher,
                         rawlog=rawlog
                     )
 
-            if display_progress_bar:
+            if progress_bar is not None:
                 progress_bar.redraw(fstat.st_size)
 
-        try:
-            for key in list(dispatcher.keys()):
-                dispatcher.flush(key)
-        except (NameError, AttributeError):
-            pass
+        if isinstance(dispatcher, ThreadedDispatcher):
+            try:
+                for key in dispatcher:
+                    dispatcher.flush(key)
+            except (NameError, AttributeError):
+                pass
 
         # If count option is enabled then register only the number of matched lines.
         if files_with_match and selected_counter or \

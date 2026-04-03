@@ -38,6 +38,9 @@ DATE_FORMATS = (
     ('%Y', re.compile(r"(?<!%)(%Y)"))   # year
 )
 
+def format_dt(dt: datetime.datetime | None) -> str:
+    return 'None' if dt is None else datetime.datetime.strftime(dt, '%Y-%m-%dT%H:%M:%S')
+
 
 def parse_last_period(last: str) -> int:
     r"""
@@ -128,7 +131,7 @@ def parse_date_period(date: str) -> tuple[datetime.datetime, datetime.datetime]:
         raise ValueError("invalid format for argument 'date'")
 
     try:
-        date1 = datetime.datetime.strptime(date1, "%Y%m%d")
+        dt1 = datetime.datetime.strptime(date1, "%Y%m%d")
     except ValueError:
         if date_len < 9:
             raise ValueError("Error of date value in --date parameter, use --date=[YYYY]MMDD")
@@ -136,15 +139,15 @@ def parse_date_period(date: str) -> tuple[datetime.datetime, datetime.datetime]:
             raise ValueError("Error in the first date value in --date parameter, "
                              "use --date=[YYYY]MMDD,[YYYY]MMDD")
     try:
-        date2 = datetime.datetime.strptime(date2, "%Y%m%d%H%M%S")
+        dt2 = datetime.datetime.strptime(date2, "%Y%m%d%H%M%S")
     except ValueError:
         raise ValueError("Error in the second date value in --date parameter, "
                          "use --date=[YYYY]MMDD,[YYYY]MMDD")
 
-    if date1 > date2:
+    if dt1 > dt2:
         raise ValueError("Wrong parameter --date: the first date is after the second!")
 
-    return date1, date2
+    return dt1, dt2
 
 
 class TimeRange:

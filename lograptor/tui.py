@@ -49,7 +49,7 @@ def get_terminal_size() -> tuple[int, int]:
 
 def get_windows_terminal_size() -> tuple[int, int] | None:
     """Get the terminal size of a Windows OS terminal."""
-    from ctypes import windll, create_string_buffer
+    from ctypes import windll, create_string_buffer  # type:ignore[attr-defined]
 
     # stdin handle is -10
     # stdout handle is -11

@@ -22,6 +22,7 @@ This module defines classes and methods to handle lograptor configurations.
 import string
 import socket
 import re
+from collections.abc import Callable
 from configparser import NoOptionError, DuplicateSectionError, RawConfigParser
 
 from lograptor.exceptions import (
@@ -78,9 +79,11 @@ class EnvConfigParser(RawConfigParser):
     :param env: Environment values passed as keyword arguments.
     """
     _DEFAULT_INTERPOLATION = EnvInterpolation()
-    optionxform = str  # case-sensitive option names
+    _DEFAULTS: dict[str, dict[str, str]] = {}
+    _sections: dict[str, dict[str, str]]
 
-    _DEFAULTS = {}
+    def optionxform(self, optionstr: str) -> str:
+        return optionstr
 
     # noinspection PyMissingConstructor
     def __init__(self, settings=None, cfgfiles=None, defaults=None, **env):
@@ -231,7 +234,8 @@ class EnvConfigParser(RawConfigParser):
         sections.update(self._sections)
         return list(filter(lambda x: x.startswith(prefix) and x.endswith(suffix), sections.keys()))
 
-    def items(self, section: str = _UNSET, raw: bool = False, vars: dict[str, str] | None = None):
+    def items(self, section: str | object = _UNSET,  # type: ignore[override]
+              raw: bool = False, vars: dict[str, str] | None = None):
         if section == _UNSET:
             return super().items(raw=raw, vars=vars)
 

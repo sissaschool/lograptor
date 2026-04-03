@@ -20,11 +20,12 @@ This module defines classes to handle events dispatching for lograptor.
 # @Author Davide Brunato <brunato@sissa.it>
 #
 import abc
+import re
 from collections import deque
 from collections.abc import Sequence, Callable
 from functools import partial
 from itertools import chain, repeat
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Union
 
 if TYPE_CHECKING:
     from lograptor.channels import AbstractChannel
@@ -35,7 +36,7 @@ def no_dispatch(*args, **kwargs):
     """Do nothing, used to set dispatchers with no channels."""
 
 
-def dispatch(*args, functions: Sequence[Callable[[...], Any]], **kwargs):
+def dispatch(*args: Any, functions: Sequence[Callable[[Any], Any]], **kwargs):
     """Dispatch arguments to a sequence of functions."""
     for func in functions:
         func(*args, **kwargs)
@@ -85,16 +86,19 @@ class AbstractDispatcher(metaclass=abc.ABCMeta):
             getattr(channel, method)(*args, **kwargs)
 
     @abc.abstractmethod
-    def dispatch_selected(self, *args, **kwargs):
+    def dispatch_selected(self, **kwargs):
         return
 
     @abc.abstractmethod
-    def dispatch_context(self, *args, **kwargs):
+    def dispatch_context(self, **kwargs):
         return
 
     @abc.abstractmethod
     def reset(self, *args, **kwargs):
         return
+
+    def has_channel(self, name: str) -> bool:
+        return any(ch.name == name for ch in self.channels)
 
 
 class UnbufferedDispatcher(AbstractDispatcher):
@@ -107,12 +111,12 @@ class UnbufferedDispatcher(AbstractDispatcher):
     def __setattr__(self, name, value):
         super(UnbufferedDispatcher, self).__setattr__(name, value)
         if name == "channels":
-            self.dispatch_selected = self.send_selected
+            self.dispatch_selected = partial(dispatch, functions=[ch.send_selected for ch in value])
 
-    def dispatch_selected(self, *args, **kwargs):
-        raise NotImplementedError
+    def dispatch_selected(self, **kwargs):
+        self.send_selected(**kwargs)
 
-    def dispatch_context(self, *args, **kwargs):
+    def dispatch_context(self, **kwargs):
         return
 
     def reset(self, *args, **kwargs):
@@ -141,7 +145,9 @@ class LineBufferDispatcher(deque, AbstractDispatcher):
         self.last_line = 0
         self.context_until = 0
 
-    def dispatch_selected(self, filename, line_number, match=None, **kwargs):
+    def dispatch_selected(self, filename: str = '', line_number: int = 0,
+                          match: re.Pattern[str] | None = None, **kwargs: Any):
+
         next_line = line_number - len(self)
         if self.last_line == 0 or (next_line - self.last_line) > 1:
             next(self.send_separator)()
@@ -156,7 +162,7 @@ class LineBufferDispatcher(deque, AbstractDispatcher):
         self.context_until = line_number + self.after_context
         self.send_selected(filename=filename, line_number=line_number, match=match, **kwargs)
 
-    def dispatch_context(self, line_number, rawlog, **kwargs):
+    def dispatch_context(self, line_number: int = 0, rawlog: str = '', **kwargs: Any):
         if self.after_context and self.context_until >= line_number:
             self.send_context(line_number=line_number, rawlog=rawlog, **kwargs)
             self.last_line = line_number
@@ -214,7 +220,7 @@ class ThreadedDispatcher(dict, AbstractDispatcher):
                 self.send_context(**entry)
         del self[key]
 
-    def dispatch_selected(self, key, **kwargs):
+    def dispatch_selected(self, key: tuple[Any, ...] | tuple[()] = (), **kwargs: Any):
         try:
             line_cache, matched, after_context = self[key]
         except KeyError:
@@ -228,7 +234,7 @@ class ThreadedDispatcher(dict, AbstractDispatcher):
             line_cache.append(kwargs)
             self[key] = (line_cache, True, 0)
 
-    def dispatch_context(self, key, **kwargs):
+    def dispatch_context(self, key: tuple[Any, ...] | tuple[()] = (), **kwargs: Any):
         try:
             line_cache, matched, after_context = self[key]
         except KeyError:
@@ -245,3 +251,6 @@ class ThreadedDispatcher(dict, AbstractDispatcher):
 
     def reset(self):
         self.clear()
+
+
+DispatcherType = Union[UnbufferedDispatcher, LineBufferDispatcher, ThreadedDispatcher]

@@ -29,9 +29,10 @@ import sys
 import fnmatch
 import warnings
 from collections import Counter
+from collections.abc import Sequence
 from datetime import datetime
 from functools import cached_property
-from typing import Any, Sequence
+from typing import Any
 
 from lograptor.exceptions import (LogRaptorConfigError, FileMissingError,
     LogFormatError, LogRaptorOptionError, LogRaptorArgumentError)
@@ -41,10 +42,11 @@ from lograptor.logparsers import LogParser
 from lograptor.matcher import create_matcher
 from lograptor.filemap import FileMap
 from lograptor.cache import LookupCache
-from lograptor.dispatchers import UnbufferedDispatcher, LineBufferDispatcher, ThreadedDispatcher
+from lograptor.dispatchers import DispatcherType, UnbufferedDispatcher, \
+    LineBufferDispatcher, ThreadedDispatcher
 from lograptor.report import Report
 from lograptor.channels import TermChannel, MailChannel, FileChannel
-from lograptor.timedate import get_datetime_interval, TimeRange
+from lograptor.timedate import format_dt, get_datetime_interval, TimeRange
 from lograptor.utils import is_pipe, is_redirected, normalize_path, safe_expand
 
 logger = logging.getLogger(__package__)
@@ -212,7 +214,7 @@ class LogRaptor:
 
     @cached_property
     def recursive(self) -> bool:
-        """"If True read all files under each directory, recursively."""
+        """f True read all files under each directory, recursively."""
         return self.args.recursive or self.args.dereference_recursive
 
     @cached_property
@@ -222,7 +224,7 @@ class LogRaptor:
 
     @property
     def include(self) -> list[str]:
-        """"Search only in files that match any provided GLOB pattern."""
+        """Search only in files that match any provided GLOB pattern."""
         return self.args.include
 
     @cached_property
@@ -247,15 +249,15 @@ class LogRaptor:
 
     @property
     def exclude_dir(self) -> list[str]:
-        """"List of GLOB patterns for excluding directories whose base name matches any of them."""
+        """List of GLOB patterns for excluding directories whose base name matches any of them."""
         return self.args.exclude_dir
 
     @cached_property
-    def report(self):
+    def report(self) -> Report | None:
         logger.debug("configure a %r report ...", self.args.report)
         if self.args.report is False:
             # Default: no report
-            return False
+            return None
         elif self.args.report is None:
             # When --report option is provided without a name.
             return Report('default', self.patterns, self.args, self.config)
@@ -264,9 +266,9 @@ class LogRaptor:
             return Report(self.args.report, self.patterns, self.args, self.config)
 
     @cached_property
-    def patterns(self):
+    def patterns(self) -> Sequence[re.Pattern[str]]:
         """
-        A tuple with re.RegexObject objects created from regex pattern arguments.
+        Returns a tuple with re.Pattern objects created from regex *pattern* arguments.
         """
         # No explicit argument for patterns ==> consider the first source argument as pattern.
         if not self.args.patterns and not self.args.pattern_files:
@@ -337,8 +339,9 @@ class LogRaptor:
         return matcher
 
     @cached_property
-    def hosts(self):
-        hosts = []
+    def hosts(self) -> Sequence[re.Pattern[str]]:
+        """Returns a tuple with re.Pattern objects for matching the given --hosts option."""
+        hosts: list[re.Pattern] = []
         for pattern in set(self.args.hosts or ['*']):
             hosts.append(re.compile(fnmatch.translate(pattern)))
 
@@ -349,7 +352,7 @@ class LogRaptor:
                     hosts.append(re.compile(fnmatch.translate(local_hostname)))
 
         logger.debug('host patterns to be processed: %r', hosts)
-        return hosts
+        return tuple(hosts)
 
     @property
     def time_range(self) -> TimeRange | None:
@@ -440,7 +443,7 @@ class LogRaptor:
         if unknown:
             raise ValueError("undefined channel %r" % list(unknown))
 
-        output_channels = []
+        output_channels: list[TermChannel | MailChannel | FileChannel] = []
         for channel in set(channels):
             channel_type = self.config.get('%s_channel' % channel, 'type')
             if channel_type == 'tty':
@@ -461,7 +464,8 @@ class LogRaptor:
             return LookupCache.from_args(self.args, self.config)
         return None
 
-    def __call__(self, dispatcher=None, parsers=None) -> bool:
+    def __call__(self, dispatcher: DispatcherType | None=None,
+                 parsers: Sequence[LogParser] | None = None) -> bool:
         """
         Log processing main routine. Iterate over the log files calling
         the processing internal routine for each file.
@@ -470,20 +474,22 @@ class LogRaptor:
             dispatcher = self.create_dispatcher()
         matcher_engine = self.create_matcher(dispatcher, parsers=parsers)
         dispatcher.open()
-        display_progress_bar = \
-            sys.stdout.isatty() and all(c.name != 'stdout' for c in dispatcher.channels)
+
+        display_progress_bar = sys.stdout.isatty() and not dispatcher.has_channel('stdout')
 
         logger.info("starting log processor ...")
         files = []
         lines = matches = unknown = 0
-        extra_tags = Counter()
-        first_event = last_event = None
-        if self.args.report:
+        extra_tags: Counter[str] = Counter()
+        first_event: float | None = None
+        last_event: float | None = None
+
+        if self.args.report and self.report is not None:
             self.report.cleanup()
 
         # Iter between log files. The iteration use the log files modified between the
         # initial and the final date, skipping the other files.
-        for (source, apps) in self.logmap:
+        for source, apps in self.logmap:
             if apps is not None:
                 logger.info('process %r for apps %r', source, apps)
             else:
@@ -525,27 +531,28 @@ class LogRaptor:
                     logger.error(msg)
 
         if not files and self.time_period[0] is not None:
-            raise FileMissingError("no file in time period {}!".format([
-                datetime.strftime(e, '%Y-%m-%dT%H:%M:%S') for e in self.time_period
-            ]))
+            tp = self.time_period
+            raise FileMissingError(f"no file in time period ({format_dt(tp[0]), format_dt(tp[1])})!")
         elif not lines:
             return False
 
-        try:
-            first_event = datetime.fromtimestamp(first_event)
-            last_event = datetime.fromtimestamp(last_event)
-        except (TypeError, UnboundLocalError):
-            first_event = last_event = None
-
-        run_stats = {
+        run_stats: dict[str, Any] = {
             'files': files,
-            'first_event': first_event,
-            'last_event': last_event,
+            'first_event': None,
+            'last_event': None,
             'matches': matches,
             'lines': lines,
             'unknown': unknown,
             'extra_tags': extra_tags,
         }
+
+        try:
+            if isinstance(first_event, float):
+                run_stats['first_event'] = datetime.fromtimestamp(first_event)
+            if isinstance(last_event, float):
+                run_stats['last_event'] = datetime.fromtimestamp(last_event)
+        except (TypeError, UnboundLocalError):
+            pass
 
         if sys.stdout.isatty():
             sys.stdout.write('\n')
@@ -573,7 +580,7 @@ class LogRaptor:
         logger.info("matcher processed %d files.", len(files))
         return matches > 0
 
-    def create_dispatcher(self) -> UnbufferedDispatcher | ThreadedDispatcher | LineBufferDispatcher:
+    def create_dispatcher(self) -> DispatcherType:
         """
         Return a dispatcher for configured channels.
         """
@@ -592,7 +599,7 @@ class LogRaptor:
         else:
             return LineBufferDispatcher(self.channels, before_context, after_context)
 
-    def create_matcher(self, dispatcher, parsers: Sequence[LogParser] | None = None):
+    def create_matcher(self, dispatcher: DispatcherType, parsers: Sequence[LogParser] | None = None):
         return create_matcher(
             dispatcher=dispatcher,
             parsers=parsers,
@@ -619,12 +626,12 @@ class LogRaptor:
         # Create a dummy report object if necessary
         channels = [sect.rsplit('_')[0] for sect in self.config.sections(suffix='_channel')]
         channels.sort()
-        disabled_apps = [app for app in self._config_apps.keys() if app not in self.apps]
+        disabled_apps = [app for app in self.config_apps.keys() if app not in self.apps]
         return ''.join([
             "\n--- %s configuration ---" % __package__,
             "\nConfiguration file: %s" % self.config.cfgfile,
             "\nConfiguration directory: %s" % self.confdir,
-            "\nConfigured applications: %s" % ', '.join(self._config_apps.keys()),
+            "\nConfigured applications: %s" % ', '.join(self.config_apps.keys()),
             "\nDisabled applications: %s" % ', '.join(disabled_apps) if disabled_apps else '',
             "\nFilter fields: %s" % ', '.join(self.config.options('fields')),
             "\nOutput channels: %s" % ', '.join(channels) if channels else 'No channels defined',

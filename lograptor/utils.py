@@ -59,8 +59,10 @@ def do_chunked_gzip(infh: IO, outfh: IO, filename: str) -> None:
             chunk = infh.read(GZIP_CHUNK_SIZE)
             if not chunk:
                 break
+            if isinstance(chunk, str):
+                chunk = bytes(chunk, "utf-8")
 
-            gzfh.write(bytes(chunk, "utf-8"))
+            gzfh.write(chunk)
             read_size += len(chunk)
             progressbar.redraw(read_size)
 
@@ -116,6 +118,7 @@ def get_value_unit(value: int | float, unit: str = '', prefix: str = 'T') -> tup
     To use a base of 1024 provide an IEC metric prefix (e.g. TiB instead of TB).
     :param prefix: the target metric prefix, for default is 'T' (Tera).
     """
+    unit_prefix: str | None
     if not unit:
         return value, ''
 
@@ -289,10 +292,11 @@ def open_resource(source: str | IO) -> IO:
     :param source: a filepath or a URL.
     """
     try:
-        return open(source, mode='rb')
+        return open(source, mode='rb')  # type:ignore[arg-type]
     except (IOError, OSError):
         try:
-            resource = urlopen(source)  # source is a URL
+            # source is a URL
+            resource = urlopen(source)  # type: ignore[arg-type]
         except ValueError:
             pass
         else:
@@ -302,5 +306,6 @@ def open_resource(source: str | IO) -> IO:
         raise
     except TypeError:
         if hasattr(source, 'read') and hasattr(source, 'readlines'):
-            return source  # source is already a file-like object
-        raise
+            # source is already a file-like object
+            return source  # type: ignore[return-value]
+        raise TypeError('%r is not a file or a URL' % source)
