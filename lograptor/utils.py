@@ -22,7 +22,7 @@ import io
 import stat
 import string
 from functools import wraps
-from typing import IO, Optional
+from typing import IO, Optional, Sequence
 from urllib.request import urlopen
 
 from lograptor.tui import ProgressBar
@@ -206,7 +206,7 @@ def get_fmt_results(results, limit=5, sep='::', fmt=None):
     return result_list
 
 
-def field_multisub(strings: list[str], field: str, values: str) -> list[str]:
+def field_multisub(strings: list[str], field: str, values: Sequence[str]) -> list[str]:
     """Use string.Template to substitute fields with values."""
     return list({
         string.Template(s).safe_substitute({field: v}) for v in values for s in strings

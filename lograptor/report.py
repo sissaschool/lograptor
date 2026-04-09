@@ -30,6 +30,8 @@ from collections.abc import MutableMapping
 from string import Template
 from typing import TYPE_CHECKING, Any
 
+from mypyc.ir.ops import Sequence
+
 from lograptor.info import __version__
 from lograptor.exceptions import LogRaptorNoOptionError, LogRaptorNoSectionError, \
     LogRaptorOptionError, RuleMissingError, LogRaptorConfigError
@@ -68,10 +70,10 @@ class ReportData(MutableMapping[str, Any]):
         self._data: dict[str, Any] = {}
         self.name = name
         self.rules = {}
-        self.results = []
+        self.results: list[tuple[str, str]] = []
 
         self.subreport: str | None = None
-        self.title: str | None = None
+        self.title: str = 'Unnamed'
         self.color: str | None = None
         self.function: str | None = None
 
@@ -96,8 +98,8 @@ class ReportData(MutableMapping[str, Any]):
                     raise LogRaptorOptionError('function')
 
                 self.function = match.group('function')
-                self.topnum = match.group('topnum')
-                self.headers = match.group('headers')
+                self.topnum: str = match.group('topnum')
+                self.headers: str = match.group('headers')
 
                 if self.headers:
                     n_headers = len(re.split(r'\s*,\s*', self.headers))
@@ -199,12 +201,12 @@ class ReportData(MutableMapping[str, Any]):
     def __len__(self) -> int:
         return len(self._data)
 
-    def __eq__(self, other: 'ReportData') -> bool:
+    def __eq__(self, other: object) -> bool:
         """
         Compare two 'table' report items. When True the report items
         results are mergeable.
         """
-        if self.function != 'table' or other.function != 'table':
+        if not isinstance(other, ReportData) or self.function != 'table' or other.function != 'table':
             return False
 
         if self.title != other.title:
@@ -225,7 +227,7 @@ class ReportData(MutableMapping[str, Any]):
         """
         Make the text representation of a report data element.
         """
-        def mformat(results: list[str]) -> str:
+        def mformat(results: Sequence[str]) -> str:
             _text = ""
             _buffer = results[0]
             for j in range(1, len(results)):
@@ -376,7 +378,7 @@ class ReportData(MutableMapping[str, Any]):
 
         self.html = '{0}</table>\n<p>\n'.format(html)
 
-    def make_csv(self):
+    def make_csv(self) -> None:
         """
         Get the text representation of a report element as csv.
         """
@@ -385,7 +387,7 @@ class ReportData(MutableMapping[str, Any]):
         rows: list[list[str] | tuple[str, ...]]
 
         out = StringIO()
-        kwargs = dict(delimiter='|', lineterminator='\n', quoting=csv.QUOTE_MINIMAL)
+        kwargs: dict[str, Any] = dict(delimiter='|', lineterminator='\n', quoting=csv.QUOTE_MINIMAL)
         writer = csv.writer(out, **kwargs)
 
         if self.function == 'total':
@@ -426,7 +428,7 @@ class Subreport:
     def __init__(self, name: str, title: str):
         self.name = name
         self.title = title
-        self.report_data = []
+        self.report_data: list[ReportData] = []
 
     def __len__(self):
         return len(self.report_data)
@@ -560,7 +562,7 @@ class Report(object):
         self.args = args
         self.config = config
 
-        self.stats = {}
+        self.stats: dict[str, Any] = {}
         self.runtime = time.localtime()
 
         # Read the report options from the config file
@@ -593,7 +595,7 @@ class Report(object):
         for subreport in self.subreports:
             subreport.compact_tables()
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         pass
 
     def get_report_parts(self, apps: dict[str, 'AppLogParser'], formats: list[str] | None = None):
@@ -681,7 +683,7 @@ class Report(object):
 
     def make_text_page(self, value_map: dict[str, str | None]) -> TextPart:
         """
-        Builds the report as text page, using the template page from file.
+        Builds the report as a text page, using the template page from file.
         """
         logger.info('Making a text report page using template %r', self.text_template)
         fh = open(self.text_template)

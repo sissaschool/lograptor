@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from itertools import chain
 from typing import cast, Hashable, Any
 
+from mypyc.ir.ops import Sequence
+
 
 @dataclass(slots=True)
 class LookupCache:
@@ -117,7 +119,7 @@ class LookupCache:
         else:
             return value
 
-    def match_to_dict(self, match: re.Match[str], gids: list[str]) -> dict[str, str]:
+    def match_to_dict(self, match: re.Match[str], gids: Sequence[str]) -> dict[str, str]:
         """Map values from match into a dictionary."""
         values = {}
         for gid in gids:

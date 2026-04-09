@@ -306,6 +306,7 @@ def create_matcher(dispatcher: DispatcherType,
                         if use_app_rules:
                             app = log_parser.app or \
                                 get_app(selected_data, apps, apptags, extra_tags)
+                            assert app is not None, "app is None"
                             app.increase_last(repeat)
                             app.matches += 1
                             dispatch_context(
@@ -325,7 +326,7 @@ def create_matcher(dispatcher: DispatcherType,
                     prev_year if MONTHMAP[log_data.month] != '01' and file_month == 1 else file_year
                 )
                 event_dt = get_mktime(
-                    year=year,
+                    year=str(year),
                     month=log_data.month,
                     day=log_data.day,
                     ltime=log_data.ltime
@@ -369,7 +370,7 @@ def create_matcher(dispatcher: DispatcherType,
                     app_matched, has_full_match, app_thread, output_data = app.match_rules(log_data)
                     if not pattern_matched and app_matched and app_thread is None:
                         continue
-                    if output_data:
+                    if output_data and name_cache is not None:
                         rawlog = name_cache.match_to_string(
                             log_match, log_parser.parser.groupindex, output_data
                         )
@@ -405,7 +406,7 @@ def create_matcher(dispatcher: DispatcherType,
                 else:
                     if first_event > event_dt:
                         first_event = event_dt
-                    if last_event < event_dt:
+                    if last_event is not None and last_event < event_dt:
                         last_event = event_dt
 
                 if pattern_matched:

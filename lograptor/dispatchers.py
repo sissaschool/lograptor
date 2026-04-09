@@ -146,7 +146,7 @@ class LineBufferDispatcher(deque, AbstractDispatcher):
         self.context_until = 0
 
     def dispatch_selected(self, filename: str = '', line_number: int = 0,
-                          match: re.Pattern[str] | None = None, **kwargs: Any):
+                          match: re.Match[str] | None = None, **kwargs: Any):
 
         next_line = line_number - len(self)
         if self.last_line == 0 or (next_line - self.last_line) > 1:

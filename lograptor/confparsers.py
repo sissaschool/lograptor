@@ -79,7 +79,7 @@ class EnvConfigParser(RawConfigParser):
     :param env: Environment values passed as keyword arguments.
     """
     _DEFAULT_INTERPOLATION = EnvInterpolation()
-    _DEFAULTS: dict[str, dict[str, str]] = {}
+    _DEFAULTS: dict[str, dict[str, str | int | bool]] = {}
     _sections: dict[str, dict[str, str]]
 
     def optionxform(self, optionstr: str) -> str:
@@ -238,6 +238,7 @@ class EnvConfigParser(RawConfigParser):
               raw: bool = False, vars: dict[str, str] | None = None):
         if section == _UNSET:
             return super().items(raw=raw, vars=vars)
+        assert isinstance(section, str)
 
         try:
             opts = self.__defaults[section].copy()

@@ -26,6 +26,10 @@ import configparser
 from argparse import Namespace
 from collections import Counter
 from functools import cached_property
+from typing import Union, Any
+
+from mypy.checker import conditional_types, Mapping
+from mypyc.ir.ops import Sequence
 
 from lograptor.logparsers import LogData
 from lograptor.cache import LookupCache
@@ -33,6 +37,7 @@ from lograptor.exceptions import LogRaptorConfigError, RuleMissingError, LogRapt
 from lograptor.confparsers import AppConfig
 from lograptor.report import Report, ReportData
 from lograptor.utils import field_multisub, exact_sub
+
 
 
 logger = logging.getLogger(__package__)
@@ -57,7 +62,10 @@ class AppRule:
     __slots__ = ('name', 'pattern', 'app', 'key_gids', 'results', 'filter_keys',
                  'full_match', 'used_by_report', '_last_idx')
 
-    key_gids: list[str] | tuple[str, ...]
+    key_gids: Sequence[str] | tuple[str, ...]
+    results: Counter[Any]
+    _last_idx: tuple[str, ...] | None
+
 
     def __init__(self, name: str,
                  pattern: str,
@@ -123,28 +131,30 @@ class AppRule:
         if condition == "*" and value_field is None:
             return sum(self.results.values())
 
-        results = self.results
         val = self.key_gids.index(value_field) if value_field is not None else None
 
         if condition == "*":
             tot = 0
-            for key in results:
-                tot += results[key] * int(key[val])
+            for key in self.results:
+                tot += self.results[key] * int(key[val])
             return tot
 
         match = re.search(r'(\w+)(!=|==)\"([^\"]*)\"', condition)
+        if match is None:
+            return 0
+
         condition_index = self.key_gids.index(match.group(1))
         invert = (match.group(2) == '!=')
         condition_pattern = re.compile(match.group(3))
 
         tot = 0
-        for key in results:
+        for key in self.results:
             match = condition_pattern.search(key[condition_index])
             if (not invert and match is not None) or (invert and match is None):
                 if value_field is None:
-                    tot += results[key]
+                    tot += self.results[key]
                 else:
-                    tot += results[key] * int(key[val])
+                    tot += self.results[key] * int(key[val])
         return tot
 
     def top_events(self, num: int, value_field: str, usemax: bool, gid: str) \
@@ -206,11 +216,11 @@ class AppRule:
         del top[num:]
         return [res for res in top if res is not None]
 
-    def list_events(self, cond, cols, fields):
+    def list_events(self, condition: str, cols: int, fields: Mapping[Any, str]):
         """
         Return the list of events, with a specific order and filtered by a condition.
-        An element of the list is a tuple with three component. The first is the main
-        attribute (first field). The second field/label, usually a string that identify
+        An element of the list is a tuple with three items. The first is the main
+        attribute (first field). The second field/label, usually a string that identifies
         the service. The third is a dictionary with a key-tuple composed by all other
         fields and values indicating the number of events associated.
         """
@@ -236,19 +246,20 @@ class AppRule:
         # Set local variables
         results = self.results
         pos = [self.key_gids.index(gid) for gid in fields if gid[0] != '"']
-        has_cond = cond != "*"
+        has_cond = condition != "*"
 
-        # If a condition is passed then compile a pattern matching object
-        if has_cond:
-            match = re.search(r'(\w+)(!=|==)\"([^\"]*)\"', cond)
+        # If a condition is satisfied, then compile a pattern matching object
+        if has_cond and (match := re.search(r'(\w+)(!=|==)\"([^\"]*)\"', condition)) is not None:
             condpos = self.key_gids.index(match.group(1))
             invert = (match.group(2) == '!=')
             recond = re.compile(match.group(3))
         else:
-            recond = condpos = invert = None
+            condpos = None
+            invert = None
+            recond = None
 
         # Define the row template with places for values and fixed strings
-        row_template = []
+        row_template: list[str | None] = []
         for i in range(cols):
             if fields[i][0] == '"':
                 row_template.append(fields[i].strip('"'))
@@ -257,18 +268,19 @@ class AppRule:
 
         # Set the processing table and reduced key length
         keylen: int = len(pos) - (len(fields) - cols) - 1
-        tabvalues = {}
+        tabvalues: dict[tuple[str, ...], int] = {}
         tabkey = None
 
-        result_list = []
+        result_list: list[list[str | int]] = []
+
         for key in sorted(results, key=lambda x: x[pos[0]]):
             # Skip results that don't satisfy the condition
-            if has_cond:
+            if has_cond and recond is not None:
                 try:
                     match = recond.search(key[condpos])
                 except TypeError:
                     continue
-                if ((match is None) and not invert) or ((match is not None) and invert):
+                if (not invert and match is None) or (invert and match is not None):
                     continue
 
             new_tabkey = [key[pos[i]] for i in range(keylen)]
@@ -296,6 +308,8 @@ class AppLogParser:
     """
     __slots__ = ('__dict__', 'name', 'name_cache', '_report', '_thread', 'matches',
                  'unparsed', '_last_rule', '_last_idx', 'rules', 'has_filters')
+
+    _last_rule: AppRule | None
 
     def __init__(self, name: str,
                  cfgfile: str,
@@ -431,6 +445,8 @@ class AppLogParser:
 
     def increase_last(self, n: int) -> None:
         """Increase the counter of the last matched rule by an integer value."""
+        if self._last_rule is None:
+            return
         try:
             self._last_rule.increase_last(n)
         except AttributeError:
