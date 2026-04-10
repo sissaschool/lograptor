@@ -411,9 +411,11 @@ def has_void_args(argv):
 
 def lograptor(files: Sequence[str] = (), *,
               cfgfiles: Sequence[str] = (),
-              patterns: Sequence[str] = (),
               apps: Sequence[str] = (),
               hosts: Sequence[str] = (),
+              patterns: Sequence[str] = (),
+              pattern_files: Sequence[str] = (),
+              channels: Sequence[str] = ('stdout',),
               filters: dict[str, str] | None = None,
               time_period: tuple[datetime, datetime] | None = None,
               time_range: TimeRange | None = None,
@@ -423,6 +425,7 @@ def lograptor(files: Sequence[str] = (), *,
               word: bool = False,
               files_with_match: bool | None = None,
               count: bool = False,
+              color: str = 'auto',
               quiet: bool = False,
               max_count: int = 0,
               only_matching: bool = False,
@@ -432,19 +435,30 @@ def lograptor(files: Sequence[str] = (), *,
               uid_lookup: bool = False,
               anonymize: bool = False,
               thread: bool = False,
+              recursive: bool = False,
+              dereference_recursive: bool = False,
+              include: Sequence[str] = (),
+              exclude: Sequence[str] = (),
+              exclude_from: Sequence[str] = (),
+              exclude_dir: Sequence[str] = (),
               before_context: int = 0,
               after_context: int = 0,
-              context: int = 0):
+              context: int = 0,
+              group_separator: str = '--',
+              report: str | None = None,
+              loglevel: int = 2):
     """
     Run lograptor with arguments. Experimental feature for use the log processor into
     generic Python scripts. This part is still under development, do not use.
 
     :param files: input files, each argument can be a file path or a glob pathname.
     :param cfgfiles: use a specific configuration file.
-    :param patterns: Regex patterns, select the log line if at least one pattern matches.
     :param matcher: the matcher engine to use; can be 'ruled' (default), 'unruled' or 'unparsed'.
     :param apps: process the log lines related to a list of applications.
     :param hosts: process the log lines related to a list of hosts.
+    :param patterns: regex patterns, select the log line if at least one pattern matches.
+    :param pattern_files: get patterns from FILE.
+    :param channels: send output to o set of output channels (default: ['stdout']).
     :param filters: process the log lines that match all the conditions for rule's field values.
     :param time_range: process the log lines related to a time range.
     :param time_period: restrict the search scope to a date or a date interval.
@@ -453,6 +467,7 @@ def lograptor(files: Sequence[str] = (), *,
     :param word: force PATTERN to match only whole words.
     :param files_with_match: get only names of FILEs containing matches, defaults to `False`.
     :param count: get only a count of matching lines per FILE.
+    :param color: use markers to highlight the matching strings, defaults to `auto`.
     :param quiet: suppress all normal output.
     :param max_count: stop after NUM matches.
     :param only_matching: get only the part of a line matching PATTERN.
@@ -462,14 +477,25 @@ def lograptor(files: Sequence[str] = (), *,
     :param uid_lookup: translate numeric UIDs to usernames.
     :param anonymize: anonymize defined rule's fields value.
     :param thread: get the lines of logs related to each log line selected.
+    :param recursive: read all files under each directory, recursively.
+    :param dereference_recursive: likewise, but follow all symlinks.
+    :param include: search only files that match GLOB.
+    :param exclude: skip files whose base name matches any of the file-name globs.
+    :param exclude_from: skip files whose base name matches any of the file-name globs read from FILE.
+    :param exclude_dir: exclude directories matching the pattern DIR.
     :param before_context: get NUM lines of leading context for each log line selected.
     :param after_context: get NUM lines of trailing context for each log line selected.
     :param context: get NUM lines of output context for each log line selected.
+    :param group_separator: which string to use as a group separator, for default is double hyphen (--).
+    :param report: produce a report at the end of processing, defaults to `False`. Provide a name for \
+    the report or `None` to produce an unnamed report to stdout.
+    :param loglevel: logging level [0=DEBUG], defaults to `2`.
     """
     if filters is None:
         filters = {}
 
     args = argparse.Namespace(**{k: v for k, v in locals().items()})
+    return LogRaptor(args)
     action_info = ActionInfo.from_parser(cli_parser)
 
     # Check provided command line arguments, filling missing ones with default values.

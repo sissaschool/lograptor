@@ -270,17 +270,18 @@ class LogRaptor:
         """
         Returns a tuple with re.Pattern objects created from regex *pattern* arguments.
         """
+        patterns = set()
+
         # No explicit argument for patterns ==> consider the first source argument as pattern.
         if not self.args.patterns and not self.args.pattern_files:
             try:
-                self.args.patterns.append(self.args.files.pop(0))
+                patterns.add(self.args.files.pop(0))
             except IndexError:
                 raise LogRaptorArgumentError('PATTERN', 'no search pattern')
-
-        # Get the patterns from arguments and files
-        patterns = set()
-        if self.args.pattern_files:
+        elif self.args.pattern_files:
+            # Get the patterns from arguments and files
             patterns.update([p.rstrip('\n') for p in fileinput.input(self.args.pattern_files)])
+
         patterns.update(self.args.patterns)
         logger.debug("search patterns to be processed: %r", patterns)
 
