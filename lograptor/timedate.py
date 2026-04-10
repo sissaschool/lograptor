@@ -38,6 +38,7 @@ DATE_FORMATS = (
     ('%Y', re.compile(r"(?<!%)(%Y)"))   # year
 )
 
+
 def format_dt(dt: datetime.datetime | None) -> str:
     return 'None' if dt is None else datetime.datetime.strftime(dt, '%Y-%m-%dT%H:%M:%S')
 

@@ -26,11 +26,9 @@ import socket
 import time
 from argparse import Namespace
 from collections import namedtuple
-from collections.abc import MutableMapping
+from collections.abc import MutableMapping, Sequence
 from string import Template
 from typing import TYPE_CHECKING, Any
-
-from mypyc.ir.ops import Sequence
 
 from lograptor.info import __version__
 from lograptor.exceptions import LogRaptorNoOptionError, LogRaptorNoSectionError, \

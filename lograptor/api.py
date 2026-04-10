@@ -24,9 +24,11 @@ import sys
 import argparse
 import time
 import re
+from collections.abc import Callable, Sequence
 from datetime import datetime
+from typing import Union, NamedTuple, Any
 
-from lograptor.core import LogRaptor
+from lograptor.runner import LogRaptor
 from lograptor.info import __version__, __description__
 from lograptor.exceptions import (
     LogRaptorConfigError, LogRaptorOptionError, LogFormatError, FileMissingError,
@@ -109,7 +111,7 @@ def last_period_spec(arg: str) -> tuple[datetime, datetime]:
         return get_datetime_interval(int(time.time()), diff, 3600)
 
 
-def date_interval_spec(arg):
+def date_interval_spec(arg) -> tuple[datetime, datetime]:
     try:
         return parse_date_period(arg)
     except (TypeError, ValueError):
@@ -333,6 +335,71 @@ def create_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
+class ActionInfo(NamedTuple):
+    """Stores information about argparse actions, used to check command line arguments."""
+
+    dest: str
+    type: Callable[[Any], Any] | None = None
+    default: Any = None
+    required: bool = False
+    choices: Union[Sequence[Any], dict[str, "ActionInfo"], None] = None
+
+    @classmethod
+    def from_action(cls, action: argparse.Action) -> "ActionInfo":
+        kwargs = {
+            "dest": action.dest,
+            "type": action.type,
+            "choices": action.choices,
+            "default": action.default,
+            "required": action.required,
+        }
+        if not isinstance(action.type, type) and action.const is not None:
+            kwargs["type"] = type(action.const)
+        if isinstance(action.choices, dict):
+            kwargs["choices"] = {
+                key: cls.from_parser(subparser)
+                for key, subparser in action.choices.items()
+                if isinstance(subparser, argparse.ArgumentParser)
+            }
+        return cls(**kwargs)
+
+    @classmethod
+    def from_parser(cls, parser: argparse.ArgumentParser) -> dict[str, "ActionInfo"]:
+        """Extract parser actions returning a dictionary with info about actions."""
+        actions = {}
+        for key, obj in vars(parser).items():
+            if isinstance(obj, (list, tuple)) and any(isinstance(item, argparse.Action) for item in obj):
+                for item in obj:
+                    if isinstance(item, argparse.Action):
+                        if item.dest == "help":
+                            continue
+                        assert item.dest not in actions
+                        actions[item.dest] = cls.from_action(item)
+        return actions
+
+    def verify(self, dest: str, value: Any) -> None:
+        if dest != self.dest:
+            raise ValueError(f"{dest!r} is not equal to {self.dest!r}")
+        if isinstance(self.choices, dict):
+            if not isinstance(value, str):
+                raise TypeError(f"{value!r} is not an instance {str!r}")
+            if value not in self.choices:
+                raise ValueError(f"{value!r} is not a valid choice for {self.dest!r}")
+            return
+        elif value is None:
+            if not self.required:
+                return
+
+        if isinstance(self.type, type) and not isinstance(value, self.type):
+            raise TypeError(f"{value!r} is not an instance of {self.type!r}")
+        if self.choices:
+            if value not in self.choices:
+                raise ValueError(f"{value!r} is not a valid choice for {self.dest!r}")
+        if self.default is not None:
+            if value == self.default:
+                return
+
+
 def has_void_args(argv):
     """
     Check if the command line has no arguments or only the --conf optional argument.
@@ -342,20 +409,40 @@ def has_void_args(argv):
         n_args == 3 and argv[1] == '--conf'
 
 
-def lograptor(files, patterns=None, matcher='ruled', cfgfiles=None, apps=None,
-              hosts=None, filters=None, time_period=None, time_range=None,
-              ignore_case=False, invert=False, word=False, files_with_match=None,
-              count=False, quiet=False, max_count=0, only_matching=False,
-              line_number=False, with_filename=None, ip_lookup=False, uid_lookup=False,
-              anonymize=False, thread=False, before_context=0, after_context=0, context=0):
+def lograptor(files: Sequence[str] = (), *,
+              cfgfiles: Sequence[str] = (),
+              patterns: Sequence[str] = (),
+              apps: Sequence[str] = (),
+              hosts: Sequence[str] = (),
+              filters: dict[str, str] | None = None,
+              time_period: tuple[datetime, datetime] | None = None,
+              time_range: TimeRange | None = None,
+              matcher: str = 'ruled',
+              ignore_case: bool = False,
+              invert: bool = False,
+              word: bool = False,
+              files_with_match: bool | None = None,
+              count: bool = False,
+              quiet: bool = False,
+              max_count: int = 0,
+              only_matching: bool = False,
+              line_number: bool = False,
+              with_filename: bool | None = None,
+              ip_lookup: bool = False,
+              uid_lookup: bool = False,
+              anonymize: bool = False,
+              thread: bool = False,
+              before_context: int = 0,
+              after_context: int = 0,
+              context: int = 0):
     """
     Run lograptor with arguments. Experimental feature for use the log processor into
     generic Python scripts. This part is still under development, do not use.
 
-    :param files: Input files. Each argument can be a file path or a glob pathname.
-    :param patterns: Regex patterns, select the log line if at least one pattern matches.
-    :param matcher: Matcher engine, can be 'ruled' (default), 'unruled' or 'unparsed'.
+    :param files: input files, each argument can be a file path or a glob pathname.
     :param cfgfiles: use a specific configuration file.
+    :param patterns: Regex patterns, select the log line if at least one pattern matches.
+    :param matcher: the matcher engine to use; can be 'ruled' (default), 'unruled' or 'unparsed'.
     :param apps: process the log lines related to a list of applications.
     :param hosts: process the log lines related to a list of hosts.
     :param filters: process the log lines that match all the conditions for rule's field values.
@@ -364,7 +451,7 @@ def lograptor(files, patterns=None, matcher='ruled', cfgfiles=None, apps=None,
     :param ignore_case: ignore case distinctions, defaults to `False`.
     :param invert: invert the sense of patterns regexp matching.
     :param word: force PATTERN to match only whole words.
-    :param files_with_match: get only names of FILEs containing matches, defaults is `False`.
+    :param files_with_match: get only names of FILEs containing matches, defaults to `False`.
     :param count: get only a count of matching lines per FILE.
     :param quiet: suppress all normal output.
     :param max_count: stop after NUM matches.
@@ -378,53 +465,40 @@ def lograptor(files, patterns=None, matcher='ruled', cfgfiles=None, apps=None,
     :param before_context: get NUM lines of leading context for each log line selected.
     :param after_context: get NUM lines of trailing context for each log line selected.
     :param context: get NUM lines of output context for each log line selected.
-    :return:
     """
-    cli_parser = create_argument_parser()
-    args = cli_parser.parse_args()
-    args.files = files
-    args.matcher = matcher
-    args.cfgfiles = cfgfiles
-    args.time_period = time_period
-    args.time_range = time_range
-    args.ignore_case = ignore_case
-    args.invert = invert
-    args.word = word
-    args.files_with_match = files_with_match
-    args.count = count
-    args.quiet = quiet
-    args.max_count = max_count
-    args.only_matching = only_matching
-    args.line_number = line_number
-    args.with_filename = with_filename
-    args.anonymize = anonymize
-    args.ip_lookup = ip_lookup
-    args.uid_lookup = uid_lookup
-    args.thread = thread
-    args.context = context
-    args.after_context = after_context
-    args.before_context = before_context
-    args.patterns = [''] if patterns is None else patterns
+    if filters is None:
+        filters = {}
 
-    if apps is not None:
-        args.apps = apps
-    if hosts is not None:
-        args.hosts = hosts
-    if filters is not None:
-        args.filters = filters
+    args = argparse.Namespace(**{k: v for k, v in locals().items()})
+    action_info = ActionInfo.from_parser(cli_parser)
 
-    _lograptor = LogRaptor(args)
-    return _lograptor()
+    # Check provided command line arguments, filling missing ones with default values.
+    for key, value in vars(args).items():
+        current = action_info
+        while True:
+            if key in current:
+                current[key].verify(key, value)
+                break
+
+            subcommand: Any = None
+            for k, v in current.items():
+                if not isinstance(v.choices, dict):
+                    if v.required:
+                        raise AttributeError(f"missing required attribute {k!r} in {args!r}")
+                elif k in args and getattr(args, k) in v.choices:
+                    if subcommand is not None:
+                        raise ValueError(f"find more actions for subcommand {subcommand[0]!r}")
+                    subcommand = k, v
+            else:
+                if subcommand is None:
+                    raise TypeError(f"unknow argument {key!r} with value {value!r}")
+                current = subcommand[1].choices[getattr(args, subcommand[0])]
+
+    return LogRaptor(args)
 
 
 def main():
-    if sys.version_info < (3, 9, 0):
-        sys.stderr.write("You need Python 3.9+ to run this program\n")
-        sys.exit(1)
-
-    cli_parser = create_argument_parser()
     args = cli_parser.parse_args()
-
     try:
         if has_void_args(sys.argv) and 'stdout' in args.channels:
             # If the command is called with no relevant args (eg. no args
@@ -451,6 +525,8 @@ def main():
     else:
         sys.exit(0 if retval else 1)
 
+
+cli_parser = create_argument_parser()
 
 if __name__ == '__main__':
     main()

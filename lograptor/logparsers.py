@@ -24,8 +24,6 @@ from collections import namedtuple
 from collections.abc import Sequence
 from typing import NamedTuple, TYPE_CHECKING, ClassVar
 
-from lograptor.exceptions import LogRaptorConfigError
-
 if TYPE_CHECKING:
     from lograptor.application import AppRule
 

@@ -22,7 +22,6 @@ This module defines classes and methods to handle lograptor configurations.
 import string
 import socket
 import re
-from collections.abc import Callable
 from configparser import NoOptionError, DuplicateSectionError, RawConfigParser
 
 from lograptor.exceptions import (

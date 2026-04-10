@@ -25,11 +25,9 @@ import string
 import configparser
 from argparse import Namespace
 from collections import Counter
+from collections.abc import Sequence, Mapping
 from functools import cached_property
-from typing import Union, Any
-
-from mypy.checker import conditional_types, Mapping
-from mypyc.ir.ops import Sequence
+from typing import Any
 
 from lograptor.logparsers import LogData
 from lograptor.cache import LookupCache
@@ -37,8 +35,6 @@ from lograptor.exceptions import LogRaptorConfigError, RuleMissingError, LogRapt
 from lograptor.confparsers import AppConfig
 from lograptor.report import Report, ReportData
 from lograptor.utils import field_multisub, exact_sub
-
-
 
 logger = logging.getLogger(__package__)
 
@@ -65,7 +61,6 @@ class AppRule:
     key_gids: Sequence[str] | tuple[str, ...]
     results: Counter[Any]
     _last_idx: tuple[str, ...] | None
-
 
     def __init__(self, name: str,
                  pattern: str,

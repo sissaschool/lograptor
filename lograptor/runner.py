@@ -34,8 +34,8 @@ from datetime import datetime
 from functools import cached_property
 from typing import Any
 
-from lograptor.exceptions import (LogRaptorConfigError, FileMissingError,
-    LogFormatError, LogRaptorOptionError, LogRaptorArgumentError)
+from lograptor.exceptions import LogRaptorConfigError, FileMissingError, \
+    LogFormatError, LogRaptorOptionError, LogRaptorArgumentError
 from lograptor.confparsers import LogRaptorConfig
 from lograptor.application import AppLogParser
 from lograptor.logparsers import LogParser
@@ -95,7 +95,7 @@ class LogRaptor:
 
     def set_logger(self):
         """
-        Setup lograptor logger with a handler and a formatter. The logging
+        Set up lograptor logger with a handler and a formatter. The logging
         level is defined by a [0..4] range, where a higher value means a
         more verbose logging. The loglevel value is mapped to correspondent
         logging module value:
@@ -464,7 +464,7 @@ class LogRaptor:
             return LookupCache.from_args(self.args, self.config)
         return None
 
-    def __call__(self, dispatcher: DispatcherType | None=None,
+    def __call__(self, dispatcher: DispatcherType | None = None,
                  parsers: Sequence[LogParser] | None = None) -> bool:
         """
         Log processing main routine. Iterate over the log files calling

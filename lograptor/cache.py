@@ -21,12 +21,10 @@ import socket
 import string
 import pwd
 from argparse import Namespace
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from itertools import chain
-from typing import cast, Hashable, Any
-
-from mypyc.ir.ops import Sequence
+from typing import Any
 
 
 @dataclass(slots=True)

@@ -16,7 +16,7 @@
 #
 # @Author Davide Brunato <brunato@sissa.it>
 #
-from .core import LogRaptor
+from .runner import LogRaptor
 from .exceptions import LogRaptorException
 from .api import lograptor
 
