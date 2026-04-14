@@ -26,7 +26,8 @@ import configparser
 from argparse import Namespace
 from collections import Counter
 from collections.abc import Sequence, Mapping
-from functools import cached_property
+from functools import cached_property, cache
+from itertools import pairwise
 from typing import Any
 
 from lograptor.logparsers import LogData
@@ -37,6 +38,37 @@ from lograptor.report import Report, ReportData
 from lograptor.utils import field_multisub, exact_sub
 
 logger = logging.getLogger(__package__)
+
+
+#@cache
+def get_raw_pattern(pattern: str) -> str:
+    """Translate a pattern string that contains %{...} rules to a raw pattern string."""
+    pattern  = pattern.replace('\n', '')
+    if not '%{' in pattern:
+        return pattern  # Nothing to do
+
+    chunks = pattern.split('%{')
+    for left, right in pairwise(range(len(chunks))):
+        i = 1
+        while i < len(chunks[left]) and chunks[left][-i] == '%':
+            i += 1
+
+        if (i - 1) % 2:
+            chunks[left] = chunks[left] + '%{'
+            continue
+
+        if '}' not in chunks[right]:
+            chunks[left] = chunks[left] + '%{'
+            continue
+
+        pos = chunks[right].index('}')
+        spec = chunks[right][:pos]
+        if spec.isidentifier():
+            name = spec.lower()
+            chunks[left] += f"(?P<{name}>${{{name}}})"
+            chunks[right] = chunks[right][pos + 1:]
+
+    return ''.join(chunks).replace('%%', '%')
 
 
 class AppRule:
@@ -67,10 +99,8 @@ class AppRule:
                  app: 'AppLogParser',
                  filter_keys: list[str] | None = None):
         """
-        Initialize AppRule.
-
-        :param name: the configuration option name
-        :param pattern: the option value that represents the search pattern
+        :param name: the option name in the rule section of the app configuration file
+        :param pattern: the regex pattern of the rule to compile
         :param app: the application in which the rule is defined
         :param filter_keys: the filtering keys dictionary if the rule is a filter
         """
@@ -422,7 +452,8 @@ class AppLogParser:
 
         rules = []
         for option, value in rule_options:
-            pattern = value.replace('\n', '')  # Strip newlines for multi-line declarations
+            pattern = get_raw_pattern(value)
+
             if not self.args.filters:
                 # No filters case: substitute the filter fields with the corresponding patterns.
                 pattern = string.Template(pattern).safe_substitute(self.fields)
