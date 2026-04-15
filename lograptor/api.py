@@ -120,7 +120,7 @@ def date_interval_spec(arg) -> tuple[datetime, datetime]:
 
 def create_argument_parser() -> argparse.ArgumentParser:
     """
-    Command line options and arguments parsing. This function return
+    Command line options and arguments parsing. This function returns
     a list of options and the list of arguments (pattern, filenames).
     """
     parser = argparse.ArgumentParser(prog='lograptor', description=__description__, add_help=False)
@@ -186,7 +186,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     group = parser.add_argument_group("Matching Control")
     group.add_argument(
         "-e", "--regexp", metavar="PATTERN", dest="patterns", default=[],
-        action="append", help="use PATTERN for matching"
+        action="append", help="use unnamed PATTERN for matching"
     )
     group.add_argument(
         "-f", "--file", metavar="FILE", dest="pattern_files", default=[],

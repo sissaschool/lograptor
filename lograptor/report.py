@@ -549,12 +549,12 @@ class Subreport:
                 self.report_data.pop(i)
 
 
-class Report(object):
+class Report:
     """
     This helper class holds the contents of a report before it is
     sent to selected channels.
     """
-    def __init__(self, name: str, patterns, args: Namespace, config):
+    def __init__(self, name: str, patterns: Sequence[str], args: Namespace, config):
         self.name = name
         self.patterns = patterns
         self.args = args

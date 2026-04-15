@@ -276,32 +276,45 @@ class LogRaptorConfig(EnvConfigParser):
             'encodings': 'utf_8, latin1, latin2',
             'mapexp': 4,
         },
+        # Named patterns for app rules. The following patterns are always available.
+        # You can add more patterns or override existing ones.
         'patterns': {
             'ASCII': r'[\x01-\x7f]*',
-            'DNSNAME': r'\b(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*'
+            'IPV4': r'(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}'
+                    r'(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)',
+            'IPV6': r'(?!.*::.*::)(?:(?!:)|:(?=:))(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)){6}'
+                    r'(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)[0-9a-f]{0,4}'
+                    r'(?: (?<=::)|(?<!:)|(?<=:) (?<!::) :)|'
+                    r'(?:25[0-4]|2[0-4]\d|1\d\d|[1-9]?\d)'
+                    r'(?: \.(?:25[0-4]|2[0-4]\d|1\d\d|[1-9]?\d)){3})',
+            'IP': r'(?:%{IPV6}|%{IPV4})',
+            'HOSTNAME': r'\b(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*'
                        r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\b',
-            'IPV4_ADDRESS': r'(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}'
-                            r'(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)',
-            'IPV6_ADDRESS': r'(?!.*::.*::)(?:(?!:)|:(?=:))(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)){6}'
-                            r'(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)[0-9a-f]{0,4}'
-                            r'(?: (?<=::)|(?<!:)|(?<=:) (?<!::) :)|'
-                            r'(?:25[0-4]|2[0-4]\d|1\d\d|[1-9]?\d)'
-                            r'(?: \.(?:25[0-4]|2[0-4]\d|1\d\d|[1-9]?\d)){3})',
+            'IPORHOST': r'(?:%{IP}|%{HOSTNAME})',
+            'HOSTPORT': r'%{IPORHOST}:%{POSINT}',
             'USERNAME': r'[A-Za-z0-9!#$%&\'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&\'*+/=?^_`{|}~-]+)*',
-            'EMAIL': r'(?:|${USERNAME}|"${ASCII}")'
-                     r'(?:|@(?:${DNSNAME}|\[(?:${IPV4_ADDRESS}|${IPV6_ADDRESS})\]))+',
-            'ID': r'[0-9]+',
+            'EMAILADDRESS': r'(?:|${USERNAME}|"${ASCII}")'
+                            r'(?:|@(?:${HOSTNAME}|\[(?:${IPV4}|${IPV6})\]))+',
+            'POSINT': r'\b(?:[1-9][0-9]*)\b',
         },
+        # Files with named patterns. You can add more files with patterns. The files are
+        # processed respecting ther position in the section, with consequent overrides.
+        # Patterns taken from files are processed before the patterns defined in the
+        # 'patterns' section.
+        'pattern_files': {
+            'patterns': './patterns',
+        },
+        # Data extraction fields. The fields are used to extract data from log messages
+        # after the matching of the patterns and are used to build the report.
         'fields': {
-            'user': r'(|${USERNAME})',
-            'mail': r'${EMAIL}',
-            'from': r'${EMAIL}',
-            'rcpt': r'${EMAIL}',
-            'client': r'(${DNSNAME}|${IPV4_ADDRESS}|'
-                      r'${DNSNAME}\[${IPV4_ADDRESS}\])',
-            'pid': r'${ID}',
-            'uid': r'${ID}',
-            'msgid': r'${ASCII}',
+            'user': ('(|${USERNAME})', str),
+            'mail': ('EMAIL', str),
+            'from': ('EMAIL', str),
+            'rcpt': ('EMAIL', str, None),
+            'client': ('IPORHOST', str, None),
+            'pid': ('POSINT', int, None),
+            'uid': ('POSINT', int, None),
+            'msgid': ('ASCII}', str),
         },
         # Reports
         'default_report': {

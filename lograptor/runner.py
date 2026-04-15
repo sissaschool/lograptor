@@ -27,6 +27,7 @@ import logging
 import fileinput
 import sys
 import fnmatch
+import pathlib
 import warnings
 from collections import Counter
 from collections.abc import Sequence
@@ -165,7 +166,7 @@ class LogRaptor:
             name = os.path.basename(config_file)[0:-5]
             try:
                 app = AppLogParser(name, config_file, self.args, self.logdir,
-                                   self.fields, self.name_cache, self.report)
+                                   self.filters, self.name_cache, self.report)
             except (LogRaptorOptionError, LogRaptorConfigError, LogFormatError) as err:
                 logger.error('cannot add app %r: %s', name, err)
             else:
@@ -206,11 +207,6 @@ class LogRaptor:
                 except KeyError:
                     tagmap[tag] = [app]
         return tagmap
-
-    @property
-    def filters(self) -> dict[str, str]:
-        """If not empty process log lines that match all the conditions for rule field values."""
-        return self.args.filters
 
     @cached_property
     def recursive(self) -> bool:
@@ -269,6 +265,9 @@ class LogRaptor:
     def patterns(self) -> Sequence[re.Pattern[str]]:
         """
         Returns a tuple with re.Pattern objects created from regex *pattern* arguments.
+        These patterns are intended as additional filters for the log lines and don't
+        interact with patterns loaded from configuration that are named patterns and
+        are applied to app rules to get the final list of patterns to be processed.
         """
         patterns = set()
 
@@ -300,6 +299,29 @@ class LogRaptor:
             raise LogRaptorArgumentError('wrong regex syntax for pattern: %r' % err)
 
     @cached_property
+    def rule_patterns(self):
+        """The named patterns loaded from configuration files that are used ."""
+        patterns = {}
+
+        for k, v in self.config.items('pattern_files'):
+            filepath = pathlib.Path(self.config.cfgfile).parent / v
+            with filepath.open('r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    try:
+                        name, pattern = line.split(None, 1)
+                    except ValueError:
+                        raise LogRaptorConfigError('invalid pattern file line: %r' % line)
+                    else:
+                        patterns[name] = pattern
+
+        patterns.update({k: v for k, v in self.config.items('patterns')})
+        print(patterns)
+        return patterns
+
+    @cached_property
     def files(self) -> list[str]:
         """
         A list of input sources. Each item can be a file path, a glob path or URL.
@@ -311,9 +333,9 @@ class LogRaptor:
             return self.args.files
 
     @cached_property
-    def fields(self):
+    def filters(self) -> dict[str, str]:
         logger.debug("get fields from arguments ...")
-        unknown = [k for item in self.filters for k in item
+        unknown = [k for item in self.args.filters for k in item
                    if k not in self.config.options('fields')]
         if unknown:
             raise LogRaptorArgumentError('fields', 'undefined fields: %r.' % list(unknown))

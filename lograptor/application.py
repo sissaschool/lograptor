@@ -26,7 +26,7 @@ import configparser
 from argparse import Namespace
 from collections import Counter
 from collections.abc import Sequence, Mapping
-from functools import cached_property, cache
+from functools import cached_property
 from itertools import pairwise
 from typing import Any
 
@@ -40,7 +40,6 @@ from lograptor.utils import field_multisub, exact_sub
 logger = logging.getLogger(__package__)
 
 
-#@cache
 def get_raw_pattern(pattern: str) -> str:
     """Translate a pattern string that contains %{...} rules to a raw pattern string."""
     pattern  = pattern.replace('\n', '')
@@ -249,7 +248,6 @@ class AppRule:
         the service. The third is a dictionary with a key-tuple composed by all other
         fields and values indicating the number of events associated.
         """
-
         def insert_row():
             """
             Internal function to flush results for a single tabkey to result list.
@@ -331,8 +329,8 @@ class AppLogParser:
     """
     Class for parsing application log rules and results.
     """
-    __slots__ = ('__dict__', 'name', 'name_cache', '_report', '_thread', 'matches',
-                 'unparsed', '_last_rule', '_last_idx', 'rules', 'has_filters')
+    __slots__ = ('__dict__', 'filters', 'name_cache', 'rules', 'filter_rules',
+                 '_thread', 'matches', 'unparsed', '_last_rule', '_last_idx')
 
     _last_rule: AppRule | None
 
@@ -340,7 +338,7 @@ class AppLogParser:
                  cfgfile: str,
                  args: Namespace,
                  logdir: str,
-                 fields: dict[str, str],
+                 filters: dict[str, str],
                  name_cache: LookupCache | None = None,
                  report: Report | None = None):
         """
@@ -348,7 +346,7 @@ class AppLogParser:
         :param cfgfile: application config file
         :param args: cli arguments
         :param logdir: Log directory
-        :param fields: Configured fields
+        :param filters: Configured filters
         :param name_cache: Optional name cache (--ip-lookup/--uid-lookup/--anonymize options)
         :param report: Optional report (--report option)
         """
@@ -358,7 +356,7 @@ class AppLogParser:
         self.cfgfile = cfgfile      # App configuration file
         self.args = args
         self.logdir = logdir
-        self.fields = fields
+        self.filters = filters
         self.name_cache = name_cache
 
         # Setting instance internal variables for process phase
@@ -376,18 +374,18 @@ class AppLogParser:
             logger.debug('app %r run files: %r', name, self.files)
             logger.debug('app %r: enabled=%r, priority=%s', name, self.enabled, self.priority)
 
-        self.rules = self.parse_rules()
+        rules = self.parse_rules()
+        self.filter_rules = [rule for rule in rules if rule.filter_keys]
 
-        self.has_filters = any([rule.filter_keys for rule in self.rules])
-
-        if self.has_filters:
+        if self.filter_rules:
             # If the app has filters, reorder rules putting the filters first.
-            self.rules = sorted(self.rules, key=lambda x: x.filter_keys)
+            self.rules = sorted(rules, key=lambda x: x.filter_keys)
             if logger.level <= logging.DEBUG:
-                logger.debug('filter rules of app %r: %d', name, len(self.filters))
+                logger.debug('number or filter rules of app %r: %d', name, len(self.filter_rules))
                 logger.debug('other rules of app %r: %d', name, len(self.rules) - len(self.filters))
         else:
-            for rule in self.rules:
+            self.rules = rules
+            for rule in rules:
                 rule.full_match = True
 
         logger.info('initialized app %r with %d pattern rules', name, len(self.rules))
@@ -417,8 +415,8 @@ class AppLogParser:
         return field_multisub(files, 'host', self.args.hosts or ['*'])
 
     @cached_property
-    def filters(self) -> list[AppRule]:
-        return [rule for rule in self.rules if rule.filter_keys]
+    def has_filters(self) -> bool:
+        return len(self.filter_rules) > 0
 
     @cached_property
     def report_data(self) -> list[ReportData]:
@@ -452,17 +450,19 @@ class AppLogParser:
 
         rules = []
         for option, value in rule_options:
+            value = value.replace('\n', '')
             pattern = get_raw_pattern(value)
+
 
             if not self.args.filters:
                 # No filters case: substitute the filter fields with the corresponding patterns.
-                pattern = string.Template(pattern).safe_substitute(self.fields)
+                pattern = string.Template(pattern).safe_substitute(self.filters)
                 rules.append(AppRule(option, pattern, self))
                 continue
 
             for filter_group in self.args.filters:
                 _pattern, filter_keys = exact_sub(pattern, filter_group)
-                _pattern = string.Template(_pattern).safe_substitute(self.fields)
+                _pattern = string.Template(_pattern).safe_substitute(self.filters)
                 if len(filter_keys) >= len(filter_group):
                     rules.append(AppRule(option, _pattern, self, filter_keys))
                 elif self._thread:
@@ -523,7 +523,7 @@ class AppLogParser:
                     if rule.filter_keys is not None and \
                             any([values[key] is None for key in rule.filter_keys]):
                         return False, None, None, None
-                    elif self._report or (rule.filter_keys is not None or not self.has_filters):
+                    elif self._report or (rule.filter_keys is not None or not self.filter_rules):
                         rule.add_result(values)
                     return True, rule.full_match, None, output_data
 
