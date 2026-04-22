@@ -51,7 +51,6 @@ class TestApiInterface(object):
             cfgfiles=[config_file],
             time_period=time_period,
         )
-        breakpoint()
         assert isinstance(runner, LogRaptor)
         assert runner() is True
 

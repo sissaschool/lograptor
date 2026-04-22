@@ -21,16 +21,39 @@ import socket
 import string
 import pwd
 from argparse import Namespace
+from collections import namedtuple
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cache
-from itertools import chain
+from itertools import chain, pairwise
 from typing import Any
 
+_sentinel_dict = {}
 
 class PatternTemplate(string.Template):
     """Provides a template class that uses '%' as the delimiter for pattern substitutions."""
     delimiter = '%'
+    # idpattern = None
+    #braceidpattern = r'(?a:[_a-z][_a-z0-9]*)'
+    #flags = 0
+
+    def safe_expand(self, substitution_map: dict[str, str]) -> str:
+        """
+        Safe string template expansion performing multiple substitution until there
+        are no changes, taking the length of the substitution maps as the limit for
+        stopping the substitution and raising an error.
+        """
+        _template = self.template
+        try:
+            for _ in range(len(substitution_map) + 1):
+                template = self.safe_substitute(substitution_map)
+                if template == self.template:
+                    return template
+                self.template = template
+            else:
+                raise RuntimeError("substitution map has circularity!")
+        finally:
+            self.template = _template
 
 
 @cache
@@ -38,98 +61,67 @@ def get_pattern(pattern: str) -> re.Pattern[str]:
     return re.compile(pattern)
 
 
-class LogRaptorTemplate:
-    """A string class for supporting $-substitutions."""
+@dataclass
+class FieldInfo:
+    pattern: str
+    field: str
+    datatype: type[str | int | float | bool] = str
 
-    delimiter = '%'
-    idpattern = None
-    braceidpattern = r'(?a:[_A-Z][_A-Z0-9]*)(?:\:[_a-z]+)?'
-    flags = 0
+    @classmethod
+    def from_spec(cls, spec: str) -> 'PatternInfo':
+        parts = spec.split(':')
+        if any(not p.isidentifier() for p in parts) or len(parts) > 3 or len(parts) < 2 \
+                or not parts[0].isupper() or not parts[1].islower():
+            raise ValueError(f"invalid pattern specification: {spec!r}")
 
-    def __init__(self, template):
-        self.template = template
+        if len(parts) == 2:
+            return cls(parts[0], parts[1])
 
-    # Search for $$, $identifier, ${identifier}, and any bare $'s
+        match parts[2]:
+            case 'str':
+                return cls(parts[0], parts[1], str)
+            case 'int':
+                return cls(parts[0], parts[1], int)
+            case 'float':
+                return cls(parts[0], parts[1], float)
+            case 'bool':
+                return cls(parts[0], parts[1], bool)
+            case _:
+                raise ValueError(f"invalid pattern specification: {spec!r}")
 
-    def _invalid(self, mo):
-        i = mo.start('invalid')
-        lines = self.template[:i].splitlines(keepends=True)
-        if not lines:
-            colno = 1
-            lineno = 1
-        else:
-            colno = i - len(''.join(lines[:-1]))
-            lineno = len(lines)
-        raise ValueError('Invalid placeholder in string: line %d, col %d' %
-                         (lineno, colno))
 
-    def substitute(self, mapping=_sentinel_dict, /, **kws):
-        if mapping is _sentinel_dict:
-            mapping = kws
-        elif kws:
-            from collections import ChainMap
-            mapping = ChainMap(kws, mapping)
-        # Helper function for .sub()
-        def convert(mo):
-            # Check the most common path first.
-            named = mo.group('named') or mo.group('braced')
-            if named is not None:
-                return str(mapping[named])
-            if mo.group('escaped') is not None:
-                return self.delimiter
-            if mo.group('invalid') is not None:
-                self._invalid(mo)
-            raise ValueError('Unrecognized named group in pattern',
-                             self.pattern)
-        return self.pattern.sub(convert, self.template)
+def get_raw_pattern(pattern: str) -> str:
+    """Translate a pattern string that contains %{...} rules to a raw pattern string."""
+    pattern  = pattern.replace('\n', '')
+    if not '%{' in pattern:
+        return pattern  # Nothing to do
 
-    def safe_substitute(self, mapping=_sentinel_dict, /, **kws):
-        if mapping is _sentinel_dict:
-            mapping = kws
-        elif kws:
-            from collections import ChainMap
-            mapping = ChainMap(kws, mapping)
-        # Helper function for .sub()
-        def convert(mo):
-            named = mo.group('named') or mo.group('braced')
-            if named is not None:
-                try:
-                    return str(mapping[named])
-                except KeyError:
-                    return mo.group()
-            if mo.group('escaped') is not None:
-                return self.delimiter
-            if mo.group('invalid') is not None:
-                return mo.group()
-            raise ValueError('Unrecognized named group in pattern',
-                             self.pattern)
-        return self.pattern.sub(convert, self.template)
+    chunks = pattern.split('%{')
+    for left, right in pairwise(range(len(chunks))):
+        i = 1
+        while i < len(chunks[left]) and chunks[left][-i] == '%':
+            i += 1
 
-    def is_valid(self):
-        for mo in self.pattern.finditer(self.template):
-            if mo.group('invalid') is not None:
-                return False
-            if (mo.group('named') is None
-                and mo.group('braced') is None
-                and mo.group('escaped') is None):
-                # If all the groups are None, there must be
-                # another group we're not expecting
-                raise ValueError('Unrecognized named group in pattern',
-                    self.pattern)
-        return True
+        if (i - 1) % 2:
+            chunks[left] = chunks[left] + '%{'
+            continue
 
-    def get_identifiers(self):
-        ids = []
-        for mo in self.pattern.finditer(self.template):
-            named = mo.group('named') or mo.group('braced')
-            if named is not None and named not in ids:
-                # add a named group only the first time it appears
-                ids.append(named)
-            elif (named is None
-                and mo.group('invalid') is None
-                and mo.group('escaped') is None):
-                # If all the groups are None, there must be
-                # another group we're not expecting
-                raise ValueError('Unrecognized named group in pattern',
-                    self.pattern)
-        return ids
+        if '}' not in chunks[right]:
+            chunks[left] = chunks[left] + '%{'
+            continue
+
+        pos = chunks[right].index('}')
+        spec = chunks[right][:pos]
+        if ':' in spec:
+            try:
+                field_info = FieldInfo.from_spec(spec)
+            except ValueError:
+                pass
+            else:
+                chunks[left] += f"(?P<{field_info.field}>%{{{field_info.pattern}}})"
+                chunks[right] = chunks[right][pos + 1:]
+                continue
+
+        chunks[left] = chunks[left] + '%{'
+
+    return ''.join(chunks).replace('%%', '%')

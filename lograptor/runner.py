@@ -45,6 +45,7 @@ from lograptor.filemap import FileMap
 from lograptor.cache import LookupCache
 from lograptor.dispatchers import DispatcherType, UnbufferedDispatcher, \
     LineBufferDispatcher, ThreadedDispatcher
+from lograptor.patterns import PatternTemplate
 from lograptor.report import Report
 from lograptor.channels import TermChannel, MailChannel, FileChannel
 from lograptor.timedate import format_dt, get_datetime_interval, TimeRange
@@ -318,7 +319,6 @@ class LogRaptor:
                         patterns[name] = pattern
 
         patterns.update({k: v for k, v in self.config.items('patterns')})
-        print(patterns)
         return patterns
 
     @cached_property
@@ -340,10 +340,9 @@ class LogRaptor:
         if unknown:
             raise LogRaptorArgumentError('fields', 'undefined fields: %r.' % list(unknown))
 
-        patterns = {k: v for k, v in self.config.items('patterns')}
-        return {
-            k: safe_expand(v, patterns) for k, v in self.config.items('fields')
-        }
+        patterns = self.rule_patterns
+        filters = {k: PatternTemplate(v).safe_expand(patterns) for k, v in self.config.items('fields')}
+        return filters
 
     @cached_property
     def matcher(self) -> str:

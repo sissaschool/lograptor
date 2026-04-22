@@ -293,8 +293,8 @@ class LogRaptorConfig(EnvConfigParser):
             'IPORHOST': r'(?:%{IP}|%{HOSTNAME})',
             'HOSTPORT': r'%{IPORHOST}:%{POSINT}',
             'USERNAME': r'[A-Za-z0-9!#$%&\'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&\'*+/=?^_`{|}~-]+)*',
-            'EMAILADDRESS': r'(?:|${USERNAME}|"${ASCII}")'
-                            r'(?:|@(?:${HOSTNAME}|\[(?:${IPV4}|${IPV6})\]))+',
+            'EMAILADDRESS': r'(?:|%{USERNAME}|"%{ASCII}")'
+                            r'(?:|@(?:%{HOSTNAME}|\[(?:%{IPV4}|%{IPV6})\]))+',
             'POSINT': r'\b(?:[1-9][0-9]*)\b',
         },
         # Files with named patterns. You can add more files with patterns. The files are
@@ -307,14 +307,14 @@ class LogRaptorConfig(EnvConfigParser):
         # Data extraction fields. The fields are used to extract data from log messages
         # after the matching of the patterns and are used to build the report.
         'fields': {
-            'user': ('(|${USERNAME})', str),
-            'mail': ('EMAIL', str),
-            'from': ('EMAIL', str),
-            'rcpt': ('EMAIL', str, None),
-            'client': ('IPORHOST', str, None),
-            'pid': ('POSINT', int, None),
-            'uid': ('POSINT', int, None),
-            'msgid': ('ASCII}', str),
+            'user': '(|%{USERNAME})',
+            'mail': '%{EMAILADDRESS}',
+            'from': '%{EMAILADDRESS}',
+            'rcpt': '%{EMAILADDRESS}',
+            'client': '%{IPORHOST}',
+            'pid': '%{POSINT}',
+            'uid': '%{POSINT}',
+            'msgid': '%{ASCII}',
         },
         # Reports
         'default_report': {

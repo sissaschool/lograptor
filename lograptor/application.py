@@ -27,7 +27,6 @@ from argparse import Namespace
 from collections import Counter
 from collections.abc import Sequence, Mapping
 from functools import cached_property
-from itertools import pairwise
 from typing import Any
 
 from lograptor.logparsers import LogData
@@ -36,38 +35,9 @@ from lograptor.exceptions import LogRaptorConfigError, RuleMissingError, LogRapt
 from lograptor.confparsers import AppConfig
 from lograptor.report import Report, ReportData
 from lograptor.utils import field_multisub, exact_sub
+from lograptor.patterns import PatternTemplate, get_raw_pattern
 
 logger = logging.getLogger(__package__)
-
-
-def get_raw_pattern(pattern: str) -> str:
-    """Translate a pattern string that contains %{...} rules to a raw pattern string."""
-    pattern  = pattern.replace('\n', '')
-    if not '%{' in pattern:
-        return pattern  # Nothing to do
-
-    chunks = pattern.split('%{')
-    for left, right in pairwise(range(len(chunks))):
-        i = 1
-        while i < len(chunks[left]) and chunks[left][-i] == '%':
-            i += 1
-
-        if (i - 1) % 2:
-            chunks[left] = chunks[left] + '%{'
-            continue
-
-        if '}' not in chunks[right]:
-            chunks[left] = chunks[left] + '%{'
-            continue
-
-        pos = chunks[right].index('}')
-        spec = chunks[right][:pos]
-        if spec.isidentifier():
-            name = spec.lower()
-            chunks[left] += f"(?P<{name}>${{{name}}})"
-            chunks[right] = chunks[right][pos + 1:]
-
-    return ''.join(chunks).replace('%%', '%')
 
 
 class AppRule:
@@ -456,7 +426,7 @@ class AppLogParser:
 
             if not self.args.filters:
                 # No filters case: substitute the filter fields with the corresponding patterns.
-                pattern = string.Template(pattern).safe_substitute(self.filters)
+                pattern = PatternTemplate(pattern).safe_substitute(self.filters)
                 rules.append(AppRule(option, pattern, self))
                 continue
 
