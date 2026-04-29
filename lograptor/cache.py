@@ -49,8 +49,8 @@ class LookupCache:
     @classmethod
     def from_args(cls, args: Namespace, config):
         mapexp = config.getint('main', 'mapexp')
-        ipv4_pattern = config.get('patterns', 'IPV4_ADDRESS')
-        ipv6_pattern = config.get('patterns', 'IPV6_ADDRESS')
+        ipv4_pattern = config.get('patterns', 'IPV4')
+        ipv6_pattern = config.get('patterns', 'IPV6')
         fields = config.options('fields')
         maps: dict[str, dict[Any, str]] = {k: {} for k in chain(fields, ('host', 'thread', 'uid'))}
         return cls(

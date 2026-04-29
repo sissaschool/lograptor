@@ -45,11 +45,11 @@ from lograptor.filemap import FileMap
 from lograptor.cache import LookupCache
 from lograptor.dispatchers import DispatcherType, UnbufferedDispatcher, \
     LineBufferDispatcher, ThreadedDispatcher
-from lograptor.patterns import PatternTemplate
+from lograptor.patterns import PatternTemplate, GrokPattern, RulePattern
 from lograptor.report import Report
 from lograptor.channels import TermChannel, MailChannel, FileChannel
 from lograptor.timedate import format_dt, get_datetime_interval, TimeRange
-from lograptor.utils import is_pipe, is_redirected, normalize_path, safe_expand
+from lograptor.utils import is_pipe, is_redirected, normalize_path
 
 logger = logging.getLogger(__package__)
 
@@ -91,6 +91,8 @@ class LogRaptor:
                 choice = input("DEBUG level set: do you want to activate the debugger? (y/n): ...")
                 if choice.lower() in ('y', 'yes'):
                     breakpoint()
+
+        self.patterns_mapping = {k: p.pattern for k, p in self.named_patterns.items()}
 
     def __repr__(self):
         return "<%s %r at %#x>" % (self.__class__.__name__, self.config.cfgfile, id(self))
@@ -166,8 +168,7 @@ class LogRaptor:
         for config_file in glob.iglob(os.path.join(self.confdir, '*.conf')):
             name = os.path.basename(config_file)[0:-5]
             try:
-                app = AppLogParser(name, config_file, self.args, self.logdir,
-                                   self.filters, self.name_cache, self.report)
+                app = AppLogParser(name, config_file, self)
             except (LogRaptorOptionError, LogRaptorConfigError, LogFormatError) as err:
                 logger.error('cannot add app %r: %s', name, err)
             else:
@@ -216,7 +217,7 @@ class LogRaptor:
 
     @cached_property
     def follow_symlinks(self) -> bool:
-        """If True read all files under each directory, recursively and follow all symlinks."""
+        """If true read all files under each directory, recursively and follow all symlinks."""
         return self.args.dereference_recursive
 
     @property
@@ -285,7 +286,7 @@ class LogRaptor:
         patterns.update(self.args.patterns)
         logger.debug("search patterns to be processed: %r", patterns)
 
-        # If one pattern is empty then skip the other patterns
+        # If one pattern is empty skip the other patterns
         if '' in patterns:
             logger.info("an empty pattern provided: match all strings!")
             return tuple()
@@ -300,9 +301,24 @@ class LogRaptor:
             raise LogRaptorArgumentError('wrong regex syntax for pattern: %r' % err)
 
     @cached_property
-    def rule_patterns(self):
+    def named_patterns(self):
         """The named patterns loaded from configuration files that are used ."""
         patterns = {}
+
+        def add_patterns(arg: Sequence[str]) -> None:
+            try:
+                name, pattern = arg
+                grok_pattern = GrokPattern(pattern)
+            except ValueError as err:
+                logger.error("skip invalid GROK pattern %r: %s", arg[0], err)
+            except TypeError:
+                logger.debug("skip rule pattern in grok-pattern file: %r", arg[0])
+            else:
+                if name in patterns:
+                    logger.info("override rule pattern: %r", name)
+                else:
+                    logger.debug("add rule pattern: %r", name)
+                patterns[name] = grok_pattern
 
         for k, v in self.config.items('pattern_files'):
             filepath = pathlib.Path(self.config.cfgfile).parent / v
@@ -311,14 +327,10 @@ class LogRaptor:
                     line = line.strip()
                     if not line or line.startswith('#'):
                         continue
-                    try:
-                        name, pattern = line.split(None, 1)
-                    except ValueError:
-                        raise LogRaptorConfigError('invalid pattern file line: %r' % line)
-                    else:
-                        patterns[name] = pattern
+                    add_patterns(line.split(None, 1))
 
-        patterns.update({k: v for k, v in self.config.items('patterns')})
+        for item in self.config.items('patterns'):
+            add_patterns(item)
         return patterns
 
     @cached_property
@@ -340,8 +352,14 @@ class LogRaptor:
         if unknown:
             raise LogRaptorArgumentError('fields', 'undefined fields: %r.' % list(unknown))
 
-        patterns = self.rule_patterns
-        filters = {k: PatternTemplate(v).safe_expand(patterns) for k, v in self.config.items('fields')}
+        mapping = {k: p.pattern for k, p in self.named_patterns.items()}
+        filters: dict[str, str] = {}
+
+        for k, v in self.config.items('fields'):
+            try:
+                filters[k] = RulePattern(v, mapping).regex_pattern
+            except (ValueError, TypeError) as err:
+                logger.error("filter %r: skip invalid pattern %r: %s", k, v, err)
         return filters
 
     @cached_property

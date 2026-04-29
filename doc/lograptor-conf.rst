@@ -97,11 +97,11 @@ This section includes these basic pattern rules:
 
     Regular expression pattern for DNS names matching.
 
-.. envvar:: IPV4_ADDRESS
+.. envvar:: IPV4
 
     Regular expression pattern for IPv4 addresses matching.
 
-.. envvar:: IPV6_ADDRESS
+.. envvar:: IPV6
 
     Regular expression pattern for IPv6 addresses matching.
 
@@ -160,20 +160,20 @@ The default configuration includes 8 predefined fields:
 
 .. envvar:: from
 
-    Field for sender email addresses (defaults to ``${EMAIL}``).
+    Field for sender email addresses (defaults to ``%{EMAIL}``).
 
 .. envvar:: rcpt
 
-    Field for recipient email addresses (defaults to ``$${EMAIL}``).
+    Field for recipient email addresses (defaults to ``%{EMAIL}``).
 
 .. envvar:: client
 
     Field for client IP/name (defaults to
-    ``(${DNSNAME}|${IPV4_ADDRESS}|${DNSNAME}\[${IPV4_ADDRESS}\])``).
+    ``IPORHOST``).
 
 .. envvar:: pid
 
-    Field for process IDs (defaults to ``${ID}``).
+    Field for process IDs (defaults to ``{ID}``).
 
 .. envvar:: uid
 

@@ -23,19 +23,20 @@ import logging
 import re
 import string
 import configparser
-from argparse import Namespace
 from collections import Counter
 from collections.abc import Sequence, Mapping
 from functools import cached_property
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from lograptor.logparsers import LogData
-from lograptor.cache import LookupCache
 from lograptor.exceptions import LogRaptorConfigError, RuleMissingError, LogRaptorOptionError
 from lograptor.confparsers import AppConfig
 from lograptor.report import Report, ReportData
 from lograptor.utils import field_multisub, exact_sub
-from lograptor.patterns import PatternTemplate, get_raw_pattern
+from lograptor.patterns import RulePattern
+
+if TYPE_CHECKING:
+    from lograptor.runner import LogRaptor
 
 logger = logging.getLogger(__package__)
 
@@ -56,7 +57,7 @@ class AppRule:
         - used_by_report : True if is used by a report rule
         - key_gids : map from gid to result key tuple index
     """
-    __slots__ = ('name', 'pattern', 'app', 'key_gids', 'results', 'filter_keys',
+    __slots__ = ('name', '_pattern', 'pattern', 'app', 'key_gids', 'results', 'filter_keys',
                  'full_match', 'used_by_report', '_last_idx')
 
     key_gids: Sequence[str] | tuple[str, ...]
@@ -64,7 +65,7 @@ class AppRule:
     _last_idx: tuple[str, ...] | None
 
     def __init__(self, name: str,
-                 pattern: str,
+                 pattern: RulePattern,
                  app: 'AppLogParser',
                  filter_keys: list[str] | None = None):
         """
@@ -73,10 +74,11 @@ class AppRule:
         :param app: the application in which the rule is defined
         :param filter_keys: the filtering keys dictionary if the rule is a filter
         """
+
         try:
             if not pattern:
                 raise LogRaptorConfigError('empty rule %r' % name)
-            self.pattern = re.compile(pattern)
+            self.pattern = pattern.compiled
         except re.error as err:
             msg = "invalid pattern for app\'s rule {!r}: {}"
             raise LogRaptorConfigError(msg.format(name, str(err)))
@@ -92,6 +94,7 @@ class AppRule:
 
         self.name = name
         self.app = app
+
         self.filter_keys = filter_keys or []
         self.full_match = filter_keys is not None
         self.used_by_report = False
@@ -306,38 +309,30 @@ class AppLogParser:
 
     def __init__(self, name: str,
                  cfgfile: str,
-                 args: Namespace,
-                 logdir: str,
-                 filters: dict[str, str],
-                 name_cache: LookupCache | None = None,
-                 report: Report | None = None):
+                 runner: 'LogRaptor'):
         """
         :param name: application name
         :param cfgfile: application config file
-        :param args: cli arguments
-        :param logdir: Log directory
-        :param filters: Configured filters
-        :param name_cache: Optional name cache (--ip-lookup/--uid-lookup/--anonymize options)
-        :param report: Optional report (--report option)
+        :param runner: runner instance, that controls the parsing.
         """
         logger.debug('initialize app %r', name)
 
         self.name = name            # Application name
         self.cfgfile = cfgfile      # App configuration file
-        self.args = args
-        self.logdir = logdir
-        self.filters = filters
-        self.name_cache = name_cache
+        self.runner = runner
+        self.args = runner.args
+        self.filters = runner.filters
+        self.name_cache = runner.name_cache
 
-        # Setting instance internal variables for process phase
-        self._report = report
-        self._thread = args.thread
+        # Set instance internal variables for process phase
+        self._report = runner.report
+        self._thread = runner.args.thread
         self.matches = 0            # Parsed lines counter
         self.unparsed = 0           # Unparsed lines counter
         self._last_rule = None      # Last matched rule
         self._last_idx = None       # Last index matched
 
-        self.config = AppConfig(cfgfiles=cfgfile, appname=name, logdir=logdir)
+        self.config = AppConfig(cfgfiles=cfgfile, appname=name, logdir=runner.logdir)
 
         if logger.level <= logging.DEBUG:
             logger.debug('app %r run tags: %r', name, self.tags)
@@ -419,24 +414,20 @@ class AppLogParser:
             raise LogRaptorConfigError("the app %r has no defined rules!" % self.name)
 
         rules = []
+        mapping = self.runner.patterns_mapping
         for option, value in rule_options:
             value = value.replace('\n', '')
-            pattern = get_raw_pattern(value)
-
+            pattern = RulePattern(value, mapping)
 
             if not self.args.filters:
                 # No filters case: substitute the filter fields with the corresponding patterns.
-                pattern = PatternTemplate(pattern).safe_substitute(self.filters)
                 rules.append(AppRule(option, pattern, self))
-                continue
-
-            for filter_group in self.args.filters:
-                _pattern, filter_keys = exact_sub(pattern, filter_group)
-                _pattern = string.Template(_pattern).safe_substitute(self.filters)
-                if len(filter_keys) >= len(filter_group):
-                    rules.append(AppRule(option, _pattern, self, filter_keys))
-                elif self._thread:
-                    rules.append(AppRule(option, _pattern, self))
+            else:
+                filter_keys = [s for s in self.args.filters if s in pattern.fields]
+                if filter_keys:
+                    rules.append(AppRule(option, pattern, self, filter_keys))
+                else:
+                    rules.append(AppRule(option, pattern, self))
         return rules
 
     def increase_last(self, n: int) -> None:

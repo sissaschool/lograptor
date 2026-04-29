@@ -24,7 +24,7 @@ import gzip
 import tempfile
 
 from lograptor.utils import do_chunked_gzip, get_value_unit, get_fmt_results, \
-    html_safe, safe_expand, results_to_string, protected_property, normalize_path, \
+    html_safe, results_to_string, protected_property, normalize_path, \
     open_resource, is_redirected
 
 
@@ -123,20 +123,6 @@ class TestUtils(object):
             'raptor::<font color="darkred">192.168.0.1</font>(2)',
             '<font color="darkred">[1 more skipped]</font>',
         ]
-
-    def test_safe_expand(self):
-        tmpl = '(|${ALPHA})'
-
-        substitution_map = {'ALPHA': 'foo'}
-        assert safe_expand(tmpl, substitution_map) == '(|foo)'
-
-        substitution_map = {'ALPHA': '${BETA}', 'BETA': 'bar'}
-        assert safe_expand(tmpl, substitution_map) == '(|bar)'
-
-        substitution_map = {'ALPHA': '${BETA}', 'BETA': '${ALPHA}'}
-        with pytest.raises(ValueError) as exc_info:
-            safe_expand(tmpl, substitution_map)
-        assert exc_info.value.args[0] == "substitution map has a circularity!"
 
     def test_results_to_string(self):
         results = {

@@ -17,25 +17,16 @@
 # @Author Davide Brunato <brunato@sissa.it>
 #
 import re
-import socket
 import string
-import pwd
-from argparse import Namespace
-from collections import namedtuple
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
-from functools import cache
-from itertools import chain, pairwise
-from typing import Any
+from dataclasses import dataclass
+from functools import cache, cached_property
+from itertools import pairwise
 
-_sentinel_dict = {}
 
 class PatternTemplate(string.Template):
     """Provides a template class that uses '%' as the delimiter for pattern substitutions."""
     delimiter = '%'
-    # idpattern = None
-    #braceidpattern = r'(?a:[_a-z][_a-z0-9]*)'
-    #flags = 0
+    # flags = 0
 
     def safe_expand(self, substitution_map: dict[str, str]) -> str:
         """
@@ -61,67 +52,159 @@ def get_pattern(pattern: str) -> re.Pattern[str]:
     return re.compile(pattern)
 
 
-@dataclass
-class FieldInfo:
+@dataclass(slots=True)
+class PatternField:
+    name: str
     pattern: str
-    field: str
     datatype: type[str | int | float | bool] = str
 
     @classmethod
-    def from_spec(cls, spec: str) -> 'PatternInfo':
+    def from_spec(cls, spec: str) -> 'PatternField':
         parts = spec.split(':')
-        if any(not p.isidentifier() for p in parts) or len(parts) > 3 or len(parts) < 2 \
-                or not parts[0].isupper() or not parts[1].islower():
+        if any(not p.isidentifier() for p in parts) or len(parts) > 3 \
+               or not parts[0].isupper() or len(parts) > 1 and not parts[1].islower():
             raise ValueError(f"invalid pattern specification: {spec!r}")
 
+        if len(parts) == 1:
+            return cls('_', parts[0], str)
         if len(parts) == 2:
-            return cls(parts[0], parts[1])
+            return cls(parts[1], parts[0], str)
 
         match parts[2]:
-            case 'str':
-                return cls(parts[0], parts[1], str)
-            case 'int':
-                return cls(parts[0], parts[1], int)
-            case 'float':
-                return cls(parts[0], parts[1], float)
-            case 'bool':
-                return cls(parts[0], parts[1], bool)
+            case 'int', 'long':
+                return cls(parts[1], parts[0], int)
+            case 'float', 'double':
+                return cls(parts[1], parts[0], float)
+            case 'boolean':
+                return cls(parts[1], parts[0], bool)
             case _:
                 raise ValueError(f"invalid pattern specification: {spec!r}")
 
 
-def get_raw_pattern(pattern: str) -> str:
-    """Translate a pattern string that contains %{...} rules to a raw pattern string."""
-    pattern  = pattern.replace('\n', '')
-    if not '%{' in pattern:
-        return pattern  # Nothing to do
+class RegexPattern:
+    """
+    A pattern that is in REGEX format. Not usable for expanding GrokPatterns/RulePatterns.
+    The pattern is parsed for extracting the named groups, if any. If a GROK pattern is
+    found in the pattern, a TypeError is raised.
+    """
+    __slots__ = ('pattern', '_pattern', 'fields')
 
-    chunks = pattern.split('%{')
-    for left, right in pairwise(range(len(chunks))):
-        i = 1
-        while i < len(chunks[left]) and chunks[left][-i] == '%':
-            i += 1
+    def __init__(self, pattern: str):
+        self.pattern = pattern
+        self._pattern, self.fields = self.parse_pattern(pattern)
 
-        if (i - 1) % 2:
-            chunks[left] = chunks[left] + '%{'
-            continue
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} {self.pattern!r}>"
 
-        if '}' not in chunks[right]:
-            chunks[left] = chunks[left] + '%{'
-            continue
+    @classmethod
+    def parse_pattern(cls, pattern: str) -> tuple[str, dict[str, PatternField]]:
+        fields: dict[str, PatternField] = {}
 
-        pos = chunks[right].index('}')
-        spec = chunks[right][:pos]
-        if ':' in spec:
-            try:
-                field_info = FieldInfo.from_spec(spec)
-            except ValueError:
-                pass
-            else:
-                chunks[left] += f"(?P<{field_info.field}>%{{{field_info.pattern}}})"
-                chunks[right] = chunks[right][pos + 1:]
+        if '(?P<' in pattern:
+            if issubclass(cls, GrokPattern):
+                raise TypeError(f"{cls!r} doesn't allow REGEX named groups in pattern")
+
+            # The rule pattern string is already in REGEX like format
+            # Don't change the pattern, just extract the named groups.
+
+            chunks = pattern.split('(?P<')
+            for left, right in pairwise(range(len(chunks))):
+                name, _, pattern = chunks[right].partition('>')[0]
+                if name.isidentifier():
+                    if name in fields:
+                        raise ValueError(f"duplicated named group {name!r}")
+                    if pattern.startswith('%{'):
+                        if not issubclass(cls, RulePattern):
+                            raise TypeError(f"{cls!r} doesn't allow GROK patterns in pattern")
+
+                        spec = pattern[2:].partition('}')[0]
+                        if ':' in spec:
+                            raise ValueError(f"invalid pattern {pattern!r}: "
+                                             f"cannot mix GROK patterns and REGEX named groups")
+                        fields[name] = PatternField.from_spec(f'{spec}:{name}')
+                    else:
+                        fields[name] = PatternField(name, '')
+
+            return pattern, fields
+
+        # Extract and modify the GROK patterns fields from the origin pattern
+        # the other named groups will be extract by Python regex parser.
+        unnamed_index = 0
+        chunks = pattern.split('%{')
+        for left, right in pairwise(range(len(chunks))):
+
+            # Check if the '%' is escaped
+            i = 1
+            while i < len(chunks[left]) and chunks[left][-i] == '%':
+                i += 1
+            if (i - 1) % 2:
+                chunks[left] = chunks[left] + '%{'
                 continue
 
-        chunks[left] = chunks[left] + '%{'
+            try:
+                pos = chunks[right].index('}')
+                spec = chunks[right][:pos]
+                field = PatternField.from_spec(spec)
+            except ValueError:
+                chunks[left] = chunks[left] + '%{'
+                continue
 
-    return ''.join(chunks).replace('%%', '%')
+            if field.name in fields:
+                raise ValueError(f"duplicate field name {field.name!r}")
+            elif field.name == '_':
+                if not issubclass(cls, RulePattern):
+                    # Don't expand to an unnamed group if the pattern is not a rule pattern
+                    chunks[left] = chunks[left] + '%{'
+                    continue
+
+                field.name = f'_{unnamed_index}'
+                unnamed_index += 1
+            elif not issubclass(cls, RulePattern):
+                raise TypeError(f"{cls!r} doesn't allow named GROK fields")
+
+            chunks[left] += f"(?P<{field.name}>%{{{field.pattern}}})"
+            chunks[right] = chunks[right][pos + 1:]
+            fields[field.name] = field
+
+        return ''.join(chunks), fields
+
+
+class GrokPattern(RegexPattern):
+    """
+    A pattern that is in REGEX format or simple GROK format (e.g., %{GROK_PATTERN}). Usable for
+    expanding other GrokPatterns/RulePatterns. If a named GROK pattern (e.g., %{GROK_PATTERN:ID})
+    is found in the given pattern, a TypeError is raised.
+    """
+    __slots__ = ()
+
+    def expand(self, mapping: dict[str, str]) -> str:
+        return PatternTemplate(self._pattern).safe_expand(mapping)
+
+
+class RulePattern(GrokPattern):
+    """
+    A pattern for expanding application rules. The pattern argument can be in REGEX format
+    or GROK format. Unnamed GROK patterns are expanded to "_%d" named groups. The parsed
+    pattern is expanded at init, checking that the resulting pattern is fully expanded.
+    """
+    __slots__ = ('regex_pattern',)
+
+    def __init__(self, pattern: str, mapping: dict[str, str], full: bool = True):
+        super().__init__(pattern)
+        self.regex_pattern = PatternTemplate(self._pattern).safe_expand(mapping)
+
+        if full:
+            missing = []
+            for s in self.regex_pattern.split('%{')[1:]:
+                name = s.partition('}')[0].partition(':')[0]
+                if name.isidentifier():
+                    missing.append(name)
+            if missing:
+                breakpoint()
+                raise ValueError(f"missing fields {missing!r} in provided mapping")
+
+    @property
+    def compiled(self) -> re.Pattern[str]:
+        return get_pattern(self._pattern)
+
+

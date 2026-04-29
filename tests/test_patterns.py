@@ -22,7 +22,7 @@ import pathlib
 import re
 from lograptor.api import lograptor
 from lograptor.runner import LogRaptor
-from lograptor.patterns import PatternTemplate, get_raw_pattern
+from lograptor.patterns import PatternTemplate, PatternField, RegexPattern, GrokPattern, RulePattern
 
 
 @pytest.fixture
@@ -93,27 +93,19 @@ class TestPatterns(object):
             template.safe_expand(mapping)
         assert exc_info.value.args[0] == 'substitution map has circularity!'
 
-    def test_pattern_template_grok_like(self):
-        template = PatternTemplate('foo %{BAR:bar} %{BAZ:baz} %{BAT}')
+    def test_rule_pattern_from_grok_pattern_and_mapping(self):
+        pattern = 'foo %{BAR:bar} %{BAZ:baz} %{BAT}'
         mapping = {'BAR': '%{BAZ}', 'BAZ': '%{BAT}', 'BAT': 'bat'}
 
-        result = template.safe_substitute(mapping)
-        assert result == 'foo (?<bar>%{BAR}) (?P<baz>%{BAZ}) %{BAT}'
+        rule_pattern = RulePattern(pattern, mapping)
+        assert rule_pattern._pattern == 'foo (?P<bar>%{BAR}) (?P<baz>%{BAZ}) (?P<_0>%{BAT})'
+        assert rule_pattern.regex_pattern == 'foo (?P<bar>bat) (?P<baz>bat) (?P<_0>bat)'
 
-    def test_get_raw_pattern(self):
+    def test_rule_pattern_from_grok_pattern_without_mapping(self):
         pattern = 'foo %{BAR:bar} %{BAZ:baz} %{BAT}'
-        raw_pattern = get_raw_pattern(pattern)
-        assert raw_pattern == 'foo (?P<bar>%{BAR}) (?P<baz>%{BAZ}) %{BAT}'
 
-    def test_pattern_template_grok_like_with_raw_pattern(self):
-        pattern = 'foo %{BAR:bar} %{BAZ:baz} %{BAT}'
-        raw_pattern = get_raw_pattern(pattern)
-
-        template = PatternTemplate(raw_pattern)
-        mapping = {'BAR': '%{BAZ}', 'BAZ': '%{BAT}', 'BAT': 'bat'}
-
-        result = template.safe_expand(mapping)
-        assert result == 'foo (?P<bar>bat) (?P<baz>bat) bat'
-
+        with pytest.raises(ValueError) as exc_info:
+            RulePattern(pattern, {})
+        assert exc_info.value.args[0] == "missing fields ['BAR', 'BAZ', 'BAT'] in provided mapping"
 
 

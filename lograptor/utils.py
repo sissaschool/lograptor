@@ -223,20 +223,6 @@ def exact_sub(s, mapping):
     return s, fields
 
 
-def safe_expand(template: str, substitution_map: dict[str, str]) -> str:
-    """
-    Safe string template expansion. Raises an error if the provided
-    substitution map has circularity.
-    """
-    for _ in range(len(substitution_map) + 1):
-        _template = template
-        template = string.Template(template).safe_substitute(substitution_map)
-        if template == _template:
-            return template
-    else:
-        raise ValueError("substitution map has a circularity!")
-
-
 def results_to_string(results):
     return ', '.join([
         '%s(%s)' % (key, results[key])
