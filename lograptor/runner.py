@@ -93,6 +93,7 @@ class LogRaptor:
                     breakpoint()
 
         self.patterns_mapping = {k: p.pattern for k, p in self.named_patterns.items()}
+        print(len(self.filters))
 
     def __repr__(self):
         return "<%s %r at %#x>" % (self.__class__.__name__, self.config.cfgfile, id(self))

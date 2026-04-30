@@ -106,6 +106,6 @@ class TestPatterns(object):
 
         with pytest.raises(ValueError) as exc_info:
             RulePattern(pattern, {})
-        assert exc_info.value.args[0] == "missing fields ['BAR', 'BAZ', 'BAT'] in provided mapping"
+        assert "missing fields ['BAR', 'BAZ', 'BAT']" in exc_info.value.args[0]
 
 

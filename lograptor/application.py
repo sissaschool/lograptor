@@ -417,17 +417,21 @@ class AppLogParser:
         mapping = self.runner.patterns_mapping
         for option, value in rule_options:
             value = value.replace('\n', '')
-            pattern = RulePattern(value, mapping)
-
+            try:
+                pattern = RulePattern(value, mapping)
+            except ValueError as err:
+                msg = 'cannot parse rule %r for app %r: %s' % (option, self.name, err)
+                raise LogRaptorOptionError(msg)
             if not self.args.filters:
                 # No filters case: substitute the filter fields with the corresponding patterns.
                 rules.append(AppRule(option, pattern, self))
             else:
-                filter_keys = [s for s in self.args.filters if s in pattern.fields]
+                filter_keys = [f for f in pattern.fields if any(f in flt for flt in self.args.filters)]
                 if filter_keys:
                     rules.append(AppRule(option, pattern, self, filter_keys))
                 else:
                     rules.append(AppRule(option, pattern, self))
+
         return rules
 
     def increase_last(self, n: int) -> None:

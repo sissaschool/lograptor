@@ -61,6 +61,8 @@ class PatternField:
     @classmethod
     def from_spec(cls, spec: str) -> 'PatternField':
         parts = spec.split(':')
+        if spec == 'POSINT:reason>':
+            breakpoint()
         if any(not p.isidentifier() for p in parts) or len(parts) > 3 \
                or not parts[0].isupper() or len(parts) > 1 and not parts[1].islower():
             raise ValueError(f"invalid pattern specification: {spec!r}")
@@ -71,9 +73,9 @@ class PatternField:
             return cls(parts[1], parts[0], str)
 
         match parts[2]:
-            case 'int', 'long':
+            case 'int' | 'long':
                 return cls(parts[1], parts[0], int)
-            case 'float', 'double':
+            case 'float' | 'double':
                 return cls(parts[1], parts[0], float)
             case 'boolean':
                 return cls(parts[1], parts[0], bool)
@@ -141,13 +143,9 @@ class RegexPattern:
                 chunks[left] = chunks[left] + '%{'
                 continue
 
-            try:
-                pos = chunks[right].index('}')
-                spec = chunks[right][:pos]
-                field = PatternField.from_spec(spec)
-            except ValueError:
-                chunks[left] = chunks[left] + '%{'
-                continue
+            pos = chunks[right].index('}')
+            spec = chunks[right][:pos]
+            field = PatternField.from_spec(spec)
 
             if field.name in fields:
                 raise ValueError(f"duplicate field name {field.name!r}")
@@ -200,8 +198,7 @@ class RulePattern(GrokPattern):
                 if name.isidentifier():
                     missing.append(name)
             if missing:
-                breakpoint()
-                raise ValueError(f"missing fields {missing!r} in provided mapping")
+                raise ValueError(f"{self!r}: missing fields {missing!r} in provided mapping")
 
     @property
     def compiled(self) -> re.Pattern[str]:
