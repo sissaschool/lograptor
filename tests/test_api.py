@@ -103,8 +103,11 @@ class TestApiInterface(object):
 
     def test_api_time_period(self, config_file, sshd_log):
         # Use a wide time period
-        year = datetime.datetime.now().year
-        tp = (datetime.datetime(year, 1, 1), datetime.datetime(year, 12, 31, 23, 59, 59))
+        sshd_log_path = pathlib.Path(__file__).parent / 'samples' / 'sshd.log'
+        year = datetime.datetime.fromtimestamp(sshd_log_path.stat().st_mtime).year
+        tp = (datetime.datetime(year, 1, 1),
+              datetime.datetime(year, 12, 31, 23, 59, 59))
+
         runner = lograptor(
             files=[sshd_log],
             cfgfiles=[config_file],
@@ -116,6 +119,7 @@ class TestApiInterface(object):
     def test_api_invalid_type(self, config_file, sshd_log):
         # verify() should catch wrong type for max_count
         with pytest.raises(TypeError):
+            breakpoint()
             lograptor(
                 files=[sshd_log],
                 cfgfiles=[config_file],

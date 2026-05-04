@@ -444,7 +444,7 @@ def create_matcher(dispatcher: DispatcherType,
             except (NameError, AttributeError):
                 pass
 
-        # If count option is enabled then register only the number of matched lines.
+        # If the count option is enabled, register only the number of matched lines.
         if files_with_match and selected_counter or \
                 files_with_match is False and not selected_counter:
             dispatch_selected(filename=logfile.name)

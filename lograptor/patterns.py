@@ -202,6 +202,6 @@ class RulePattern(GrokPattern):
 
     @property
     def compiled(self) -> re.Pattern[str]:
-        return get_pattern(self._pattern)
+        return get_pattern(self.regex_pattern)
 
 

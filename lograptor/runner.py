@@ -92,8 +92,22 @@ class LogRaptor:
                 if choice.lower() in ('y', 'yes'):
                     breakpoint()
 
+
         self.patterns_mapping = {k: p.pattern for k, p in self.named_patterns.items()}
-        print(len(self.filters))
+        self.check_config()
+
+
+    def check_config(self):
+        # Check the rest of config using some cached properties.
+        _ = self.apptags
+        _ = self.exclude
+        _ = self.matcher
+        _ = self.patterns
+        _ = self.filters
+        _ = self.channels
+
+        if not isinstance(self.args.max_count, int) or self.args.max_count < 0:
+            raise LogRaptorConfigError('max_count must be a positive integer')
 
     def __repr__(self):
         return "<%s %r at %#x>" % (self.__class__.__name__, self.config.cfgfile, id(self))
@@ -102,7 +116,7 @@ class LogRaptor:
         """
         Set up lograptor logger with a handler and a formatter. The logging
         level is defined by a [0..4] range, where a higher value means a
-        more verbose logging. The loglevel value is mapped to correspondent
+        more verbose logger. The loglevel value is mapped to correspondent
         logging module value:
 
         LOG_CRIT=0 (syslog.h value is 2) ==> logging.CRITICAL
@@ -204,21 +218,24 @@ class LogRaptor:
         for app in sorted(apps, key=lambda x: (x.priority, x.name)):
             for tag in app.tags:
                 if not tag:
-                    raise LogRaptorConfigError('found an empty tag for app %r' % app.name)
+                    msg = f'found an empty tag for app {app.name!r}'
+                    if self.interactive:
+                        raise LogRaptorConfigError(msg)
+                    warnings.warn(msg, UserWarning)
                 try:
                     tagmap[tag].append(app)
                 except KeyError:
                     tagmap[tag] = [app]
         return tagmap
 
-    @cached_property
+    @property
     def recursive(self) -> bool:
         """f True read all files under each directory, recursively."""
         return self.args.recursive or self.args.dereference_recursive
 
-    @cached_property
+    @property
     def follow_symlinks(self) -> bool:
-        """If true read all files under each directory, recursively and follow all symlinks."""
+        """If true reads all files under each directory, recursively and following all symlinks."""
         return self.args.dereference_recursive
 
     @property
@@ -386,7 +403,7 @@ class LogRaptor:
         for pattern in set(self.args.hosts or ['*']):
             hosts.append(re.compile(fnmatch.translate(pattern)))
 
-            # If pattern has a dotted local hostname part add another pattern for local part
+            # If the pattern has a dotted local host part, add another pattern for local part.
             if '.' in pattern:
                 local_hostname = pattern.split('.')[0]
                 if local_hostname and '*' not in local_hostname:
@@ -428,7 +445,7 @@ class LogRaptor:
         confdir = self.config.get('main', 'confdir')
         return normalize_path(confdir, base_path=os.path.dirname(self.config.cfgfile))
 
-    @cached_property
+    @property
     def logdir(self) -> str:
         confdir = self.config.get('main', 'logdir')
         return normalize_path(confdir, base_path=os.path.dirname(self.config.cfgfile))
