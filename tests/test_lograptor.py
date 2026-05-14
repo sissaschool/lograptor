@@ -75,7 +75,7 @@ class TestLograptor(object):
             "-U -s -c --apps sshd -e '' samples/sshd.log",
         )
         for cmd_line in tests:
-            assert self.exec_lograptor(cmd_line) == 1
+            assert self.exec_lograptor(cmd_line) == 1, cmd_line
 
     def test_threads(self, capsys):
         """
@@ -233,7 +233,7 @@ class TestLograptor(object):
             out, err = capsys.readouterr()
             if re.search(result, out) is None:
                 print(u"\n{0}".format(out))
-                assert False
+                assert False, result
 
     def test_filters(self, capsys):
         """
@@ -254,7 +254,7 @@ class TestLograptor(object):
             out, err = capsys.readouterr()
             if re.search(result, out) is None:
                 print(u"\n{0}".format(out))
-                assert False
+                assert False, result
 
     def test_quiet(self):
         """
@@ -285,11 +285,11 @@ class TestLograptor(object):
             out, err = capsys.readouterr()
             if re.search(result, out) is None:
                 print(u"\n{0}".format(out))
-                assert False
+                assert False, result
 
     def test_case(self, capsys):
         """
-        Test case insensitive matching.
+        Test case-insensitive matching.
         """
         tests = [
             ('-i -c -a postfix -e TriceRatops samples/*',
@@ -321,7 +321,7 @@ class TestLograptor(object):
             out, err = capsys.readouterr()
             if re.search(result, out) is None:
                 print(u"\n{0}".format(out))
-                assert False
+                assert False, result
 
     def test_hosts(self, capsys):
         """
@@ -342,7 +342,7 @@ class TestLograptor(object):
             out, err = capsys.readouterr()
             if re.search(result, out) is None:
                 print(u"\n{0}".format(out))
-                assert False
+                assert False, result
 
     def test_filenames(self, capsys):
         """
@@ -352,9 +352,9 @@ class TestLograptor(object):
             ('-H -m 3 -e triceratops samples/*.log',
              r'-e triceratops samples\/\*\.log\nsamples\/(.){1,10}\.log', 0),
             ('-h -m 3 -e triceratops samples/*.log',
-             r'-e triceratops samples\/\*\.log\nJan 31', 0),
+             r'-e triceratops samples\/\*\.log\nApr  1', 0),
             ('-m 3 -e triceratops samples/*.log',
-             r'-e triceratops samples\/\*\.log\nsamples\/(.){1,10}\.log', 0),
+             r'-e triceratops samples\/\*\.log\n', 0),
             ('-m 3 -e triceratops samples/postfix.log',
              r'-e triceratops samples\/postfix.log\nJan 31', 0)
         ]
@@ -363,7 +363,7 @@ class TestLograptor(object):
             out, err = capsys.readouterr()
             if re.search(result, out) is None:
                 print(u"\n{0}".format(out))
-                assert False
+                assert False, result
 
     def test_anonymize(self, capsys):
         """

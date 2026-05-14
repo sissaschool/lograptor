@@ -3,7 +3,7 @@
 #
 USERNAME [a-zA-Z0-9._-]+
 USER %{USERNAME}
-EMAILLOCALPART [a-zA-Z][a-zA-Z0-9_.+-=:]+
+EMAILLOCALPART [a-zA-Z1-9][a-zA-Z0-9_.+-=:]+
 EMAILADDRESS %{EMAILLOCALPART}@%{HOSTNAME}
 EMAIL %{EMAILADDRESS}
 HTTPDUSER %{EMAILADDRESS}|%{USER}
@@ -22,6 +22,7 @@ DATA .*?
 GREEDYDATA .*
 QUOTEDSTRING (?>(?<!\\)(?>"(?>\\.|[^\\"]+)+"|""|(?>'(?>\\.|[^\\']+)+')|''|(?>`(?>\\.|[^\\`]+)+`)|``))
 UUID [A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}
+MSGID %{ASCII}
 
 # Additional for regex optimization
 NOTPAREN [^\)]*
@@ -29,6 +30,7 @@ NOTBRACKET [^\]]*
 NOTBRACE [^\}]*
 NCNAME [a-zA-Z][a-zA-Z0-9-_]*
 ALNUM [a-zA-Z0-9]+
+ASCII [\x01-\x7f]+
 
 # Networking
 MAC (?:%{CISCOMAC}|%{WINDOWSMAC}|%{COMMONMAC})

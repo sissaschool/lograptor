@@ -45,7 +45,7 @@ from lograptor.filemap import FileMap
 from lograptor.cache import LookupCache
 from lograptor.dispatchers import DispatcherType, UnbufferedDispatcher, \
     LineBufferDispatcher, ThreadedDispatcher
-from lograptor.patterns import PatternTemplate, GrokPattern, RulePattern
+from lograptor.patterns import GrokPattern, RulePattern
 from lograptor.report import Report
 from lograptor.channels import TermChannel, MailChannel, FileChannel
 from lograptor.timedate import format_dt, get_datetime_interval, TimeRange
@@ -92,10 +92,8 @@ class LogRaptor:
                 if choice.lower() in ('y', 'yes'):
                     breakpoint()
 
-
-        self.patterns_mapping = {k: p.pattern for k, p in self.named_patterns.items()}
+        self.default_patterns = {k: p.pattern for k, p in self.named_patterns.items()}
         self.check_config()
-
 
     def check_config(self):
         # Check the rest of config using some cached properties.
@@ -363,21 +361,26 @@ class LogRaptor:
             return self.args.files
 
     @cached_property
-    def filters(self) -> dict[str, str]:
+    def filters(self) -> list[dict[str, RulePattern]]:
         logger.debug("get fields from arguments ...")
-        unknown = [k for item in self.args.filters for k in item
-                   if k not in self.config.options('fields')]
-        if unknown:
-            raise LogRaptorArgumentError('fields', 'undefined fields: %r.' % list(unknown))
+        if not self.args.filters:
+            return []
 
-        mapping = {k: p.pattern for k, p in self.named_patterns.items()}
-        filters: dict[str, str] = {}
+        fields = self.config.options('fields')
+        filters: list[dict[str, RulePattern]] = []
 
-        for k, v in self.config.items('fields'):
-            try:
-                filters[k] = RulePattern(v, mapping).regex_pattern
-            except (ValueError, TypeError) as err:
-                logger.error("filter %r: skip invalid pattern %r: %s", k, v, err)
+        default_patterns = self.default_patterns
+        for flt_spec in self.args.filters:
+            flt_patterns: dict[str, RulePattern] = {}
+            for k, v in flt_spec.items():
+                if k not in fields:
+                    raise LogRaptorArgumentError('fields', f'undefined field {k!r}')
+                try:
+                    flt_patterns[k] = RulePattern(v, default_patterns)
+                except (ValueError, TypeError) as err:
+                    logger.error("filter %r: skip invalid pattern %r: %s", k, v, err)
+            filters.append(flt_patterns)
+
         return filters
 
     @cached_property

@@ -367,7 +367,7 @@ def create_matcher(dispatcher: DispatcherType,
                     continue
                 elif use_app_rules:
                     # Parse the log message with app's rules
-                    app_matched, has_full_match, app_thread, output_data = app.match_rules(log_data)
+                    app_matched, full_match, app_thread, output_data = app.match_rules(log_data)
                     if not pattern_matched and app_matched and app_thread is None:
                         continue
                     if output_data and name_cache is not None:
@@ -377,7 +377,7 @@ def create_matcher(dispatcher: DispatcherType,
 
                     if app_matched:
                         app.matches += 1
-                        if not has_full_match or select_unparsed:
+                        if not full_match or select_unparsed:
                             dispatch_context(
                                 key=(app, app_thread),
                                 filename=logfile_name,

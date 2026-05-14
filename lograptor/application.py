@@ -26,6 +26,7 @@ import configparser
 from collections import Counter
 from collections.abc import Sequence, Mapping
 from functools import cached_property
+from re import fullmatch
 from typing import Any, TYPE_CHECKING
 
 from lograptor.logparsers import LogData
@@ -50,31 +51,21 @@ class AppRule:
         - name: the rule option name in the app configuration file
         - pattern : the compiled regex pattern of the rule
         - results : dictionary of rule results
-        - filter_keys: the filtering keys (all regex groups connected
-            to those keys must be not Non to matching a rule)
-        - full_match: determine if a rule match represents a full matching
-                      for the line (needed for thread matching mode)
         - used_by_report : True if is used by a report rule
         - key_gids : map from gid to result key tuple index
     """
-    __slots__ = ('name', '_pattern', 'pattern', 'app', 'key_gids', 'results', 'filter_keys',
-                 'full_match', 'used_by_report', '_last_idx')
+    __slots__ = ('name', 'pattern', 'app', 'key_gids', 'results', 'used_by_report', '_last_idx')
 
     key_gids: Sequence[str] | tuple[str, ...]
     results: Counter[Any]
     _last_idx: tuple[str, ...] | None
 
-    def __init__(self, name: str,
-                 pattern: RulePattern,
-                 app: 'AppLogParser',
-                 filter_keys: list[str] | None = None):
+    def __init__(self, name: str, pattern: RulePattern, app: 'AppLogParser', full: bool = True):
         """
         :param name: the option name in the rule section of the app configuration file
         :param pattern: the regex pattern of the rule to compile
         :param app: the application in which the rule is defined
-        :param filter_keys: the filtering keys dictionary if the rule is a filter
         """
-
         try:
             if not pattern:
                 raise LogRaptorConfigError('empty rule %r' % name)
@@ -94,9 +85,6 @@ class AppRule:
 
         self.name = name
         self.app = app
-
-        self.filter_keys = filter_keys or []
-        self.full_match = filter_keys is not None
         self.used_by_report = False
         self.results = Counter()
         self._last_idx = None
@@ -339,20 +327,7 @@ class AppLogParser:
             logger.debug('app %r run files: %r', name, self.files)
             logger.debug('app %r: enabled=%r, priority=%s', name, self.enabled, self.priority)
 
-        rules = self.parse_rules()
-        self.filter_rules = [rule for rule in rules if rule.filter_keys]
-
-        if self.filter_rules:
-            # If the app has filters, reorder rules putting the filters first.
-            self.rules = sorted(rules, key=lambda x: x.filter_keys)
-            if logger.level <= logging.DEBUG:
-                logger.debug('number or filter rules of app %r: %d', name, len(self.filter_rules))
-                logger.debug('other rules of app %r: %d', name, len(self.rules) - len(self.filters))
-        else:
-            self.rules = rules
-            for rule in rules:
-                rule.full_match = True
-
+        self.rules = self.parse_rules()
         logger.info('initialized app %r with %d pattern rules', name, len(self.rules))
 
     def __repr__(self):
@@ -378,10 +353,6 @@ class AppLogParser:
     def files(self) -> list[str]:
         files = list(set(re.split(r'\s*,\s*', self.config.get('main', 'files'))))
         return field_multisub(files, 'host', self.args.hosts or ['*'])
-
-    @cached_property
-    def has_filters(self) -> bool:
-        return len(self.filter_rules) > 0
 
     @cached_property
     def report_data(self) -> list[ReportData]:
@@ -414,23 +385,17 @@ class AppLogParser:
             raise LogRaptorConfigError("the app %r has no defined rules!" % self.name)
 
         rules = []
-        mapping = self.runner.patterns_mapping
+        mapping = self.runner.default_patterns
+
         for option, value in rule_options:
             value = value.replace('\n', '')
             try:
-                pattern = RulePattern(value, mapping)
+                pattern = RulePattern(value, mapping=mapping)
             except ValueError as err:
                 msg = 'cannot parse rule %r for app %r: %s' % (option, self.name, err)
                 raise LogRaptorOptionError(msg)
-            if not self.args.filters:
-                # No filters case: substitute the filter fields with the corresponding patterns.
-                rules.append(AppRule(option, pattern, self))
             else:
-                filter_keys = [f for f in pattern.fields if any(f in flt for flt in self.args.filters)]
-                if filter_keys:
-                    rules.append(AppRule(option, pattern, self, filter_keys))
-                else:
-                    rules.append(AppRule(option, pattern, self))
+                rules.append(AppRule(option, pattern, self))
 
         return rules
 
@@ -450,12 +415,11 @@ class AppLogParser:
         Return a tuple with this data:
 
             Element #0 (app_matched): True if a rule match, False otherwise;
-            Element #1 (has_full_match): True if a rule match and is a filter or the
-                app has not filters; False if a rule match but is not a filter;
-                None otherwise;
+            Element #1 (full_match): None if no rule matches, True if a rule
+                match and is a not created using filters, False otherwise;
             Element #2 (app_thread): Thread value if a rule match, and it has a "thread"
                 group, None otherwise;
-            Element #3 (output_data): Mapping dictionary if a rule match and a map
+            Element #2 (output_data): Mapping dictionary if a rule match and a map
                 of output is requested (--anonymize/--ip/--uid options).
         """
         for rule in self.rules:
@@ -476,21 +440,24 @@ class AppLogParser:
                         values[gid] = match.group(gid)
                     output_data = None
 
+                if not self.filters:
+                    full_match = True
+                else:
+                    full_match = False
+                    for flt in self.filters:
+                        if all(k in values and p.compiled.match(values[k]) for k, p in flt.items()):
+                            full_match = True
+                            break
+
                 if self._thread and 'thread' in rule.pattern.groupindex:
                     thread = match.group('thread')
-                    if rule.filter_keys is not None and \
-                            any([values[key] is None for key in rule.filter_keys]):
-                        return False, None, None, None
                     if self._report:
                         rule.add_result(values)
-                    return True, rule.full_match, thread, output_data
+                    return True, full_match, thread, output_data
                 else:
-                    if rule.filter_keys is not None and \
-                            any([values[key] is None for key in rule.filter_keys]):
-                        return False, None, None, None
-                    elif self._report or (rule.filter_keys is not None or not self.filter_rules):
+                    if self._report:
                         rule.add_result(values)
-                    return True, rule.full_match, None, output_data
+                    return True, full_match, None, output_data
 
         # No rule match: the application log message is not parsable with enabled rules.
         self._last_rule = None

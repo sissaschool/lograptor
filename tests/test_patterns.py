@@ -53,11 +53,11 @@ class TestPatterns(object):
             time_period=time_period,
         )
         assert isinstance(runner, LogRaptor)
-        assert isinstance(runner.filters, dict)
-        assert len(runner.filters) == 8
-
-        for name, regex in runner.filters.items():
-            assert isinstance(re.compile(regex), re.Pattern)
+        assert isinstance(runner.filters, list)
+        for flt in runner.filters:
+            for k, p in flt.items():
+                assert isinstance(k, str)
+                assert isinstance(p, RulePattern)
 
     def test_pattern_template(self):
         template = PatternTemplate('foo %{BAR} %{BAZ}')
