@@ -34,7 +34,8 @@ from lograptor.exceptions import (
     LogRaptorConfigError, LogRaptorOptionError, LogFormatError, FileMissingError,
     FileAccessError, LogRaptorArgumentError
 )
-from lograptor.timedate import get_datetime_interval, parse_date_period, parse_last_period, TimeRange
+from lograptor.timedate import get_datetime_interval, parse_date_period, \
+    parse_last_period, TimeRange
 
 
 # noinspection PyShadowingBuiltins
@@ -368,7 +369,8 @@ class ActionInfo(NamedTuple):
         """Extract parser actions returning a dictionary with info about actions."""
         actions = {}
         for key, obj in vars(parser).items():
-            if isinstance(obj, (list, tuple)) and any(isinstance(item, argparse.Action) for item in obj):
+            if isinstance(obj, (list, tuple)) and \
+                    any(isinstance(item, argparse.Action) for item in obj):
                 for item in obj:
                     if isinstance(item, argparse.Action):
                         if item.dest == "help":
@@ -465,7 +467,7 @@ def lograptor(files: Sequence[str] = (), *,
     :param ignore_case: ignore case distinctions, defaults to `False`.
     :param invert: invert the sense of patterns regexp matching.
     :param word: force PATTERN to match only whole words.
-    :param files_with_match: get only names of FILEs containing matches, defaults to `False`.
+    :param files_with_match: get only names of FILEs containing matches, defaults to `None`.
     :param count: get only a count of matching lines per FILE.
     :param color: use markers to highlight the matching strings, defaults to `auto`.
     :param quiet: suppress all normal output.
@@ -481,14 +483,16 @@ def lograptor(files: Sequence[str] = (), *,
     :param dereference_recursive: likewise, but follow all symlinks.
     :param include: search only files that match GLOB.
     :param exclude: skip files whose base name matches any of the file-name globs.
-    :param exclude_from: skip files whose base name matches any of the file-name globs read from FILE.
+    :param exclude_from: skip files whose base name matches any of the file-name \
+    globs read from FILE.
     :param exclude_dir: exclude directories matching the pattern DIR.
     :param before_context: get NUM lines of leading context for each log line selected.
     :param after_context: get NUM lines of trailing context for each log line selected.
     :param context: get NUM lines of output context for each log line selected.
-    :param group_separator: which string to use as a group separator, for default is double hyphen (--).
-    :param report: produce a report at the end of processing, defaults to `False`. Provide a name for \
-    the report or `None` to produce an unnamed report to stdout.
+    :param group_separator: which string to use as a group separator, for default \
+    is double hyphen (--).
+    :param report: produce a report at the end of processing, defaults to `False`. \
+    Provide a name for the report or `None` to produce an unnamed report to stdout.
     :param loglevel: logging level [0=DEBUG], defaults to `2`.
     """
     if filters is None:

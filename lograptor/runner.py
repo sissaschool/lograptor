@@ -170,7 +170,8 @@ class LogRaptor:
                 logger.debug("is_atty: %r", os.isatty(STDIN_FILENO))
                 logger.debug("is_pipe: %r", is_pipe(STDIN_FILENO))
                 logger.debug("is_redirected: %r", is_redirected(STDIN_FILENO))
-            return os.isatty(stdin_fileno) and (is_pipe(stdin_fileno) or is_redirected(stdin_fileno))
+            return os.isatty(stdin_fileno) and \
+                (is_pipe(stdin_fileno) or is_redirected(stdin_fileno))
 
     @cached_property
     def config_apps(self) -> dict[str, AppLogParser]:
@@ -468,8 +469,8 @@ class LogRaptor:
                              exclude_dir=self.exclude_dir)
             logmap.add(self.args.files, apps)
         elif self.interactive:
-            # No files provided but input is from a tty pipe/redirection
-            logmap = [(sys.stdin, apps)]
+            # No files provided, but input is from a tty pipe/redirection.
+            return [(sys.stdin, apps)]
         else:
             # Build the LogMap instance adding the list of files from app config files
             logmap = FileMap(self.time_period, recursive=self.recursive,
@@ -481,15 +482,13 @@ class LogRaptor:
                 logmap.add(app.files, [app])
 
         if self.args.with_filename is None:
-            iter_logmap = iter(logmap)
-            try:
-                next(iter_logmap)
-                next(iter_logmap)
-            except StopIteration:
-                pass
-            else:
-                # the logmap has more than one file --> prefix log with filename
-                self.args.with_filename = True
+            effective_files = 0
+            for _, apps in logmap:
+                if apps is not None:
+                    effective_files += 1
+                    if effective_files > 1:
+                        self.args.with_filename = True
+                        break
         return logmap
 
     @cached_property
@@ -548,8 +547,8 @@ class LogRaptor:
         if self.args.report and self.report is not None:
             self.report.cleanup()
 
-        # Iter between log files. The iteration use the log files modified between the
-        # initial and the final date, skipping the other files.
+        # Iter between log files. Each iteration uses the log files modified between
+        # the initial and the final date, skipping the other files.
         for source, apps in self.logmap:
             if apps is not None:
                 logger.info('process %r for apps %r', source, apps)
@@ -593,7 +592,9 @@ class LogRaptor:
 
         if not files and self.time_period[0] is not None:
             tp = self.time_period
-            raise FileMissingError(f"no file in time period ({format_dt(tp[0]), format_dt(tp[1])})!")
+            raise FileMissingError(
+                f"no file in time period ({format_dt(tp[0]), format_dt(tp[1])})!"
+            )
         elif not lines:
             return False
 
@@ -660,7 +661,8 @@ class LogRaptor:
         else:
             return LineBufferDispatcher(self.channels, before_context, after_context)
 
-    def create_matcher(self, dispatcher: DispatcherType, parsers: Sequence[LogParser] | None = None):
+    def create_matcher(self, dispatcher: DispatcherType,
+                       parsers: Sequence[LogParser] | None = None):
         return create_matcher(
             dispatcher=dispatcher,
             parsers=parsers,

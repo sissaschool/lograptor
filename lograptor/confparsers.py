@@ -289,7 +289,7 @@ class LogRaptorConfig(EnvConfigParser):
                     r'(?: \.(?:25[0-4]|2[0-4]\d|1\d\d|[1-9]?\d)){3})',
             'IP': r'(?:%{IPV6}|%{IPV4})',
             'HOSTNAME': r'\b(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*'
-                       r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\b',
+                    r'[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\b',
             'IPORHOST': r'(?:%{IP}|%{HOSTNAME})',
             'HOSTPORT': r'%{IPORHOST}:%{POSINT}',
             'USERNAME': r'[A-Za-z0-9!#$%&\'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&\'*+/=?^_`{|}~-]+)*',

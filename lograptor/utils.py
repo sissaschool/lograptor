@@ -107,11 +107,12 @@ METRIC_PREFIXES = {
 }
 
 
-def get_value_unit(value: int | float, unit: str = '', prefix: str = 'T') -> tuple[int | float, str]:
+def get_value_unit(value: int | float, unit: str = '', prefix: str = 'T') \
+        -> tuple[int | float, str]:
     """
     Return a human-readable value with unit specification. Try to
-    transform the unit prefix to the one passed as parameter. When
-    transform to higher prefix apply nearest integer round.
+    transform the unit prefix to the one passed as param. When
+    is transformed to higher prefix apply nearest integer round.
 
     :param value: a numerical value.
     :param unit: a string containing the measure unit and maybe a metric prefix. \

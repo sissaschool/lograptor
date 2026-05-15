@@ -204,7 +204,9 @@ class ReportData(MutableMapping[str, Any]):
         Compare two 'table' report items. When True the report items
         results are mergeable.
         """
-        if not isinstance(other, ReportData) or self.function != 'table' or other.function != 'table':
+        if not isinstance(other, ReportData) \
+                or self.function != 'table' \
+                or other.function != 'table':
             return False
 
         if self.title != other.title:
@@ -554,7 +556,7 @@ class Report:
     This helper class holds the contents of a report before it is
     sent to selected channels.
     """
-    def __init__(self, name: str, patterns: Sequence[str], args: Namespace, config):
+    def __init__(self, name: str, patterns: Sequence[re.Pattern[str]], args: Namespace, config):
         self.name = name
         self.patterns = patterns
         self.args = args
@@ -693,7 +695,9 @@ class Report:
             report_data = [item.text for item in sr.report_data if item.text]
             if report_data:
                 parts.append(
-                    f"\n{'*' * (len(sr.title) + 12)}\n***** {sr.title} *****\n{'*' * (len(sr.title) + 12)}"
+                    f"\n{'*' * (len(sr.title) + 12)}\n"
+                    f"***** {sr.title} *****\n"
+                    f"{'*' * (len(sr.title) + 12)}"
                 )
                 parts.extend(report_data)
 

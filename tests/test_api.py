@@ -19,6 +19,8 @@
 import pytest
 import datetime
 import pathlib
+
+from lograptor.exceptions import LogRaptorConfigError, LogRaptorArgumentError
 from lograptor.api import lograptor
 from lograptor.runner import LogRaptor
 from lograptor.timedate import TimeRange
@@ -52,7 +54,7 @@ class TestApiInterface(object):
             time_period=time_period,
         )
         assert isinstance(runner, LogRaptor)
-        assert runner() is True
+        assert runner() == 0
 
     def test_api_no_match(self, config_file, sshd_log):
         runner = lograptor(
@@ -118,8 +120,7 @@ class TestApiInterface(object):
 
     def test_api_invalid_type(self, config_file, sshd_log):
         # verify() should catch wrong type for max_count
-        with pytest.raises(TypeError):
-            breakpoint()
+        with pytest.raises(LogRaptorConfigError):
             lograptor(
                 files=[sshd_log],
                 cfgfiles=[config_file],
@@ -128,7 +129,7 @@ class TestApiInterface(object):
 
     def test_api_invalid_choice(self, config_file, sshd_log):
         # matcher must be one of the specified choices
-        with pytest.raises(ValueError):
+        with pytest.raises(LogRaptorArgumentError):
             lograptor(
                 files=[sshd_log],
                 cfgfiles=[config_file],

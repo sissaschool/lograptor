@@ -51,7 +51,8 @@ MONTHMAP = MappingProxyType({
 NILVALUE = '-'  # RFC-5424 NILVALUE
 
 
-class MatcherResult(namedtuple('MatcherResult', "lines matches unknown extra_tags first_event, last_event")):
+class MatcherResult(namedtuple('MatcherResult',
+                               "lines matches unknown extra_tags first_event, last_event")):
     lines: int
     matches: int
     unknown: int
@@ -227,6 +228,7 @@ def create_matcher(dispatcher: DispatcherType,
     use_app_rules = matcher != 'unruled'
     select_unparsed = matcher == 'unparsed'
     register_log_lines = not (quiet or count or files_with_match is not None)
+
     start_dt, end_dt = get_mktime_period(time_period)
     has_host_match = create_host_matcher(hosts)
 
@@ -297,7 +299,7 @@ def create_matcher(dispatcher: DispatcherType,
                 log_data = log_parser.get_data(log_match)
 
                 ###
-                # Process last event repetition (e.g. 'last message repeated N times' RFC 3164's logs)
+                # Process last event repetition (e.g. 'last message repeated N times')
                 if getattr(log_data, 'repeat', None) is not None:
                     if selected_data is not None:
                         repeat = int(log_data.repeat)
@@ -374,7 +376,6 @@ def create_matcher(dispatcher: DispatcherType,
                         rawlog = name_cache.match_to_string(
                             log_match, log_parser.parser.groupindex, output_data
                         )
-
                     if app_matched:
                         app.matches += 1
                         if not full_match or select_unparsed:
@@ -445,8 +446,7 @@ def create_matcher(dispatcher: DispatcherType,
                 pass
 
         # If the count option is enabled, register only the number of matched lines.
-        if files_with_match and selected_counter or \
-                files_with_match is False and not selected_counter:
+        if files_with_match is not None and not files_with_match ^ selected_counter:
             dispatch_selected(filename=logfile.name)
         elif count:
             dispatch_selected(filename=logfile.name, counter=selected_counter)

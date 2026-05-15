@@ -19,7 +19,7 @@
 import re
 import string
 from dataclasses import dataclass
-from functools import cache, cached_property
+from functools import cache
 from itertools import pairwise
 
 
@@ -63,8 +63,8 @@ class PatternField:
         parts = spec.split(':')
         if spec == 'POSINT:reason>':
             breakpoint()
-        if any(not p.isidentifier() for p in parts) or len(parts) > 3 \
-               or not parts[0].isupper() or len(parts) > 1 and not parts[1].islower():
+        if (any(not p.isidentifier() for p in parts) or len(parts) > 3
+                or not parts[0].isupper() or len(parts) > 1 and not parts[1].islower()):
             raise ValueError(f"invalid pattern specification: {spec!r}")
 
         if len(parts) == 1:
@@ -109,9 +109,10 @@ class RegexPattern:
             # The rule pattern string is already in REGEX like format
             # Don't change the pattern, just extract the named groups.
 
+            name: str
             chunks = pattern.split('(?P<')
             for left, right in pairwise(range(len(chunks))):
-                name, _, pattern = chunks[right].partition('>')[0]
+                name, _, pattern = chunks[right].partition('>')
                 if name.isidentifier():
                     if name in fields:
                         raise ValueError(f"duplicated named group {name!r}")
@@ -203,5 +204,3 @@ class RulePattern(GrokPattern):
     @property
     def compiled(self) -> re.Pattern[str]:
         return get_pattern(self.regex_pattern)
-
-

@@ -21,19 +21,17 @@ Module to manage lograptor applications
 #
 import logging
 import re
-import string
 import configparser
 from collections import Counter
 from collections.abc import Sequence, Mapping
 from functools import cached_property
-from re import fullmatch
 from typing import Any, TYPE_CHECKING
 
 from lograptor.logparsers import LogData
 from lograptor.exceptions import LogRaptorConfigError, RuleMissingError, LogRaptorOptionError
 from lograptor.confparsers import AppConfig
 from lograptor.report import Report, ReportData
-from lograptor.utils import field_multisub, exact_sub
+from lograptor.utils import field_multisub
 from lograptor.patterns import RulePattern
 
 if TYPE_CHECKING:
