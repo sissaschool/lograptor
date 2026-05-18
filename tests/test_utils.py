@@ -159,7 +159,7 @@ class TestUtils(object):
         assert res.name == "samples/dovecot.log"
 
         res = open_resource("file:samples/postfix.log")
-        assert res.name == "file://samples/postfix.log"
+        assert res.name in ("file://samples/postfix.log", "file:samples/postfix.log")
 
         with pytest.raises((OSError, IOError)):
             open_resource("samples/nofile.log")

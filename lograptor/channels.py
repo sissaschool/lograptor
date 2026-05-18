@@ -395,7 +395,7 @@ class MailChannel(NoTermChannel):
 
         if self.gpg_encrypt:
             try:
-                import gpgme
+                import gpgme  # type: ignore[import-not-found]
 
                 if self.gpg_keyringdir and os.path.exists(self.gpg_keyringdir):
                     logger.debug('Setting keyring dir to %r', self.gpg_keyringdir)

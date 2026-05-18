@@ -22,7 +22,7 @@ This module defines classes and methods to handle lograptor configurations.
 import string
 import socket
 import re
-from configparser import NoOptionError, DuplicateSectionError, RawConfigParser
+from configparser import NoOptionError, DuplicateSectionError, RawConfigParser, Interpolation
 
 from lograptor.exceptions import (
     LogRaptorNoSectionError, LogRaptorNoOptionError, FileMissingError
@@ -32,7 +32,7 @@ _UNSET = object()
 
 
 # noinspection PyShadowingBuiltins,PyUnusedLocal,PyMethodMayBeStatic,PyPep8Naming
-class EnvInterpolation:
+class EnvInterpolation(Interpolation):
     _KEYCRE = re.compile(r"%\(([^)]+)\)s")
 
     def before_get(self, parser, section, option, value, defaults):

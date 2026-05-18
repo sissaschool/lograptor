@@ -63,8 +63,8 @@ class PatternField:
         parts = spec.split(':')
         if spec == 'POSINT:reason>':
             breakpoint()
-        if (any(not p.isidentifier() for p in parts) or len(parts) > 3
-                or not parts[0].isupper() or len(parts) > 1 and not parts[1].islower()):
+        if any(not p.isidentifier() for p in parts) or len(parts) > 3 or \
+                not parts[0].isupper() or len(parts) > 1 and not parts[1].islower():
             raise ValueError(f"invalid pattern specification: {spec!r}")
 
         if len(parts) == 1:

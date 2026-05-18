@@ -291,7 +291,7 @@ def create_matcher(dispatcher: DispatcherType,
                     if log_match is not None:
                         log_parser = next_parser
                     elif line_counter == 1:
-                        logger.warning("the file %r has an unknown format, skip ...", logfile_name)
+                        logger.error("the file %r has an unknown format, skip ...", logfile_name)
                         break
                     else:
                         unknown_counter += 1

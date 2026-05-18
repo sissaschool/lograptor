@@ -104,7 +104,7 @@ def get_unix_ioctl_terminal_size() -> tuple[int, int] | None:
             return struct.unpack(
                 'hh', fcntl.ioctl(fd, termios.TIOCGWINSZ, '1234')  # noqa
             )
-        except (IOError, OSError, TypeError):
+        except (IOError, OSError, TypeError, SystemError):
             return None
 
     cr = ioctl_gwinsz(0) or ioctl_gwinsz(1) or ioctl_gwinsz(2)

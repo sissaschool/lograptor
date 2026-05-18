@@ -40,33 +40,31 @@ def do_chunked_gzip(infh: IO, outfh: IO, filename: str) -> None:
     """
     import gzip
 
-    gzfh = gzip.GzipFile('rawlogs', mode='wb', fileobj=outfh)
+    with gzip.GzipFile('rawlogs', mode='wb', fileobj=outfh) as gzfh:
 
-    if isinstance(infh, (io.StringIO, io.BytesIO)):
-        input_size = len(infh.getvalue())
-    else:
-        input_size = os.stat(infh.name).st_size
-        if infh.closed:
-            infh = open(infh.name, 'r')
+        if isinstance(infh, (io.StringIO, io.BytesIO)):
+            input_size = len(infh.getvalue())
+        else:
+            input_size = os.stat(infh.name).st_size
+            if infh.closed:
+                infh = open(infh.name, 'r')
 
-    read_size = 0
-    sys.stdout.write('Gzipping {0}: '.format(filename))
+        read_size = 0
+        sys.stdout.write('Gzipping {0}: '.format(filename))
 
-    if input_size:
-        infh.seek(0)
-        progressbar = ProgressBar(sys.stdout, input_size, "bytes gzipped")
-        while True:
-            chunk = infh.read(GZIP_CHUNK_SIZE)
-            if not chunk:
-                break
-            if isinstance(chunk, str):
-                chunk = bytes(chunk, "utf-8")
+        if input_size:
+            infh.seek(0)
+            progressbar = ProgressBar(sys.stdout, input_size, "bytes gzipped")
+            while True:
+                chunk = infh.read(GZIP_CHUNK_SIZE)
+                if not chunk:
+                    break
+                if isinstance(chunk, str):
+                    chunk = bytes(chunk, "utf-8")
 
-            gzfh.write(chunk)
-            read_size += len(chunk)
-            progressbar.redraw(read_size)
-
-    gzfh.close()
+                gzfh.write(chunk)
+                read_size += len(chunk)
+                progressbar.redraw(read_size)
 
 
 def mail_message(smtp_server: str, message: str, from_address: str, rcpt_addresses: list[str]):
