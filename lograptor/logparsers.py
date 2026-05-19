@@ -105,6 +105,19 @@ class ParserRFC5424(LogParser):
                r'(?P<message>.*)')
 
 
+class ParserRFC3164Mixed(LogParser):
+    """
+    Parser and extraction methods for BSD Syslog format (RFC 3164) forwarded to IETF-syslog server.
+    """
+    NAME = 'rfc3164mixed'
+    PATTERN = (r'^(?:<(?P<pri>[0-9]{1,3})>(?P<ver>[0-9]{0,2}) |)'
+               r'(?:-|(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})T)'
+               r'(?P<ltime>[0-9]{2}:[0-9]{2}:[0-9]{2})(?:|\.(?P<secfrac>[0-9]{1,6}))'
+               r'(?:Z |(?P<offset>(?:\+|-)[0-9]{2}:[0-9]{2}) )'
+               r'(?:-|(?P<host>\S{1,255})) '
+               r'(?P<message>(?P<apptag>[^ \[\(\:]{1,32})(?:[\[\(\:])?.*)')
+
+
 class CycleParsers:
     """
     Class that define an iterator for a set of parsers. The additional
