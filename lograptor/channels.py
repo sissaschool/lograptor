@@ -468,8 +468,12 @@ class MailChannel(NoTermChannel):
         root_part['Message-Id'] = make_msgid()
         root_part['X-Mailer'] = '{0}-{1}'.format(package_name, __version__)
 
-        mail_message(self.smtp_server, root_part.as_string(), self.email_address, self.mailto)
-        print(f"Mailed the report to: {','.join(self.mailto)}", file=output)
+        try:
+            mail_message(self.smtp_server, root_part.as_string(), self.email_address, self.mailto)
+        except OSError as e:
+            print(f"Failed to send the report: {e}", file=output)
+        else:
+            print(f"Mailed the report to: {','.join(self.mailto)}", file=output)
 
 
 class FileChannel(NoTermChannel):
@@ -614,8 +618,12 @@ class FileChannel(NoTermChannel):
             eml['To'] = ', '.join(self.notify)
             eml['X-Mailer'] = f'{package_name}-{__version__}'
 
-            mail_message(smtp_server, eml.as_string(), email_address, self.notify)
-            print(f"Notification mailed to: {','.join(self.notify)}", file=output)
+            try:
+                mail_message(smtp_server, eml.as_string(), email_address, self.notify)
+            except OSError as e:
+                print(f"Failed to send notification: {e}", file=output)
+            else:
+                print(f"Notification mailed to: {','.join(self.notify)}", file=output)
 
         if self.rawlogs:
             filename = '{0}.log'.format(self.filename)

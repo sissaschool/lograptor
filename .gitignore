@@ -2,8 +2,6 @@
 *.pyo
 *~
 MANIFEST
-lograptor.conf
-!etc/config/lograptor.conf
 etc/config/conf.d/testapp.conf
 exclude-list.txt
 package-build
@@ -25,6 +23,7 @@ tests/var/
 __pycache__/
 .pytest_cache/
 .tox/
+.mypy_cache/
 *.egg-info/
 htmlcov/
 .coverage*
