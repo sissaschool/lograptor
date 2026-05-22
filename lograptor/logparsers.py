@@ -22,7 +22,7 @@ This module defines classes and methods for parsing log headers.
 import re
 from collections import namedtuple
 from collections.abc import Sequence
-from typing import NamedTuple, TYPE_CHECKING, ClassVar
+from typing import NamedTuple, TYPE_CHECKING, ClassVar, cast
 
 if TYPE_CHECKING:
     from lograptor.application import AppRule
@@ -75,7 +75,20 @@ class LogParser:
 
     @classmethod
     def get_data(cls, match: 're.Match[str]') -> tuple[str, ...]:
-        return cls.LogData(*map(match.group, cls.fields))
+        return cls.LogData(*map(match.group, cls.fields))  # noqa
+
+    @classmethod
+    def from_option(cls, name: str, pattern: str) -> type['LogParser']:
+        """Create a parser instance from a configuration option."""
+        if name in _registered_parsers:
+            parser_class = _registered_parsers[name]
+            if parser_class.NAME != name or parser_class.PATTERN != pattern:
+                raise ValueError(f'parser name {name!r} already registered for: {parser_class!r}')
+            return parser_class
+
+        class_name = 'LogParser{}'.format(name.upper())
+        namespace = {'NAME': name, 'PATTERN': pattern}
+        return cast(type[LogParser], type(class_name, (cls,), namespace))
 
 
 class ParserRFC3164(LogParser):
@@ -126,11 +139,19 @@ class CycleParsers:
     """
     __slots__ = ('parsers', 'index', 'num_parsers')
 
-    def __init__(self, parsers: Sequence[LogParser] | None = None):
+    def __init__(self, parsers: Sequence[LogParser | str] | None = None):
         if parsers is None:
-            parsers = tuple(c() for c in _registered_parsers.values())
+            self.parsers = [c() for c in _registered_parsers.values()]
+        else:
+            self.parsers = []
+            for p in parsers:
+                if isinstance(p, str):
+                    if p not in _registered_parsers:
+                        raise ValueError('unknown parser name: %r' % p)
+                    self.parsers.append(_registered_parsers[p]())
+                else:
+                    self.parsers.append(p)
 
-        self.parsers = tuple(parsers)
         self.index = -1
         self.num_parsers = len(self.parsers)
 

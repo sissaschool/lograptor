@@ -73,36 +73,41 @@ class LogRaptor:
         '/etc/lograptor/lograptor.conf',
         os.path.join(os.path.dirname(__file__), 'config/lograptor.conf'),
     )
+    config: LogRaptorConfig
+    default_patterns: dict[str, str]
 
     def __init__(self, args):
-        try:
-            self.config = LogRaptorConfig(cfgfiles=args.cfgfiles or self.DEFAULT_CONFIG_FILES)
-        except (IOError, OSError) as err:
-            logger.critical('no configuration available in files %r: %r', args.cfgfiles, err)
-            raise FileMissingError('abort %r for previous errors' % __package__)
-
         self.args = args
         self.set_logger()
 
         if logger.level <= logging.DEBUG:
             logger.debug("args=%r", args)
-
             if self.interactive:
                 choice = input("DEBUG level set: do you want to activate the debugger? (y/n): ...")
                 if choice.lower() in ('y', 'yes'):
                     breakpoint()
 
-        self.default_patterns = {k: p.pattern for k, p in self.named_patterns.items()}
-        self.check_config()
+        self.load_config()
 
-    def check_config(self):
-        # Check the rest of config using some cached properties.
+    def load_config(self):
+        try:
+            self.config = LogRaptorConfig(cfgfiles=self.args.cfgfiles or self.DEFAULT_CONFIG_FILES)
+        except (IOError, OSError) as err:
+            logger.critical('no configuration available in files %r: %r', self.args.cfgfiles, err)
+            raise FileMissingError('abort %r for previous errors' % __package__)
+
+        self.default_patterns = {k: p.pattern for k, p in self.named_patterns.items()}
+
+        # Check the rest of the configuration using some cached properties.
         _ = self.apptags
         _ = self.exclude
         _ = self.matcher
         _ = self.patterns
         _ = self.filters
         _ = self.channels
+
+        for name in self.config.options('parsers'):
+            LogParser.from_option(name, self.config.get('parsers', name))
 
         if not isinstance(self.args.max_count, int) or self.args.max_count < 0:
             raise LogRaptorConfigError('max_count must be a positive integer')
@@ -318,7 +323,7 @@ class LogRaptor:
             raise LogRaptorArgumentError('wrong regex syntax for pattern: %r' % err)
 
     @cached_property
-    def named_patterns(self):
+    def named_patterns(self) -> dict[str, GrokPattern]:
         """The named patterns loaded from configuration files that are used ."""
         patterns = {}
 
