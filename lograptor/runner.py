@@ -106,8 +106,9 @@ class LogRaptor:
         _ = self.filters
         _ = self.channels
 
-        for name in self.config.options('parsers'):
-            LogParser.from_option(name, self.config.get('parsers', name))
+        if self.config.has_section('parsers'):
+            for name in self.config.options('parsers'):
+                LogParser.from_option(name, self.config.get('parsers', name))
 
         if not isinstance(self.args.max_count, int) or self.args.max_count < 0:
             raise LogRaptorConfigError('max_count must be a positive integer')
